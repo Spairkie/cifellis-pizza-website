@@ -1,0 +1,1070 @@
+<title>Cifelli's Pizza</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rye&family=Work+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ink:#1c1712;
+    --ink-soft:#2a231d;
+    --paper:#f4ead6;
+    --paper-dim:#e9dcbf;
+    --sauce:#c22a2f;
+    --sauce-deep:#821e21;
+    --basil:#4c6b3a;
+    --gold:#dc9f34;
+    --line-on-paper: rgba(28,23,18,.22);
+    --line-on-ink: rgba(244,234,214,.16);
+    --shadow: 0 18px 40px -18px rgba(0,0,0,.55);
+    --radius: 2px;
+    --maxw: 1120px;
+  }
+
+  *,*::before,*::after{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto;}
+    *{animation-duration:.001ms !important; transition-duration:.001ms !important;}
+  }
+
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:"Work Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size:16px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  h1,h2,h3,h4{
+    font-family:"Rye", "Bevan", Georgia, serif;
+    font-weight:400;
+    line-height:1.15;
+    margin:0;
+    text-wrap:balance;
+    letter-spacing:.5px;
+  }
+
+  p{margin:0;}
+  a{color:inherit;}
+  ul{margin:0;padding:0;list-style:none;}
+  button{font-family:inherit;}
+
+  img,svg{display:block;max-width:100%;}
+
+  .mono{
+    font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wrap{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:0 24px;
+  }
+
+  .eyebrow{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:12.5px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--gold);
+  }
+
+  /* ---------- perforated ticket edge ---------- */
+  .perf{
+    height:16px;
+    width:100%;
+    background:
+      radial-gradient(circle at 10px 0, transparent 8px, var(--paper) 8.5px) top / 20px 16px repeat-x;
+  }
+  .perf--top{
+    background:
+      radial-gradient(circle at 10px 16px, transparent 8px, var(--paper) 8.5px) top / 20px 16px repeat-x;
+  }
+  .perf--dark{
+    background:
+      radial-gradient(circle at 10px 0, transparent 8px, var(--ink) 8.5px) top / 20px 16px repeat-x;
+  }
+  .perf--dark.perf--top{
+    background:
+      radial-gradient(circle at 10px 16px, transparent 8px, var(--ink) 8.5px) top / 20px 16px repeat-x;
+  }
+
+  .dashed{
+    border-top:2px dashed var(--line-on-paper);
+  }
+
+  /* ---------- header ---------- */
+  .site-header{
+    position:sticky; top:0; z-index:50;
+    background:rgba(28,23,18,.92);
+    backdrop-filter: blur(6px);
+    border-bottom:1px solid var(--line-on-ink);
+    transition: box-shadow .25s ease;
+  }
+  .site-header.is-scrolled{ box-shadow: var(--shadow); }
+
+  .header-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; padding:12px 24px;
+  }
+
+  .brand{
+    display:flex; align-items:center; gap:12px;
+    text-decoration:none;
+  }
+  .brand-badge{ width:46px; height:46px; flex:none; }
+  .brand-type{ display:flex; flex-direction:column; line-height:1; }
+  .brand-type .name{
+    font-family:"Rye", serif; font-size:22px; color:var(--paper);
+  }
+  .brand-type .tag{
+    font-family:"IBM Plex Mono", monospace; font-size:9.5px; letter-spacing:.14em;
+    color:var(--gold); text-transform:uppercase; margin-top:4px;
+  }
+
+  nav.main-nav{
+    display:flex; align-items:center; gap:28px;
+  }
+  nav.main-nav a{
+    text-decoration:none; font-weight:600; font-size:14.5px;
+    color:var(--paper-dim); letter-spacing:.02em;
+    padding:6px 2px; border-bottom:2px solid transparent;
+  }
+  nav.main-nav a:hover, nav.main-nav a:focus-visible{
+    color:var(--paper); border-bottom-color:var(--sauce);
+    outline:none;
+  }
+
+  .call-pill{
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--sauce); color:var(--paper);
+    font-family:"IBM Plex Mono", monospace; font-weight:600; font-size:14px;
+    padding:10px 16px; border-radius:999px; text-decoration:none;
+    box-shadow: 0 6px 16px -6px rgba(194,42,47,.7);
+    white-space:nowrap;
+  }
+  .call-pill:hover{ background:var(--sauce-deep); }
+
+  .menu-toggle{
+    display:none; background:none; border:1px solid var(--line-on-ink);
+    color:var(--paper); width:44px;height:44px; border-radius:6px;
+    align-items:center; justify-content:center; cursor:pointer;
+  }
+  .menu-toggle svg{width:20px;height:20px;}
+
+  @media (max-width: 860px){
+    nav.main-nav{
+      position:absolute; top:100%; left:0; right:0;
+      background:var(--ink-soft); flex-direction:column; align-items:flex-start;
+      padding:14px 24px 20px; gap:2px; border-bottom:1px solid var(--line-on-ink);
+      display:none;
+    }
+    nav.main-nav.is-open{ display:flex; }
+    nav.main-nav a{ width:100%; padding:10px 0; border-bottom:1px solid var(--line-on-ink); }
+    .menu-toggle{ display:inline-flex; }
+    .call-pill span.long{ display:none; }
+  }
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; gap:10px;
+    padding:14px 26px; border-radius:999px; text-decoration:none;
+    font-weight:700; font-size:15px; letter-spacing:.02em;
+    border:2px solid transparent; cursor:pointer;
+  }
+  .btn--sauce{ background:var(--sauce); color:var(--paper); box-shadow:0 10px 24px -10px rgba(194,42,47,.8);}
+  .btn--sauce:hover{ background:var(--sauce-deep); }
+  .btn--outline{ background:transparent; color:var(--paper); border-color:var(--paper-dim); }
+  .btn--outline:hover{ border-color:var(--paper); background:rgba(244,234,214,.06); }
+
+  /* ---------- hero ---------- */
+  .hero{
+    position:relative;
+    padding:64px 0 48px;
+    overflow:hidden;
+  }
+  .hero .wrap{
+    display:grid; grid-template-columns: 1.15fr .85fr; gap:48px; align-items:center;
+  }
+  .hero-eyebrow{ margin-bottom:14px; }
+  .hero h1{
+    font-size:clamp(44px, 7vw, 78px);
+    color:var(--paper);
+  }
+  .hero h1 em{
+    font-style:normal; color:var(--sauce);
+    text-shadow:0 2px 0 rgba(0,0,0,.3);
+  }
+  .hero .lede{
+    margin-top:20px; max-width:52ch; font-size:18px; color:var(--paper-dim);
+  }
+  .hero .cta-row{ display:flex; gap:14px; margin-top:32px; flex-wrap:wrap; }
+
+  .ticket-strip{
+    margin-top:36px; display:flex; gap:0; flex-wrap:wrap;
+    background:var(--paper); color:var(--ink);
+    border-radius:4px; box-shadow:var(--shadow);
+  }
+  .ticket-strip .cell{
+    padding:16px 20px; flex:1 1 160px; min-width:150px;
+    border-right:2px dashed var(--line-on-paper);
+  }
+  .ticket-strip .cell:last-child{ border-right:none; }
+  .ticket-strip .cell .k{
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--sauce-deep); margin-bottom:6px; display:block;
+  }
+  .ticket-strip .cell .v{ font-weight:700; font-size:14.5px; }
+
+  .hero-art{ position:relative; justify-self:center; width:100%; max-width:400px; }
+  .hero-art svg{ width:100%; height:auto; }
+
+  @media (max-width:900px){
+    .hero .wrap{ grid-template-columns:1fr; }
+    .hero-art{ order:-1; width:70%; margin:0 auto; }
+  }
+
+  /* ---------- section shell ---------- */
+  section{ position:relative; }
+  .section-paper{
+    background:var(--paper); color:var(--ink);
+  }
+  .section-pad{ padding:64px 0; }
+  .section-head{ max-width:640px; margin-bottom:40px; }
+  .section-head h2{ font-size:clamp(30px,4vw,44px); color:var(--ink); margin-top:10px; }
+  .section-head .eyebrow{ color:var(--sauce); }
+  .section-head p{ margin-top:14px; color:var(--ink-soft); font-size:16px; max-width:56ch; }
+
+
+  /* ---------- about ---------- */
+  .about-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:48px; align-items:start; }
+  .about-grid p + p{ margin-top:14px; }
+  .about-grid p{ color:var(--ink-soft); font-size:16px; }
+  .stamp-note{
+    margin-top:26px; padding:18px 20px; border:2px solid var(--sauce);
+    color:var(--sauce-deep); font-family:"IBM Plex Mono",monospace; font-size:13.5px;
+    transform:rotate(-1.2deg); position:relative; background:rgba(194,42,47,.05);
+  }
+  .stamp-note b{ display:block; font-size:11px; letter-spacing:.14em; text-transform:uppercase; margin-bottom:6px; color:var(--sauce);}
+  .about-facts{ display:flex; flex-direction:column; gap:18px; }
+  .fact{ display:flex; gap:14px; align-items:flex-start; }
+  .fact svg{ width:26px; height:26px; flex:none; color:var(--sauce); margin-top:2px; }
+  .fact .t{ font-weight:700; font-size:15.5px; }
+  .fact .d{ color:var(--ink-soft); font-size:14.5px; margin-top:2px; }
+  @media (max-width:800px){ .about-grid{ grid-template-columns:1fr; } }
+
+  /* ---------- specials ---------- */
+  .section-ink{ background:var(--ink); color:var(--paper); }
+  .section-ink .section-head h2{ color:var(--paper); }
+  .section-ink .section-head p{ color:var(--paper-dim); }
+
+  .specials-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr));
+    gap:16px;
+  }
+  .special-card{
+    background:var(--ink-soft); border:1px solid var(--line-on-ink);
+    padding:20px 18px; border-radius:6px; position:relative;
+  }
+  .special-card .day{
+    font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--gold);
+  }
+  .special-card .name{
+    font-family:"Rye", serif; font-size:21px; margin-top:10px; color:var(--paper);
+  }
+  .special-card .price{
+    margin-top:14px; font-family:"IBM Plex Mono", monospace; font-weight:600;
+    font-size:22px; color:var(--sauce);
+  }
+  .special-card .price::before{ content:"$"; font-size:14px; vertical-align:top; margin-right:1px;}
+
+  /* ---------- menu filter ---------- */
+  .filter-bar{
+    display:flex; gap:10px; overflow-x:auto; padding-bottom:14px; margin-bottom:8px;
+    -webkit-overflow-scrolling:touch; scrollbar-width:thin;
+  }
+  .filter-bar::-webkit-scrollbar{ height:6px; }
+  .filter-bar::-webkit-scrollbar-thumb{ background:var(--line-on-paper); border-radius:4px; }
+  .pill{
+    flex:none; font-family:"IBM Plex Mono", monospace; font-size:12.5px; font-weight:600;
+    letter-spacing:.03em; padding:9px 16px; border-radius:999px; cursor:pointer;
+    background:transparent; border:1.5px solid var(--line-on-paper); color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  .pill:hover{ border-color:var(--sauce); color:var(--sauce-deep); }
+  .pill[aria-pressed="true"]{ background:var(--sauce); border-color:var(--sauce); color:var(--paper); }
+
+  .menu-cat{ margin-top:44px; padding-top:8px; }
+  .menu-cat:first-of-type{ margin-top:28px; }
+  .menu-cat[hidden]{ display:none; }
+  .menu-cat__head{
+    display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+    border-bottom:2px solid var(--ink); padding-bottom:10px; margin-bottom:18px;
+  }
+  .menu-cat__head h3{ font-size:24px; color:var(--ink); }
+  .menu-cat__note{
+    font-size:12.5px; font-style:italic; color:var(--sauce-deep); font-family:"Work Sans";
+  }
+  .menu-items{ display:flex; flex-direction:column; }
+  .menu-item{
+    display:flex; align-items:baseline; gap:10px; padding:9px 0;
+    border-bottom:1px dotted var(--line-on-paper);
+  }
+  .menu-item:last-child{ border-bottom:none; }
+  .menu-item .name{ font-weight:600; font-size:15px; }
+  .menu-item .size{ font-weight:400; color:var(--sauce-deep); font-size:12.5px; margin-left:2px;}
+  .menu-item .desc{ display:block; font-size:13px; color:var(--ink-soft); font-weight:400; margin-top:2px;}
+  .menu-item .leader{ flex:1; border-bottom:1px dotted var(--line-on-paper); transform:translateY(-4px); min-width:12px; }
+  .menu-item .price{ font-size:15.5px; font-weight:600; color:var(--sauce-deep); white-space:nowrap; }
+  .menu-item .price::before{ content:"$"; font-size:11px; vertical-align:top; }
+
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .chip{
+    font-size:12.5px; font-family:"IBM Plex Mono",monospace; padding:6px 12px;
+    border:1px solid var(--line-on-paper); border-radius:999px; color:var(--ink-soft);
+  }
+
+  .build-table{ width:100%; border-collapse:collapse; margin-top:6px; }
+  .build-table th, .build-table td{
+    text-align:left; padding:8px 10px; font-size:13.5px; border-bottom:1px solid var(--line-on-paper);
+  }
+  .build-table th{ font-family:"IBM Plex Mono",monospace; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--sauce-deep); }
+  .build-table td.mono{ font-weight:600; }
+  .build-wrap{ overflow-x:auto; }
+
+  /* ---------- reviews ---------- */
+  .reviews-grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:18px;
+  }
+  .review-card{
+    background:var(--paper); color:var(--ink); border-radius:4px; padding:20px;
+    box-shadow:var(--shadow); position:relative;
+  }
+  .review-card .stars{ display:flex; gap:3px; color:var(--gold); margin-bottom:12px; }
+  .review-card .stars svg{ width:15px; height:15px; }
+  .review-card p.quote{ font-size:14.5px; color:var(--ink-soft); font-style:italic; }
+  .review-card .who{
+    margin-top:14px; display:flex; align-items:center; gap:10px;
+  }
+  .review-card .avatar{
+    width:32px;height:32px;border-radius:50%; background:var(--sauce); color:var(--paper);
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;
+    font-family:"Rye",serif; flex:none;
+  }
+  .review-card .who .name{ font-weight:700; font-size:13.5px; }
+
+  /* ---------- visit ---------- */
+  .visit-grid{ display:grid; grid-template-columns:1fr 1fr; gap:40px; }
+  .hours-table{ width:100%; border-collapse:collapse; margin-top:14px; }
+  .hours-table td{ padding:9px 0; border-bottom:1px dotted var(--line-on-ink); font-size:14.5px; }
+  .hours-table td:last-child{ text-align:right; font-family:"IBM Plex Mono",monospace; }
+  .visit-card{
+    background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:6px; padding:26px;
+  }
+  .addr-block{ font-size:16px; line-height:1.6; }
+  .addr-block .street{ font-weight:700; font-size:19px; }
+  .social-row{ display:flex; gap:12px; margin-top:22px; }
+  .social-btn{
+    width:42px;height:42px;border-radius:50%; border:1px solid var(--line-on-ink);
+    display:flex; align-items:center; justify-content:center; color:var(--paper); text-decoration:none;
+  }
+  .social-btn:hover{ border-color:var(--sauce); color:var(--sauce); }
+  .policy-note{
+    margin-top:20px; padding:16px 18px; border-left:3px solid var(--gold);
+    background:rgba(220,159,52,.08); font-size:13.5px; color:var(--paper-dim); font-style:italic;
+  }
+  @media (max-width:800px){ .visit-grid{ grid-template-columns:1fr; } }
+
+  /* ---------- checker footer ---------- */
+  .checker-strip{
+    height:22px;
+    background-image:
+      conic-gradient(var(--paper) 90deg, transparent 90deg 180deg, var(--paper) 180deg 270deg, transparent 270deg);
+    background-size:22px 22px;
+    opacity:.9;
+  }
+  footer{ background:var(--ink); padding:36px 0 30px; }
+  .footer-row{
+    display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;
+  }
+  .footer-nav{ display:flex; gap:18px; flex-wrap:wrap; }
+  .footer-nav a{ font-size:13.5px; color:var(--paper-dim); text-decoration:none; }
+  .footer-nav a:hover{ color:var(--paper); }
+  .footer-fine{ font-size:12px; color:rgba(244,234,214,.45); margin-top:18px; font-family:"IBM Plex Mono",monospace; }
+
+  /* back to top */
+  #toTop{
+    position:fixed; right:20px; bottom:20px; z-index:60;
+    width:46px; height:46px; border-radius:50%; background:var(--sauce); color:var(--paper);
+    border:none; display:flex; align-items:center; justify-content:center; cursor:pointer;
+    box-shadow:var(--shadow); opacity:0; pointer-events:none; transition:opacity .25s ease;
+  }
+  #toTop.show{ opacity:1; pointer-events:auto; }
+  #toTop svg{ width:20px; height:20px; }
+
+  :focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
+</style>
+
+<header class="site-header" id="siteHeader">
+  <div class="header-row wrap">
+    <a class="brand" href="#home">
+      <svg class="brand-badge" viewBox="0 0 100 100" role="img" aria-label="Cifelli's Pizza badge">
+        <circle cx="50" cy="50" r="48" fill="#f4ead6"/>
+        <circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="4"/>
+        <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+        <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="none" stroke="#821e21" stroke-width="2"/>
+        <circle cx="50" cy="46" r="4.2" fill="#f4ead6"/>
+        <circle cx="40" cy="58" r="4.2" fill="#f4ead6"/>
+        <circle cx="60" cy="58" r="4.2" fill="#f4ead6"/>
+        <circle cx="50" cy="70" r="4.2" fill="#f4ead6"/>
+      </svg>
+      <span class="brand-type">
+        <span class="name">Cifelli's</span>
+        <span class="tag">Pizza &amp; Italian Kitchen</span>
+      </span>
+    </a>
+
+    <nav class="main-nav" id="mainNav">
+      <a href="#home">Home</a>
+      <a href="#about">Our Counter</a>
+      <a href="#specials">Specials</a>
+      <a href="#menu">Menu</a>
+      <a href="#reviews">Reviews</a>
+      <a href="#visit">Visit</a>
+    </nav>
+
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a class="call-pill mono" href="tel:+18564358799">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.4-1.4a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.8 2z"/></svg>
+        <span class="long">(856) 435-8799</span>
+      </a>
+      <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="mainNav">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<section id="home" class="hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow hero-eyebrow">700 Chews Landing Rd &middot; Lindenwold, NJ 08021</div>
+      <h1>We Deliver<em>.</em></h1>
+      <p class="lede">And around here, that doesn't just mean your pizza shows up hot. It means a red-sauce kitchen that still hand-stretches every pie, packs the panzarotti to order, and answers the phone by the second ring, the way a neighborhood pizzeria is supposed to run.</p>
+      <div class="cta-row">
+        <a class="btn btn--sauce" href="#menu">View Full Menu</a>
+        <a class="btn btn--outline" href="tel:+18564358799">Call to Order &rarr;</a>
+      </div>
+
+      <div class="ticket-strip">
+        <div class="cell">
+          <span class="k">Hours</span>
+          <span class="v">Sun&ndash;Wed 11a&ndash;9p<br>Thu&ndash;Sat 11a&ndash;10p</span>
+        </div>
+        <div class="cell">
+          <span class="k">Phone</span>
+          <span class="v mono">(856) 435-8799</span>
+        </div>
+        <div class="cell">
+          <span class="k">Ordering</span>
+          <span class="v">Call &middot; Fax &middot; Walk-in</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-art">
+      <svg viewBox="0 0 400 400" role="img" aria-label="Illustration of a fresh pepperoni pizza">
+        <defs>
+          <radialGradient id="crustShade" cx="50%" cy="50%" r="60%">
+            <stop offset="78%" stop-color="#e7b463"/>
+            <stop offset="100%" stop-color="#c98a3c"/>
+          </radialGradient>
+        </defs>
+        <circle cx="200" cy="205" r="12" fill="rgba(0,0,0,.35)"/>
+        <circle cx="200" cy="200" r="178" fill="url(#crustShade)"/>
+        <circle cx="200" cy="200" r="178" fill="none" stroke="#a9702f" stroke-width="3"/>
+        <circle cx="200" cy="200" r="150" fill="#c22a2f"/>
+        <circle cx="200" cy="200" r="146" fill="#e2c26a" opacity=".92"/>
+        <g opacity=".85" fill="#eed9a0">
+          <ellipse cx="150" cy="150" rx="34" ry="20" transform="rotate(-15 150 150)"/>
+          <ellipse cx="255" cy="170" rx="30" ry="18" transform="rotate(10 255 170)"/>
+          <ellipse cx="180" cy="260" rx="38" ry="20" transform="rotate(6 180 260)"/>
+          <ellipse cx="260" cy="255" rx="26" ry="16" transform="rotate(-12 260 255)"/>
+          <ellipse cx="140" cy="215" rx="24" ry="15" transform="rotate(20 140 215)"/>
+        </g>
+        <g fill="#8f1d21">
+          <circle cx="150" cy="160" r="17"/>
+          <circle cx="215" cy="140" r="17"/>
+          <circle cx="255" cy="195" r="17"/>
+          <circle cx="150" cy="230" r="17"/>
+          <circle cx="220" cy="255" r="17"/>
+          <circle cx="270" cy="240" r="17"/>
+          <circle cx="195" cy="200" r="17"/>
+        </g>
+        <g fill="#6f1518" opacity=".55">
+          <circle cx="146" cy="156" r="3"/><circle cx="156" cy="164" r="2.4"/>
+          <circle cx="211" cy="136" r="3"/><circle cx="221" cy="144" r="2.4"/>
+          <circle cx="251" cy="191" r="3"/><circle cx="191" cy="196" r="3"/>
+        </g>
+        <g fill="#3f5a2f">
+          <ellipse cx="175" cy="185" rx="7" ry="3.4" transform="rotate(30 175 185)"/>
+          <ellipse cx="235" cy="220" rx="7" ry="3.4" transform="rotate(-20 235 220)"/>
+          <ellipse cx="205" cy="245" rx="7" ry="3.4" transform="rotate(60 205 245)"/>
+          <ellipse cx="160" cy="215" rx="7" ry="3.4" transform="rotate(-40 160 215)"/>
+        </g>
+        <g stroke="#f4ead6" stroke-width="6" fill="none" stroke-linecap="round" opacity=".55">
+          <path d="M120 90 C110 70, 130 60, 120 40"/>
+          <path d="M150 84 C140 64, 160 54, 150 34"/>
+          <path d="M180 90 C170 70, 190 60, 180 40"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<div class="perf"></div>
+
+<section id="about" class="section-paper section-pad">
+  <div class="wrap">
+    <div class="about-grid">
+      <div>
+        <div class="eyebrow">Our Counter</div>
+        <h2 style="margin-top:10px;">Lindenwold's red-sauce kitchen since the oven first fired up.</h2>
+        <p style="margin-top:20px;">Cifelli's runs the way a family pizza shop should: dough made and stretched in-house, a menu long enough to feed an entire block party, and a fryer and a flat-top that never really stop moving on a Friday night. Pizza is the name over the door, but the steak and cheese, the chicken cutlet parm, and the Sunday-morning pork roll, egg and cheese all have their own regulars.</p>
+        <p>We carry Pepsi products, we still take orders the old-fashioned way, and we've got a different grease-pencil special chalked up every day of the week.</p>
+
+        <div class="stamp-note">
+          <b>Ordering Policy</b>
+          "We do not accept email orders. Please call, fax or visit our store to place an order."
+        </div>
+      </div>
+
+      <div class="about-facts">
+        <div class="fact">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-4.6-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.4-9.5 9-9.5 9z"/></svg>
+          <div>
+            <div class="t">Hand-stretched, made to order</div>
+            <div class="d">Pizza, panzarotti, stromboli and calzones built fresh per order, not pre-made and reheated.</div>
+          </div>
+        </div>
+        <div class="fact">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <div>
+            <div class="t">Seven days, seven specials</div>
+            <div class="d">A different deal chalked up daily, from Tuesday's large pie to Sunday's four panzarotti.</div>
+          </div>
+        </div>
+        <div class="fact">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+          <div>
+            <div class="t">700 Chews Landing Rd</div>
+            <div class="d">Lindenwold, NJ 08021. Easy in-and-out parking, quick pickup, fast delivery.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="specials" class="section-ink section-pad">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow" style="color:var(--gold);">Chalked Up Daily</div>
+      <h2>The Grease-Pencil Specials</h2>
+      <p>Same deals, every week. Ask for it by the day.</p>
+    </div>
+    <div class="specials-grid">
+      <div class="special-card"><span class="day mono">Monday</span><div class="name">2 Cheese Steaks</div><div class="price mono">20.99</div></div>
+      <div class="special-card"><span class="day mono">Tuesday</span><div class="name">Large Pizza</div><div class="price mono">13.99</div></div>
+      <div class="special-card"><span class="day mono">Wednesday</span><div class="name">Sicilian Pie</div><div class="price mono">15.99</div></div>
+      <div class="special-card"><span class="day mono">Thursday</span><div class="name">2 Chicken Finger Platters</div><div class="price mono">22.99</div></div>
+      <div class="special-card"><span class="day mono">Friday</span><div class="name">Stromboli + 2 Liter Soda</div><div class="price mono">18.50</div></div>
+      <div class="special-card"><span class="day mono">Saturday</span><div class="name">Cheese Steak Platter</div><div class="price mono">13.99</div></div>
+      <div class="special-card"><span class="day mono">Sunday</span><div class="name">4 Original Panzarotti</div><div class="price mono">25.99</div></div>
+    </div>
+  </div>
+</section>
+
+<div class="perf perf--top perf--dark"></div>
+
+<section id="menu" class="section-paper section-pad">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Since Before Online Ordering Was A Thing</div>
+      <h2>The Full Menu</h2>
+      <p>Everything on the board, laid out like the counter menu. Filter by category or just scroll, it's all here.</p>
+    </div>
+
+    <div class="filter-bar" id="filterBar" role="tablist" aria-label="Menu categories">
+      <button class="pill" aria-pressed="true" data-filter="all">All</button>
+      <button class="pill" data-filter="pizza">Pizza</button>
+      <button class="pill" data-filter="panzarotti">Panzarotti</button>
+      <button class="pill" data-filter="stromboli">Stromboli</button>
+      <button class="pill" data-filter="calzones">Calzones</button>
+      <button class="pill" data-filter="turnover">Pizza Turnover</button>
+      <button class="pill" data-filter="wings">Wings</button>
+      <button class="pill" data-filter="steaks">Steaks</button>
+      <button class="pill" data-filter="hoagies">Hoagies</button>
+      <button class="pill" data-filter="pasta">Pasta</button>
+      <button class="pill" data-filter="parm">Parmigiana Dinners</button>
+      <button class="pill" data-filter="hotsand">Hot Sandwiches</button>
+      <button class="pill" data-filter="italian">Italian Specialties</button>
+      <button class="pill" data-filter="platters">Platters</button>
+      <button class="pill" data-filter="burgers">Burgers</button>
+      <button class="pill" data-filter="sides">Side Orders</button>
+      <button class="pill" data-filter="soups">Soups</button>
+      <button class="pill" data-filter="salads">Salads</button>
+      <button class="pill" data-filter="breakfast">Breakfast</button>
+      <button class="pill" data-filter="knots">Garlic Knots</button>
+      <button class="pill" data-filter="drinks">Drinks</button>
+    </div>
+
+    <!-- PIZZA -->
+    <div class="menu-cat" data-cat="pizza">
+      <div class="menu-cat__head"><h3>Pizza</h3><span class="menu-cat__note">build your own, by the pie</span></div>
+      <div class="build-wrap">
+        <table class="build-table">
+          <thead><tr><th>Size</th><th>Base Price</th><th>Per Topping</th></tr></thead>
+          <tbody>
+            <tr><td>Personal Pan (9")</td><td class="mono">$8.00</td><td class="mono">+$1.00</td></tr>
+            <tr><td>Medium (14")</td><td class="mono">$14.50</td><td class="mono">+$3.00</td></tr>
+            <tr><td>Large (16")</td><td class="mono">$15.99</td><td class="mono">+$3.50</td></tr>
+            <tr><td>Sicilian (16"x16")</td><td class="mono">$17.99</td><td class="mono">+$4.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="chip-row">
+        <span class="chip">Pepperoni</span><span class="chip">Sausage</span><span class="chip">Bacon</span>
+        <span class="chip">Meatball</span><span class="chip">Ham</span><span class="chip">Extra Cheese</span>
+        <span class="chip">Green Pepper</span><span class="chip">Onion</span><span class="chip">Black Olive</span>
+        <span class="chip">Mushroom</span><span class="chip">Anchovy</span><span class="chip">Pineapple</span>
+        <span class="chip">Spinach</span><span class="chip">Broccoli</span>
+      </div>
+
+      <div class="menu-cat__head" style="margin-top:30px;"><h3 style="font-size:19px;">Specialty Pies</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Bacon BBQ Chicken Ranch <span class="size">Medium</span></span><span class="leader"></span><span class="price mono">24.00</span></li>
+        <li class="menu-item"><span class="name">Bacon BBQ Chicken Ranch <span class="size">Large</span></span><span class="leader"></span><span class="price mono">26.00</span></li>
+        <li class="menu-item"><span class="name">Buffalo Chicken <span class="size">Medium</span></span><span class="leader"></span><span class="price mono">24.00</span></li>
+        <li class="menu-item"><span class="name">Buffalo Chicken <span class="size">Large</span></span><span class="leader"></span><span class="price mono">26.00</span></li>
+        <li class="menu-item"><span class="name">Hawaiian <span class="size">Medium</span></span><span class="leader"></span><span class="price mono">20.50</span></li>
+        <li class="menu-item"><span class="name">Hawaiian <span class="size">Large</span></span><span class="leader"></span><span class="price mono">22.99</span></li>
+        <li class="menu-item"><span class="name">Hawaiian <span class="size">Sicilian</span></span><span class="leader"></span><span class="price mono">24.99</span></li>
+        <li class="menu-item"><span class="name">White Pie <span class="size">Medium</span></span><span class="leader"></span><span class="price mono">14.50</span></li>
+        <li class="menu-item"><span class="name">White Pie <span class="size">Large</span></span><span class="leader"></span><span class="price mono">15.99</span></li>
+        <li class="menu-item"><span class="name">White Pie <span class="size">Sicilian</span></span><span class="leader"></span><span class="price mono">17.99</span></li>
+        <li class="menu-item"><span class="name">The Works <span class="size">Medium</span></span><span class="leader"></span><span class="price mono">24.00</span></li>
+        <li class="menu-item"><span class="name">The Works <span class="size">Large</span></span><span class="leader"></span><span class="price mono">25.99</span></li>
+        <li class="menu-item"><span class="name">The Works <span class="size">Sicilian</span></span><span class="leader"></span><span class="price mono">29.99</span></li>
+      </ul>
+    </div>
+
+    <!-- PANZAROTTI -->
+    <div class="menu-cat" data-cat="panzarotti">
+      <div class="menu-cat__head"><h3>"The Original" Panzarotti</h3><span class="menu-cat__note">deep fried &amp; golden brown</span></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Panzarotti<span class="desc">Add $0.75 per extra ingredient</span></span><span class="leader"></span><span class="price mono">8.25</span></li>
+      </ul>
+    </div>
+
+    <!-- STROMBOLI -->
+    <div class="menu-cat" data-cat="stromboli">
+      <div class="menu-cat__head"><h3>Stromboli</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Cheese Stromboli<span class="desc">+$2.50 per topping, +$5.00 steak or chicken</span></span><span class="leader"></span><span class="price mono">17.99</span></li>
+        <li class="menu-item"><span class="name">Steak &amp; Onion Stromboli</span><span class="leader"></span><span class="price mono">24.99</span></li>
+      </ul>
+    </div>
+
+    <!-- CALZONES -->
+    <div class="menu-cat" data-cat="calzones">
+      <div class="menu-cat__head"><h3>Calzones</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Calzone<span class="desc">Baked turnover with ham, ricotta, mozzarella &amp; sauce</span></span><span class="leader"></span><span class="price mono">14.99</span></li>
+      </ul>
+    </div>
+
+    <!-- PIZZA TURNOVER -->
+    <div class="menu-cat" data-cat="turnover">
+      <div class="menu-cat__head"><h3>Pizza Turnover</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Pizza Turnover<span class="desc">Baked with mozzarella &amp; pizza sauce &middot; $1.00 per extra ingredient</span></span><span class="leader"></span><span class="price mono">13.50</span></li>
+      </ul>
+    </div>
+
+    <!-- WINGS -->
+    <div class="menu-cat" data-cat="wings">
+      <div class="menu-cat__head"><h3>Wings</h3><span class="menu-cat__note">all wings come with bread &amp; blue cheese</span></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Wings <span class="size">8 pc</span></span><span class="leader"></span><span class="price mono">9.50</span></li>
+        <li class="menu-item"><span class="name">Wings <span class="size">12 pc</span></span><span class="leader"></span><span class="price mono">14.99</span></li>
+        <li class="menu-item"><span class="name">Wings <span class="size">16 pc</span></span><span class="leader"></span><span class="price mono">18.99</span></li>
+        <li class="menu-item"><span class="name">Wings <span class="size">24 pc</span></span><span class="leader"></span><span class="price mono">27.99</span></li>
+      </ul>
+    </div>
+
+    <!-- STEAKS -->
+    <div class="menu-cat" data-cat="steaks">
+      <div class="menu-cat__head"><h3>Steaks</h3><span class="menu-cat__note">chicken made with 100% boneless, skinless breast meat</span></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Plain Steak</span><span class="leader"></span><span class="price mono">11.00</span></li>
+        <li class="menu-item"><span class="name">Cheese Steak</span><span class="leader"></span><span class="price mono">12.00</span></li>
+        <li class="menu-item"><span class="name">Chicken Cheese Steak</span><span class="leader"></span><span class="price mono">12.00</span></li>
+        <li class="menu-item"><span class="name">Bacon Cheese Steak</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Cheese Steak Sub</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Chicken Cheese Steak Sub</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Mushroom Cheese Steak</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Pepperoni Cheese Steak</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Pizza Steak</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Buffalo Chicken Cheese Steak</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Broccoli Garlic &amp; Oil Chicken Cheese Steak</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Cheese Steak Special</span><span class="leader"></span><span class="price mono">13.75</span></li>
+        <li class="menu-item"><span class="name">Cheese Steak Platter</span><span class="leader"></span><span class="price mono">14.99</span></li>
+      </ul>
+    </div>
+
+    <!-- HOAGIES -->
+    <div class="menu-cat" data-cat="hoagies">
+      <div class="menu-cat__head"><h3>Hoagies</h3><span class="menu-cat__note">all hoagies made with lettuce, tomato, onion &amp; oil</span></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Mixed Cheese</span><span class="leader"></span><span class="price mono">11.00</span></li>
+        <li class="menu-item"><span class="name">American</span><span class="leader"></span><span class="price mono">11.50</span></li>
+        <li class="menu-item"><span class="name">Ham &amp; Cheese</span><span class="leader"></span><span class="price mono">12.00</span></li>
+        <li class="menu-item"><span class="name">Italian</span><span class="leader"></span><span class="price mono">12.00</span></li>
+        <li class="menu-item"><span class="name">Turkey &amp; Cheese</span><span class="leader"></span><span class="price mono">12.00</span></li>
+        <li class="menu-item"><span class="name">Roast Beef, Provolone or American</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Fried Fish Hoagie</span><span class="leader"></span><span class="price mono">13.00</span></li>
+      </ul>
+    </div>
+
+    <!-- PASTA -->
+    <div class="menu-cat" data-cat="pasta">
+      <div class="menu-cat__head"><h3>Pasta</h3><span class="menu-cat__note">served with soup, salad &amp; garlic bread &middot; spaghetti or ziti</span></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Tomato Sauce</span><span class="leader"></span><span class="price mono">12.99</span></li>
+        <li class="menu-item"><span class="name">Meatballs</span><span class="leader"></span><span class="price mono">16.99</span></li>
+        <li class="menu-item"><span class="name">Sausage</span><span class="leader"></span><span class="price mono">16.99</span></li>
+      </ul>
+    </div>
+
+    <!-- PARMIGIANA DINNERS -->
+    <div class="menu-cat" data-cat="parm">
+      <div class="menu-cat__head"><h3>Parmigiana Dinners</h3><span class="menu-cat__note">served with salad &amp; garlic bread or a side of spaghetti/ziti</span></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Eggplant Parmigiana</span><span class="leader"></span><span class="price mono">15.99</span></li>
+        <li class="menu-item"><span class="name">Chicken Cutlet Parmigiana</span><span class="leader"></span><span class="price mono">16.99</span></li>
+      </ul>
+    </div>
+
+    <!-- HOT SANDWICHES -->
+    <div class="menu-cat" data-cat="hotsand">
+      <div class="menu-cat__head"><h3>Hot Sandwiches</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Homemade Meatball Sandwich</span><span class="leader"></span><span class="price mono">11.50</span></li>
+        <li class="menu-item"><span class="name">Eggplant Parmigiana</span><span class="leader"></span><span class="price mono">11.00</span></li>
+        <li class="menu-item"><span class="name">Homemade Meatball Parmigiana</span><span class="leader"></span><span class="price mono">12.50</span></li>
+        <li class="menu-item"><span class="name">Chicken Parmigiana</span><span class="leader"></span><span class="price mono">12.50</span></li>
+        <li class="menu-item"><span class="name">Sausage Parmigiana</span><span class="leader"></span><span class="price mono">12.50</span></li>
+        <li class="menu-item"><span class="name">Hot Roast Beef</span><span class="leader"></span><span class="price mono">12.00</span></li>
+        <li class="menu-item"><span class="name">Hot Roast Beef with Cheese</span><span class="leader"></span><span class="price mono">13.00</span></li>
+        <li class="menu-item"><span class="name">Sausage Supreme</span><span class="leader"></span><span class="price mono">12.99</span></li>
+      </ul>
+    </div>
+
+    <!-- ITALIAN SPECIALTIES -->
+    <div class="menu-cat" data-cat="italian">
+      <div class="menu-cat__head"><h3>Italian Specialties</h3><span class="menu-cat__note">served with soup, salad &amp; garlic bread</span></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Baked Ziti</span><span class="leader"></span><span class="price mono">16.99</span></li>
+        <li class="menu-item"><span class="name">Cheese Ravioli</span><span class="leader"></span><span class="price mono">16.99</span></li>
+        <li class="menu-item"><span class="name">Stuffed Shells Parmigiana</span><span class="leader"></span><span class="price mono">16.99</span></li>
+      </ul>
+    </div>
+
+    <!-- PLATTERS -->
+    <div class="menu-cat" data-cat="platters">
+      <div class="menu-cat__head"><h3>Platters</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">BLT Club</span><span class="leader"></span><span class="price mono">12.99</span></li>
+        <li class="menu-item"><span class="name">Chicken Finger Platter</span><span class="leader"></span><span class="price mono">13.99</span></li>
+        <li class="menu-item"><span class="name">Ham &amp; Cheese Club</span><span class="leader"></span><span class="price mono">13.99</span></li>
+        <li class="menu-item"><span class="name">Chicken Club</span><span class="leader"></span><span class="price mono">14.99</span></li>
+        <li class="menu-item"><span class="name">Roast Beef Club</span><span class="leader"></span><span class="price mono">14.99</span></li>
+        <li class="menu-item"><span class="name">Turkey Club</span><span class="leader"></span><span class="price mono">14.99</span></li>
+        <li class="menu-item"><span class="name">Shrimp Platter</span><span class="leader"></span><span class="price mono">14.99</span></li>
+      </ul>
+    </div>
+
+    <!-- BURGERS -->
+    <div class="menu-cat" data-cat="burgers">
+      <div class="menu-cat__head"><h3>Quarter Pound Burgers</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Hamburger</span><span class="leader"></span><span class="price mono">7.00</span></li>
+        <li class="menu-item"><span class="name">Cheeseburger</span><span class="leader"></span><span class="price mono">8.00</span></li>
+        <li class="menu-item"><span class="name">Bacon Cheeseburger</span><span class="leader"></span><span class="price mono">9.00</span></li>
+        <li class="menu-item"><span class="name">Pizza Burger</span><span class="leader"></span><span class="price mono">9.00</span></li>
+        <li class="menu-item"><span class="name">Cheese Burger Sub</span><span class="leader"></span><span class="price mono">13.00</span></li>
+      </ul>
+    </div>
+
+    <!-- SIDES -->
+    <div class="menu-cat" data-cat="sides">
+      <div class="menu-cat__head"><h3>Side Orders</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">French Fries</span><span class="leader"></span><span class="price mono">5.75</span></li>
+        <li class="menu-item"><span class="name">Onion Rings</span><span class="leader"></span><span class="price mono">8.00</span></li>
+        <li class="menu-item"><span class="name">Poppers <span class="size">Cheddar</span></span><span class="leader"></span><span class="price mono">8.00</span></li>
+        <li class="menu-item"><span class="name">Breaded Mushrooms</span><span class="leader"></span><span class="price mono">8.50</span></li>
+        <li class="menu-item"><span class="name">Broccoli Bites</span><span class="leader"></span><span class="price mono">8.50</span></li>
+        <li class="menu-item"><span class="name">Meatballs</span><span class="leader"></span><span class="price mono">8.50</span></li>
+        <li class="menu-item"><span class="name">Mozzarella Sticks</span><span class="leader"></span><span class="price mono">8.50</span></li>
+        <li class="menu-item"><span class="name">Pizza Fries <span class="size">Small</span></span><span class="leader"></span><span class="price mono">8.50</span></li>
+        <li class="menu-item"><span class="name">Pizza Fries <span class="size">Large</span></span><span class="leader"></span><span class="price mono">10.50</span></li>
+        <li class="menu-item"><span class="name">Sausage</span><span class="leader"></span><span class="price mono">8.50</span></li>
+        <li class="menu-item"><span class="name">Fried Tomato</span><span class="leader"></span><span class="price mono">9.00</span></li>
+        <li class="menu-item"><span class="name">Cheese Fries <span class="size">Small</span></span><span class="leader"></span><span class="price mono">6.50</span></li>
+        <li class="menu-item"><span class="name">Cheese Fries <span class="size">Large</span></span><span class="leader"></span><span class="price mono">9.00</span></li>
+        <li class="menu-item"><span class="name">Loaded Fries <span class="size">Small</span></span><span class="leader"></span><span class="price mono">9.50</span></li>
+        <li class="menu-item"><span class="name">Loaded Fries <span class="size">Large</span></span><span class="leader"></span><span class="price mono">10.50</span></li>
+        <li class="menu-item"><span class="name">Homemade Cole Slaw <span class="size">Pint</span></span><span class="leader"></span><span class="price mono">3.50</span></li>
+        <li class="menu-item"><span class="name">Homemade Cole Slaw <span class="size">Quart</span></span><span class="leader"></span><span class="price mono">7.00</span></li>
+        <li class="menu-item"><span class="name">Something Sweet Zeppoli <span class="size">Small</span></span><span class="leader"></span><span class="price mono">4.00</span></li>
+        <li class="menu-item"><span class="name">Something Sweet Zeppoli <span class="size">Large</span></span><span class="leader"></span><span class="price mono">8.00</span></li>
+      </ul>
+    </div>
+
+    <!-- SOUPS -->
+    <div class="menu-cat" data-cat="soups">
+      <div class="menu-cat__head"><h3>Soups</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Pasta Faggioli <span class="size">Small</span></span><span class="leader"></span><span class="price mono">4.99</span></li>
+        <li class="menu-item"><span class="name">Pasta Faggioli <span class="size">Quart</span></span><span class="leader"></span><span class="price mono">8.99</span></li>
+        <li class="menu-item"><span class="name">Chili <span class="size">Small &middot; winter</span></span><span class="leader"></span><span class="price mono">6.50</span></li>
+        <li class="menu-item"><span class="name">Chili <span class="size">Quart &middot; winter</span></span><span class="leader"></span><span class="price mono">11.99</span></li>
+      </ul>
+    </div>
+
+    <!-- SALADS -->
+    <div class="menu-cat" data-cat="salads">
+      <div class="menu-cat__head"><h3>Salads</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Tossed Salad</span><span class="leader"></span><span class="price mono">7.99</span></li>
+        <li class="menu-item"><span class="name">Antipasta</span><span class="leader"></span><span class="price mono">12.99</span></li>
+        <li class="menu-item"><span class="name">Chef Salad</span><span class="leader"></span><span class="price mono">12.99</span></li>
+        <li class="menu-item"><span class="name">Chicken Caesar Salad</span><span class="leader"></span><span class="price mono">12.99</span></li>
+        <li class="menu-item"><span class="name">Grilled Chicken Salad</span><span class="leader"></span><span class="price mono">12.99</span></li>
+      </ul>
+    </div>
+
+    <!-- BREAKFAST -->
+    <div class="menu-cat" data-cat="breakfast">
+      <div class="menu-cat__head"><h3>Breakfast Sandwiches</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Grilled Cheese<span class="desc">+$1.00 to add ham or bacon</span></span><span class="leader"></span><span class="price mono">7.00</span></li>
+        <li class="menu-item"><span class="name">Bacon, Lettuce &amp; Tomato</span><span class="leader"></span><span class="price mono">8.00</span></li>
+        <li class="menu-item"><span class="name">Pepper and Egg</span><span class="leader"></span><span class="price mono">10.00</span></li>
+        <li class="menu-item"><span class="name">Bacon, Egg and Cheese</span><span class="leader"></span><span class="price mono">11.00</span></li>
+        <li class="menu-item"><span class="name">Sausage, Egg and Cheese</span><span class="leader"></span><span class="price mono">11.00</span></li>
+        <li class="menu-item"><span class="name">Pork Roll, Egg and Cheese</span><span class="leader"></span><span class="price mono">11.00</span></li>
+      </ul>
+    </div>
+
+    <!-- GARLIC KNOTS -->
+    <div class="menu-cat" data-cat="knots">
+      <div class="menu-cat__head"><h3>Garlic Knots</h3></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Garlic Knots <span class="size">6 pc</span></span><span class="leader"></span><span class="price mono">4.75</span></li>
+      </ul>
+    </div>
+
+    <!-- DRINKS -->
+    <div class="menu-cat" data-cat="drinks">
+      <div class="menu-cat__head"><h3>Drinks</h3><span class="menu-cat__note">we carry Pepsi products</span></div>
+      <ul class="menu-items">
+        <li class="menu-item"><span class="name">Bottled Soda <span class="size">20 oz</span></span><span class="leader"></span><span class="price mono">2.75</span></li>
+        <li class="menu-item"><span class="name">Bottled Soda <span class="size">2 Liter</span></span><span class="leader"></span><span class="price mono">4.50</span></li>
+      </ul>
+      <div class="chip-row">
+        <span class="chip">Pepsi</span><span class="chip">Cherry Pepsi</span><span class="chip">Diet Pepsi</span>
+        <span class="chip">Mountain Dew</span><span class="chip">Brisk Iced Tea</span><span class="chip">Mug Root Beer</span>
+        <span class="chip">Sierra Mist</span><span class="chip">Crush Grape</span><span class="chip">Crush Orange</span>
+        <span class="chip">Schweppes Ginger Ale</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="perf"></div>
+
+<section id="reviews" class="section-ink section-pad">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow" style="color:var(--gold);">From The Neighborhood</div>
+      <h2>What People Are Saying</h2>
+    </div>
+    <div class="reviews-grid">
+
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p class="quote">"It is the best pizza and the food is great&hellip; so glad my friend introduced me to that pizza place."</p>
+        <div class="who"><span class="avatar">G</span><span class="name">Geoffrey McAllister</span></div>
+      </div>
+
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p class="quote">"Food was great! We will definitely be back or ordering for delivery! The service is awesome, very friendly atmosphere!"</p>
+        <div class="who"><span class="avatar">C</span><span class="name">Cindi Frazier-Cataldi</span></div>
+      </div>
+
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p class="quote">"Forever on the hunt for the best cheese steak and this is it&hellip; high quality beef&hellip; rolls are always fresh and the prices are good."</p>
+        <div class="who"><span class="avatar">L</span><span class="name">Lori J.</span></div>
+      </div>
+
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p class="quote">"Best hot roast beef subs."</p>
+        <div class="who"><span class="avatar">C</span><span class="name">Charles Demote</span></div>
+      </div>
+
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p class="quote">"Always hot and delicious, 5 stars. Good people."</p>
+        <div class="who"><span class="avatar">A</span><span class="name">Anthony Reed</span></div>
+      </div>
+
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p class="quote">"Good food, friendly service, they aim to please."</p>
+        <div class="who"><span class="avatar">D</span><span class="name">Danielle Dawson</span></div>
+      </div>
+
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p class="quote">"Amazing food, best staff and great value&hellip; food is always ready quickly, and the delivery is fast."</p>
+        <div class="who"><span class="avatar">J</span><span class="name">Jay S.</span></div>
+      </div>
+
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p class="quote">"The food is great and the staff is friendly&hellip; delivery is very fast even during peak periods and the food always comes hot."</p>
+        <div class="who"><span class="avatar">W</span><span class="name">Wayne Wilkerson Jr.</span></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="visit" class="section-paper section-pad">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Come By Or Call It In</div>
+      <h2>Visit The Shop</h2>
+    </div>
+
+    <div class="visit-grid">
+      <div>
+        <div class="addr-block">
+          <div class="street">700 Chews Landing Road</div>
+          Lindenwold, NJ 08021
+        </div>
+        <table class="hours-table">
+          <tr><td>Sunday &ndash; Wednesday</td><td>11:00a &ndash; 9:00p</td></tr>
+          <tr><td>Thursday &ndash; Saturday</td><td>11:00a &ndash; 10:00p</td></tr>
+        </table>
+        <div style="margin-top:24px; display:flex; gap:12px; flex-wrap:wrap;">
+          <a class="btn btn--sauce" href="tel:+18564358799">Call (856) 435-8799</a>
+          <a class="btn btn--outline" style="color:var(--ink); border-color:var(--line-on-paper);" href="https://www.google.com/maps/search/?api=1&query=700+Chews+Landing+Road+Lindenwold+NJ+08021" target="_blank" rel="noopener">Get Directions &rarr;</a>
+        </div>
+        <div class="social-row">
+          <a class="social-btn" style="color:var(--ink); border-color:var(--line-on-paper);" href="https://www.facebook.com/Cifellis" target="_blank" rel="noopener" aria-label="Cifelli's on Facebook">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 22v-8.5H16l.4-3.4h-2.9V8.1c0-1 .3-1.6 1.7-1.6H16V3.5c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.1V10H7v3.4h2.6V22h3.9z"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="visit-card">
+        <div class="eyebrow" style="color:var(--gold);">Straight From The Counter</div>
+        <h3 style="font-size:22px; margin-top:10px; color:var(--paper);">Old-School Ordering</h3>
+        <p style="margin-top:12px; color:var(--paper-dim); font-size:15px;">No app, no online cart. Just a phone that gets answered. If you'd rather not wait on hold, a fax works too, or walk right up to the counter.</p>
+        <div class="policy-note">"We do not accept email orders. Please call, fax or visit our store to place an order."</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="checker-strip"></div>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-row">
+      <a class="brand" href="#home" style="gap:10px;">
+        <svg class="brand-badge" style="width:36px;height:36px;" viewBox="0 0 100 100" role="img" aria-label="Cifelli's badge">
+          <circle cx="50" cy="50" r="48" fill="#f4ead6"/>
+          <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+        </svg>
+        <span class="brand-type"><span class="name" style="font-size:18px;">Cifelli's</span></span>
+      </a>
+      <nav class="footer-nav">
+        <a href="#home">Home</a><a href="#about">Our Counter</a><a href="#specials">Specials</a>
+        <a href="#menu">Menu</a><a href="#reviews">Reviews</a><a href="#visit">Visit</a>
+      </nav>
+      <a class="social-btn" href="https://www.facebook.com/Cifellis" target="_blank" rel="noopener" aria-label="Facebook">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 22v-8.5H16l.4-3.4h-2.9V8.1c0-1 .3-1.6 1.7-1.6H16V3.5c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.1V10H7v3.4h2.6V22h3.9z"/></svg>
+      </a>
+    </div>
+    <div class="footer-fine">700 Chews Landing Rd, Lindenwold, NJ 08021 &middot; (856) 435-8799 &middot; Menu &amp; prices subject to change without notice.</div>
+  </div>
+</footer>
+
+<button id="toTop" aria-label="Back to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
+
+<script>
+(function(){
+  var header = document.getElementById('siteHeader');
+  var toTop = document.getElementById('toTop');
+  window.addEventListener('scroll', function(){
+    var y = window.scrollY || document.documentElement.scrollTop;
+    header.classList.toggle('is-scrolled', y > 8);
+    toTop.classList.toggle('show', y > 500);
+  }, { passive: true });
+
+  var toggle = document.getElementById('menuToggle');
+  var nav = document.getElementById('mainNav');
+  toggle.addEventListener('click', function(){
+    var open = nav.classList.toggle('is-open');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  nav.querySelectorAll('a').forEach(function(a){
+    a.addEventListener('click', function(){
+      nav.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  toTop.addEventListener('click', function(){
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  var pills = document.querySelectorAll('#filterBar .pill');
+  var cats = document.querySelectorAll('.menu-cat');
+  pills.forEach(function(p){
+    p.addEventListener('click', function(){
+      pills.forEach(function(x){ x.setAttribute('aria-pressed','false'); });
+      p.setAttribute('aria-pressed','true');
+      var f = p.getAttribute('data-filter');
+      cats.forEach(function(c){
+        c.hidden = !(f === 'all' || c.getAttribute('data-cat') === f);
+      });
+    });
+  });
+})();
+</script>
+
