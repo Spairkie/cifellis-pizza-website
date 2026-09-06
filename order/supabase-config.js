@@ -9,5 +9,5 @@
  * this. It is not a secret: access to data is controlled by the Row Level
  * Security policies in supabase/schema.sql, not by hiding this key.
  */
-window.SUPABASE_URL = '';
-window.SUPABASE_ANON_KEY = '';
+window.SUPABASE_URL = 'https://yzehosyrsygvbddskpqs.supabase.co';
+window.SUPABASE_ANON_KEY = 'sb_publishable_Bqdzh16tXCHmSj3zJUSWbw_hY_y9hcJ';
