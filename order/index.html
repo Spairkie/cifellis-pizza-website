@@ -482,7 +482,9 @@ function ordersCol(){
   return App.db ? App.db.collection('orders') : null;
 }
 
-/* Create an order document. Returns the ticket number. */
+/* Create an order document. Returns the ticket number, or null if the
+   order could not be saved (caller must check for null and not proceed
+   as though the order went through). */
 async function submitOrder(order){
   const ticket = newTicket();
   const body = Object.assign({
@@ -495,9 +497,14 @@ async function submitOrder(order){
   const db = await getDb();
   if (!db){
     showToast('Offline: order not saved (no database connection)');
-    return ticket;
+    return null;
   }
-  await db.collection('orders').add(body);
+  try{
+    await db.collection('orders').add(body);
+  }catch(e){
+    showToast('Could not save order: ' + (e && e.message ? e.message : 'unknown error'));
+    return null;
+  }
   return ticket;
 }
 
@@ -548,12 +555,6 @@ function goToRole(role){
 document.querySelectorAll('.role-card').forEach(btn => {
   btn.addEventListener('click', () => goToRole(btn.getAttribute('data-role')));
 });
-
-(async function boot(){
-  await getDb();
-  const saved = localStorage.getItem('cifellis_role');
-  if (saved && ROLE_LABELS[saved]) goToRole(saved);
-})();
 
 /* Install prompt: Chrome/Edge/Android fire beforeinstallprompt; iOS Safari
    never does (there is no programmatic install there), so the button
@@ -923,6 +924,11 @@ async function submitCustomerOrder(){
     items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', unitPrice:l.unitPrice, qty:l.qty, notes:l.notes||'' })),
     subtotal: totals.subtotal, tax: totals.tax, total: totals.total,
   });
+  if (!ticket){
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Place Order';
+    return;
+  }
   showOrderConfirmation(ticket, totals.total);
 }
 
@@ -962,6 +968,8 @@ async function submitPosOrder(){
     const tendered = parseFloat((tenderedField && tenderedField.value) || '0');
     if (!tendered || tendered < totals.total){ showToast('Cash tendered must cover the total'); return; }
   }
+  const submitBtn = document.getElementById('submit-pos');
+  submitBtn.disabled = true;
   const ticket = await submitOrder({
     source: 'pos',
     customerName: name || 'Walk-in',
@@ -973,6 +981,7 @@ async function submitPosOrder(){
     items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', unitPrice:l.unitPrice, qty:l.qty, notes:l.notes||'' })),
     subtotal: totals.subtotal, tax: totals.tax, total: totals.total,
   });
+  if (!ticket) return;
   showToast('Order rung up, ticket ' + ticket);
   resetOrderCtx('pos');
   orderCtx.orderType = 'phone';
@@ -1214,6 +1223,17 @@ function renderDriverCard(o, mine){
     </div>
   </div>`;
 }
+</script>
+
+<script>
+/* Runs last, after every view's init function above is defined, so an
+   auto-resumed saved role (from a previous visit) never calls a
+   not-yet-defined initXView function. */
+(async function boot(){
+  await getDb();
+  const saved = localStorage.getItem('cifellis_role');
+  if (saved && ROLE_LABELS[saved]) goToRole(saved);
+})();
 </script>
 
 <script>
