@@ -108,6 +108,46 @@
   }
 
   /* ---------- header ---------- */
+  /* ---------- intro video splash ---------- */
+  .intro-splash{
+    position:relative; height:100vh; height:100svh; min-height:420px; max-height:900px;
+    overflow:hidden; background:#0d0906;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .intro-splash video{
+    position:absolute; inset:0; width:100%; height:100%; z-index:0;
+    object-fit:cover; object-position:center 38%; background:#0d0906;
+  }
+  .intro-splash::after{
+    content:""; position:absolute; inset:0; z-index:1;
+    background:linear-gradient(180deg, rgba(13,9,6,.6) 0%, rgba(13,9,6,.1) 32%, rgba(13,9,6,.25) 68%, rgba(13,9,6,.92) 100%);
+  }
+  .intro-content{
+    position:relative; z-index:2; display:flex; flex-direction:column; align-items:center;
+    gap:14px; text-align:center; color:var(--paper); padding:0 24px;
+  }
+  .intro-logo{ width:96px; height:96px; filter:drop-shadow(0 10px 26px rgba(0,0,0,.55)); }
+  .intro-wordmark{ font-family:"Rye", serif; font-size:clamp(32px,7vw,54px); color:var(--paper); }
+  .intro-tagline{
+    font-family:"IBM Plex Mono", monospace; font-size:11.5px; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--paper-dim);
+  }
+  .intro-scroll{
+    position:absolute; left:50%; bottom:26px; transform:translateX(-50%); z-index:2;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    color:var(--paper-dim); background:none; border:none; cursor:pointer; padding:8px;
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+  }
+  .intro-scroll:hover{ color:var(--paper); }
+  .intro-scroll svg{ width:18px; height:18px; animation:introBounce 1.8s ease-in-out infinite; }
+  @keyframes introBounce{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(6px); } }
+  @media (prefers-reduced-motion: reduce){
+    .intro-scroll svg{ animation:none; }
+  }
+  @media (max-width:600px){
+    .intro-logo{ width:78px; height:78px; }
+  }
+
   .site-header{
     position:sticky; top:0; z-index:50;
     background:rgba(28,23,18,.92);
@@ -254,6 +294,11 @@
   .about-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:48px; align-items:start; }
   .about-grid p + p{ margin-top:14px; }
   .about-grid p{ color:var(--ink-soft); font-size:16px; }
+  .about-media{
+    border-radius:14px; overflow:hidden; margin-bottom:24px;
+    border:1px solid var(--line-on-paper); box-shadow:0 18px 40px -24px rgba(0,0,0,.45);
+  }
+  .about-media img{ display:block; width:100%; height:auto; }
   .stamp-note{
     margin-top:26px; padding:18px 20px; border:2px solid var(--sauce);
     color:var(--sauce-deep); font-family:"IBM Plex Mono",monospace; font-size:13.5px;
@@ -294,17 +339,26 @@
   .special-card .price::before{ content:"$"; font-size:14px; vertical-align:top; margin-right:1px;}
 
   /* ---------- menu filter ---------- */
-  .filter-bar{
-    display:flex; gap:10px; overflow-x:auto; padding-bottom:14px; margin-bottom:8px;
-    -webkit-overflow-scrolling:touch; scrollbar-width:thin;
+  .filter-bar-wrap{ position:relative; margin-bottom:8px; }
+  .filter-bar-wrap::before, .filter-bar-wrap::after{
+    content:""; position:absolute; top:0; bottom:14px; width:36px; pointer-events:none;
+    z-index:2; opacity:0; transition:opacity .2s ease;
   }
-  .filter-bar::-webkit-scrollbar{ height:6px; }
-  .filter-bar::-webkit-scrollbar-thumb{ background:var(--line-on-paper); border-radius:4px; }
+  .filter-bar-wrap::before{ left:0; background:linear-gradient(to right, var(--paper), transparent); }
+  .filter-bar-wrap::after{ right:0; background:linear-gradient(to left, var(--paper), transparent); }
+  .filter-bar-wrap.can-scroll-left::before{ opacity:1; }
+  .filter-bar-wrap.can-scroll-right::after{ opacity:1; }
+  .filter-bar{
+    display:flex; gap:10px; overflow-x:auto; padding-bottom:14px;
+    -webkit-overflow-scrolling:touch; scroll-snap-type:x proximity;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .filter-bar::-webkit-scrollbar{ display:none; width:0; height:0; }
   .pill{
     flex:none; font-family:"IBM Plex Mono", monospace; font-size:12.5px; font-weight:600;
     letter-spacing:.03em; padding:9px 16px; border-radius:999px; cursor:pointer;
     background:transparent; border:1.5px solid var(--line-on-paper); color:var(--ink-soft);
-    white-space:nowrap;
+    white-space:nowrap; scroll-snap-align:start;
   }
   .pill:hover{ border-color:var(--sauce); color:var(--sauce-deep); }
   .pill[aria-pressed="true"]{ background:var(--sauce); border-color:var(--sauce); color:var(--paper); }
@@ -384,6 +438,8 @@
     display:flex; align-items:center; justify-content:center; color:var(--paper); text-decoration:none;
   }
   .social-btn:hover{ border-color:var(--sauce); color:var(--sauce); }
+  .social-btn--facebook{ background:#1877F2; border-color:#1877F2; color:#fff; }
+  .social-btn--facebook:hover{ background:#0f5fcf; border-color:#0f5fcf; color:#fff; }
   .policy-note{
     margin-top:20px; padding:16px 18px; border-left:3px solid var(--gold);
     background:rgba(220,159,52,.08); font-size:13.5px; color:var(--paper-dim); font-style:italic;
@@ -422,6 +478,30 @@
 </head>
 <body>
 
+<section class="intro-splash" id="introSplash" aria-label="Cifelli's Pizza intro">
+  <video id="introVideo" muted loop playsinline preload="auto"
+    poster="images/hero-poster.jpg" aria-hidden="true">
+    <source src="videos/hero-pizza.mp4" type="video/mp4">
+  </video>
+  <div class="intro-content">
+    <svg class="intro-logo" viewBox="0 0 100 100" role="img" aria-label="Cifelli's badge">
+      <circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="4"/>
+      <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+      <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="none" stroke="#821e21" stroke-width="2"/>
+      <circle cx="50" cy="46" r="4.2" fill="#f4ead6"/>
+      <circle cx="40" cy="58" r="4.2" fill="#f4ead6"/>
+      <circle cx="60" cy="58" r="4.2" fill="#f4ead6"/>
+      <circle cx="50" cy="70" r="4.2" fill="#f4ead6"/>
+    </svg>
+    <div class="intro-wordmark">Cifelli's</div>
+    <div class="intro-tagline">Pizza &amp; Italian Kitchen &middot; Lindenwold, NJ</div>
+  </div>
+  <button class="intro-scroll" id="introScrollBtn" type="button" aria-label="Scroll down to the site">
+    <span>Scroll Down</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+  </button>
+</section>
+
 <header class="site-header" id="siteHeader">
   <div class="header-row wrap">
     <a class="brand" href="#home">
@@ -448,7 +528,6 @@
       <a href="#menu">Menu</a>
       <a href="#reviews">Reviews</a>
       <a href="#visit">Visit</a>
-      <a href="order/" style="color:var(--gold); font-weight:700;">Order Online</a>
     </nav>
 
     <div style="display:flex; align-items:center; gap:10px;">
@@ -548,6 +627,9 @@
   <div class="wrap">
     <div class="about-grid">
       <div>
+        <div class="about-media">
+          <img src="images/storefront.jpg" alt="Cifelli's Pizza storefront at 700 Chews Landing Rd, Lindenwold, NJ" loading="lazy" width="1000" height="750">
+        </div>
         <div class="eyebrow">Our Counter</div>
         <h2 style="margin-top:10px;">Lindenwold's red-sauce kitchen since the oven first fired up.</h2>
         <p style="margin-top:20px;">Cifelli's runs the way a family pizza shop should: dough made and stretched in-house, a menu long enough to feed an entire block party, and a fryer and a flat-top that never really stop moving on a Friday night. Pizza is the name over the door, but the steak and cheese, the chicken cutlet parm, and the Sunday-morning pork roll, egg and cheese all have their own regulars.</p>
@@ -615,6 +697,7 @@
       <p>Everything on the board, laid out like the counter menu. Filter by category or just scroll, it's all here.</p>
     </div>
 
+    <div class="filter-bar-wrap" id="filterBarWrap">
     <div class="filter-bar" id="filterBar" role="tablist" aria-label="Menu categories">
       <button class="pill" aria-pressed="true" data-filter="all">All</button>
       <button class="pill" data-filter="pizza">Pizza</button>
@@ -637,6 +720,7 @@
       <button class="pill" data-filter="breakfast">Breakfast</button>
       <button class="pill" data-filter="knots">Garlic Knots</button>
       <button class="pill" data-filter="drinks">Drinks</button>
+    </div>
     </div>
 
     <!-- PIZZA -->
@@ -999,7 +1083,7 @@
           <a class="btn btn--outline" style="color:var(--ink); border-color:var(--line-on-paper);" href="https://www.google.com/maps/search/?api=1&query=700+Chews+Landing+Road+Lindenwold+NJ+08021" target="_blank" rel="noopener">Get Directions &rarr;</a>
         </div>
         <div class="social-row">
-          <a class="social-btn" style="color:var(--ink); border-color:var(--line-on-paper);" href="https://www.facebook.com/Cifellis" target="_blank" rel="noopener" aria-label="Cifelli's on Facebook">
+          <a class="social-btn social-btn--facebook" href="https://www.facebook.com/Cifellis" target="_blank" rel="noopener" aria-label="Cifelli's on Facebook">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 22v-8.5H16l.4-3.4h-2.9V8.1c0-1 .3-1.6 1.7-1.6H16V3.5c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.1V10H7v3.4h2.6V22h3.9z"/></svg>
           </a>
         </div>
@@ -1032,7 +1116,7 @@
         <a href="#home">Home</a><a href="#about">Our Counter</a><a href="#specials">Specials</a>
         <a href="#menu">Menu</a><a href="#reviews">Reviews</a><a href="#visit">Visit</a><a href="order/">Order Online</a>
       </nav>
-      <a class="social-btn" href="https://www.facebook.com/Cifellis" target="_blank" rel="noopener" aria-label="Facebook">
+      <a class="social-btn social-btn--facebook" href="https://www.facebook.com/Cifellis" target="_blank" rel="noopener" aria-label="Facebook">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 22v-8.5H16l.4-3.4h-2.9V8.1c0-1 .3-1.6 1.7-1.6H16V3.5c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.1V10H7v3.4h2.6V22h3.9z"/></svg>
       </a>
     </div>
@@ -1071,6 +1155,25 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
+  /* Intro splash video: only autoplay when the visitor hasn't asked for
+     reduced motion. Without that preference, the poster image alone
+     stands in for the video, which looks and behaves the same either
+     way since nothing here is required to understand the page. */
+  var introVideo = document.getElementById('introVideo');
+  var introScrollBtn = document.getElementById('introScrollBtn');
+  var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (introVideo && !prefersReducedMotion){
+    var playPromise = introVideo.play();
+    if (playPromise && playPromise.catch){ playPromise.catch(function(){ /* autoplay blocked, poster stands in */ }); }
+  }
+  if (introScrollBtn){
+    introScrollBtn.addEventListener('click', function(){
+      var header = document.getElementById('siteHeader');
+      var target = header || document.getElementById('home');
+      if (target) target.scrollIntoView({ behavior:'smooth', block:'start' });
+    });
+  }
+
   var pills = document.querySelectorAll('#filterBar .pill');
   var cats = document.querySelectorAll('.menu-cat');
   pills.forEach(function(p){
@@ -1081,8 +1184,24 @@
       cats.forEach(function(c){
         c.hidden = !(f === 'all' || c.getAttribute('data-cat') === f);
       });
+      p.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
     });
   });
+
+  /* Filter bar edge fades: only show a fade on the side there's more to
+     scroll toward, so it never implies content that isn't there. */
+  var filterBar = document.getElementById('filterBar');
+  var filterBarWrap = document.getElementById('filterBarWrap');
+  if (filterBar && filterBarWrap){
+    var updateFilterFade = function(){
+      var max = filterBar.scrollWidth - filterBar.clientWidth;
+      filterBarWrap.classList.toggle('can-scroll-left', filterBar.scrollLeft > 4);
+      filterBarWrap.classList.toggle('can-scroll-right', filterBar.scrollLeft < max - 4);
+    };
+    filterBar.addEventListener('scroll', updateFilterFade, { passive:true });
+    window.addEventListener('resize', updateFilterFade);
+    updateFilterFade();
+  }
 })();
 </script>
 
