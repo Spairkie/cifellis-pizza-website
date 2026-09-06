@@ -43,6 +43,23 @@ Commit and push (or ask Claude to). Once GitHub Pages redeploys (usually
 under a minute), reload the Order Hub and the red "Not connected" banner
 should be gone.
 
+## 5. Turn on email sign-in and create staff accounts
+
+The Staff Hub (`/staff/`) requires a Supabase Auth sign-in before it shows
+the POS, Kitchen Board or Driver App screens, only the public Customer
+Kiosk (`/order/`) works with no login.
+
+1. Open **Authentication** (left sidebar) > **Sign In / Providers**, and
+   confirm **Email** is enabled (it is on by default).
+2. Open **Authentication** > **Users** > **Add user** > **Create new user**.
+   Enter an email and password for each staff member (or one shared login
+   for the whole counter, whichever fits how the shop runs). Check
+   **Auto Confirm User** so they can sign in immediately without a
+   confirmation email.
+3. Give that email and password to whoever will use the Staff Hub. They
+   sign in at `/staff/` on whatever device runs POS, Kitchen Board, or
+   Driver App. Signing in is remembered on that device until they sign out.
+
 ## What this gets you, for free
 
 Supabase's free tier includes a real Postgres database, live realtime
@@ -56,15 +73,21 @@ minute and no data is lost.
 
 ## About security
 
-There is no login for customers, staff, the kitchen board, or drivers in
-this version, everyone reaches the database with the same public anon key,
-protected only by the row-level security policies in `schema.sql` (which
-allow reading and creating/updating orders, but never deleting them). That
-is an accepted trade-off for a single-location shop's internal tools
-running on devices you control. If this ever needs real staff accounts
-(so only logged-in staff can see the kitchen board, for instance), that is
-a Supabase Auth addition worth doing before handling anything more
-sensitive than order tickets.
+The Customer Kiosk creates orders using the public anon key, and that is
+all it can do: `schema.sql` only grants the anon role INSERT on the
+`orders` table. Reading the order list back (the POS queue, the Kitchen
+Board, the Driver App) and updating an order's status both require an
+authenticated Supabase session, which is what the Staff Hub's sign-in
+screen provides. That means the anon key being visible in the page source
+(which it always will be, for any frontend app) no longer exposes every
+customer's name, phone number and delivery address, only staff who have
+signed in can read that.
+
+There is currently one tier of staff account, anyone who can sign in to
+`/staff/` can use POS, Kitchen Board and Driver App equally. If this ever
+needs finer-grained roles (drivers who can't see the POS cash drawer, for
+instance), that is a further Supabase Auth policy worth adding before it
+becomes a real problem.
 
 ## If you would rather not use Supabase
 

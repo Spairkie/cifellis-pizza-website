@@ -6,14 +6,20 @@ for Cifelli's Pizza (700 Chews Landing Rd, Lindenwold, NJ 08021).
 ## What's in here
 
 - **`index.html`**: the marketing site (menu, specials, reviews, hours,
-  and an "Order Online" link into the app below).
-- **`order/`**: the Order Hub, one web app with four role-based screens
-  (Customer Kiosk, Staff POS, Kitchen Board, Driver App) that all share one
-  live order queue. Installable as its own app (a PWA) on a tablet or
-  phone.
+  a cinematic video intro, and an "Order Online" link into the app below).
+  Public, no login.
+- **`order/`**: the Customer Kiosk, a single-purpose ordering app for
+  customers (the counter kiosk or a customer's own phone). Public, no
+  login, installable as its own PWA.
+- **`staff/`**: the Staff Hub, three role-based screens (Staff POS,
+  Kitchen Board, Driver App) sharing the same live order queue as the
+  Customer Kiosk. Requires a Supabase Auth sign-in, not linked from the
+  public site, and not indexed by search engines. Installable as its own
+  PWA, separate from the Customer Kiosk.
 - **`supabase/`**: the database schema and setup instructions for the
-  free backend that powers live orders. See `supabase/README.md` to finish
-  setup, it's the one manual step required.
+  free backend that powers live orders, including the row-level security
+  rules that keep the two apps' access separate. See `supabase/README.md`
+  to finish setup, it's the one manual step required.
 
 ## How this is architected, and why
 
@@ -40,9 +46,14 @@ for at this scale. That means:
   broker (Redis/Socket.io) to run, no deploy pipeline beyond pushing to
   `main`.
 
-The trade-off: everything currently talks to Supabase with the same public
-key (no staff login yet), which is fine for internal tools on devices you
-control, and is covered in more detail in `supabase/README.md`.
+The Customer Kiosk (public) and the Staff Hub (signed-in staff only) are
+two separate apps for exactly this reason: a customer placing an order
+should never be one click away from the kitchen board or a driver's
+delivery list. The Customer Kiosk can only create orders (enforced by the
+database's row-level security policies, not just by hiding a button);
+reading the order queue or changing a status requires a signed-in Supabase
+Auth session, which only the Staff Hub asks for. Details in
+`supabase/README.md`.
 
 If this ever needs to grow past what Supabase's free tier or built-in
 features cover (SMS notifications, a receipt printer bridge, real payment
@@ -54,21 +65,24 @@ not a rebuild.
 
 1. **Finish the database setup**: follow `supabase/README.md` (create a
    free Supabase project, run the schema, paste two values into
-   `order/supabase-config.js`). Takes about five minutes.
+   `order/supabase-config.js`, turn on email sign-in and create at least
+   one staff account). Takes about ten minutes.
 2. **Turn on GitHub Pages**: repo Settings > Pages > Source: "Deploy from a
    branch" > Branch: `main`, folder `/ (root)` > Save. The site will be
    live at `https://spairkie.github.io/cifellis-pizza-website/` within a
    minute or two.
-3. **Open the Order Hub** at `/order/` on whatever devices will run each
-   role (a tablet at the counter for the kiosk, a laptop or tablet at the
-   register for POS, a screen in the kitchen, phones for drivers). Each
-   device picks its role once; it's remembered after that (switch anytime
-   with "Switch screen" in the header).
-4. **Install it as an app** (optional but recommended for kiosk/kitchen/
-   driver devices): open the Order Hub in Chrome or Edge, tap "Install this
-   app on this device" on the role picker screen, or use the browser's
-   own install/Add to Home Screen option. On iPhone, use Safari's Share >
-   Add to Home Screen (iOS doesn't support the automatic install prompt).
+3. **Customers order at `/order/`**, no setup needed on their end, it's
+   linked from the main site.
+4. **Staff sign in at `/staff/`** on whatever device runs each role (a
+   laptop or tablet at the register for POS, a screen in the kitchen,
+   phones for drivers). Each device picks its role once after signing in;
+   switch anytime with "Switch screen" in the header, and "Sign Out" ends
+   that device's session.
+5. **Install either as an app** (optional but recommended for kiosk/
+   kitchen/driver devices): open the page in Chrome or Edge, tap "Install
+   this app on this device", or use the browser's own install/Add to Home
+   Screen option. On iPhone, use Safari's Share > Add to Home Screen (iOS
+   doesn't support the automatic install prompt).
 
 ## What's real, and what isn't (yet)
 

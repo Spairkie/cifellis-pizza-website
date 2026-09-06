@@ -60,33 +60,39 @@ end $$;
 
 -- Row Level Security.
 --
--- MVP policy: this app has no login for the customer kiosk, staff POS,
--- kitchen board, or driver app, so every one of them talks to Supabase with
--- the anon public key. That means anyone with the anon key (visible in the
--- page source) can read and write every order. That is an accepted
--- trade-off for a single-location shop's internal tools running on
--- trusted devices, matching how the previous prototype worked, but it is
--- NOT the same as having no security: it still requires knowing your
--- Supabase URL, and RLS still blocks anything these policies do not
--- explicitly allow (deletes, other tables, etc).
+-- The Customer Kiosk (order/) is public and talks to Supabase with the
+-- anon key, but it only ever needs to CREATE an order, it never reads
+-- the orders table back (the confirmation screen shows the ticket number
+-- it already generated client-side). The Staff Hub (staff/) requires a
+-- Supabase Auth sign-in before it renders anything, and it is the only
+-- place that reads or updates orders (POS queue, Kitchen Board, Driver
+-- App). So the anon role only needs INSERT, and SELECT/UPDATE are
+-- restricted to authenticated (signed-in staff) sessions. Without this,
+-- anyone who opened the page source and copied the anon key could read
+-- every customer's name, phone number and delivery address, or change
+-- order statuses, without ever signing in.
 --
--- If you later add staff/driver logins (Supabase Auth), tighten these to
--- check auth.uid() or a custom claim instead of allowing anon.
+-- Create staff accounts in the Supabase dashboard under Authentication >
+-- Users, then sign in at /staff/ with that email and password. See
+-- supabase/README.md.
 alter table public.orders enable row level security;
 
 drop policy if exists "orders_insert_anyone" on public.orders;
-create policy "orders_insert_anyone" on public.orders
+drop policy if exists "orders_insert_public" on public.orders;
+create policy "orders_insert_public" on public.orders
   for insert to anon, authenticated
   with check (true);
 
 drop policy if exists "orders_select_anyone" on public.orders;
-create policy "orders_select_anyone" on public.orders
-  for select to anon, authenticated
+drop policy if exists "orders_select_staff" on public.orders;
+create policy "orders_select_staff" on public.orders
+  for select to authenticated
   using (true);
 
 drop policy if exists "orders_update_anyone" on public.orders;
-create policy "orders_update_anyone" on public.orders
-  for update to anon, authenticated
+drop policy if exists "orders_update_staff" on public.orders;
+create policy "orders_update_staff" on public.orders
+  for update to authenticated
   using (true)
   with check (true);
 

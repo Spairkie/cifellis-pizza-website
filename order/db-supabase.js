@@ -10,6 +10,10 @@
  * Table columns are created with the exact camelCase names the app already
  * uses (ticket, customerName, orderType, payMethod, createdAt, ...), so no
  * field-name translation layer is needed either. See supabase/schema.sql.
+ *
+ * Also re-exposes the underlying Supabase client's `auth` namespace, so
+ * the Staff Hub can sign staff in/out without creating a second client
+ * (Supabase recommends a single client instance per page).
  */
 (function (global) {
   function createSupabaseDb(client) {
@@ -90,7 +94,7 @@
       return api;
     }
 
-    return { collection };
+    return { collection, auth: client.auth };
   }
 
   global.createSupabaseDb = createSupabaseDb;
