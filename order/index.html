@@ -1055,10 +1055,15 @@ function statusName(s){
 function statusLabel(s){
   return ({ new:'New', preparing:'Start Preparing', ready:'Mark Ready', out_for_delivery:'Send Out for Delivery', completed:'Mark Completed', cancelled:'Cancelled' })[s] || s;
 }
+/* For a delivery order, "ready" is the last step the kitchen board drives:
+   from there, a driver claims it on the Driver App (which sets status to
+   out_for_delivery and assigns the driver), so there is no further button
+   here. Pickup/phone/walkin orders go straight from ready to completed at
+   the counter, with no driver hand-off involved. */
 function nextStatus(o){
   if (o.status === 'new') return 'preparing';
   if (o.status === 'preparing') return 'ready';
-  if (o.status === 'ready') return (o.orderType === 'delivery') ? 'out_for_delivery' : 'completed';
+  if (o.status === 'ready' && o.orderType !== 'delivery') return 'completed';
   return null;
 }
 
@@ -1126,7 +1131,8 @@ function renderTicket(o){
     <ul>${(o.items||[]).map(it => `<li>${it.qty} &times; ${escapeHtml(lineLabel(it))}</li>`).join('')}</ul>
     ${o.notes ? `<div class="who">Note: ${escapeHtml(o.notes)}</div>` : ''}
     <div class="who">${escapeHtml(o.customerName||'')}${o.address ? ', ' + escapeHtml(o.address) : ''}</div>
-    ${next ? `<button class="advance" id="ticket-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>` : ''}
+    ${next ? `<button class="advance" id="ticket-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>`
+      : (o.status === 'ready' && o.orderType === 'delivery' ? '<div class="age">Waiting for a driver to claim it</div>' : '')}
   </div>`;
 }
 </script>
