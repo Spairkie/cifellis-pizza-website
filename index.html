@@ -189,19 +189,25 @@
     outline:none;
   }
 
+  .header-actions{ display:flex; align-items:center; gap:10px; flex:none; }
+  .header-order-btn{
+    height:41px; padding:0 20px; font-size:13.5px; white-space:nowrap; flex:none;
+  }
+  .header-order-btn .short{ display:none; }
+
   .call-pill{
-    display:inline-flex; align-items:center; gap:8px;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
     background:var(--sauce); color:var(--paper);
     font-family:"IBM Plex Mono", monospace; font-weight:600; font-size:14px;
-    padding:10px 16px; border-radius:999px; text-decoration:none;
+    height:41px; padding:0 16px; border-radius:999px; text-decoration:none;
     box-shadow: 0 6px 16px -6px rgba(194,42,47,.7);
-    white-space:nowrap;
+    white-space:nowrap; flex:none;
   }
   .call-pill:hover{ background:var(--sauce-deep); }
 
   .menu-toggle{
     display:none; background:none; border:1px solid var(--line-on-ink);
-    color:var(--paper); width:44px;height:44px; border-radius:6px;
+    color:var(--paper); width:41px;height:41px; border-radius:8px; flex:none;
     align-items:center; justify-content:center; cursor:pointer;
   }
   .menu-toggle svg{width:20px;height:20px;}
@@ -217,6 +223,20 @@
     nav.main-nav a{ width:100%; padding:10px 0; border-bottom:1px solid var(--line-on-ink); }
     .menu-toggle{ display:inline-flex; }
     .call-pill span.long{ display:none; }
+    .call-pill{ width:41px; padding:0; }
+  }
+
+  @media (max-width:480px){
+    .wrap{ padding:0 16px; }
+    .header-row{ padding:10px 16px; gap:8px; }
+    .brand{ gap:8px; }
+    .brand-badge{ width:36px; height:36px; }
+    .brand-type .name{ font-size:18px; }
+    .brand-type .tag{ display:none; }
+    .header-actions{ gap:8px; }
+    .header-order-btn{ padding:0 14px; height:41px; font-size:12.5px; }
+    .header-order-btn .long{ display:none; }
+    .header-order-btn .short{ display:inline; }
   }
 
   /* ---------- buttons ---------- */
@@ -291,26 +311,20 @@
 
 
   /* ---------- about ---------- */
-  .about-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:48px; align-items:start; }
+  .about-grid{ display:grid; grid-template-columns: 1.05fr .95fr; gap:56px; align-items:center; }
   .about-grid p + p{ margin-top:14px; }
-  .about-grid p{ color:var(--ink-soft); font-size:16px; }
+  .about-grid p{ color:var(--ink-soft); font-size:16px; max-width:44ch; }
   .about-media{
     border-radius:14px; overflow:hidden; margin-bottom:24px;
     border:1px solid var(--line-on-paper); box-shadow:0 18px 40px -24px rgba(0,0,0,.45);
   }
   .about-media img{ display:block; width:100%; height:auto; }
-  .stamp-note{
-    margin-top:26px; padding:18px 20px; border:2px solid var(--sauce);
-    color:var(--sauce-deep); font-family:"IBM Plex Mono",monospace; font-size:13.5px;
-    transform:rotate(-1.2deg); position:relative; background:rgba(194,42,47,.05);
-  }
-  .stamp-note b{ display:block; font-size:11px; letter-spacing:.14em; text-transform:uppercase; margin-bottom:6px; color:var(--sauce);}
-  .about-facts{ display:flex; flex-direction:column; gap:18px; }
+  .about-facts{ display:flex; flex-direction:column; gap:22px; padding:8px 0; }
   .fact{ display:flex; gap:14px; align-items:flex-start; }
   .fact svg{ width:26px; height:26px; flex:none; color:var(--sauce); margin-top:2px; }
   .fact .t{ font-weight:700; font-size:15.5px; }
   .fact .d{ color:var(--ink-soft); font-size:14.5px; margin-top:2px; }
-  @media (max-width:800px){ .about-grid{ grid-template-columns:1fr; } }
+  @media (max-width:800px){ .about-grid{ grid-template-columns:1fr; align-items:start; gap:36px; } }
 
   /* ---------- specials ---------- */
   .section-ink{ background:var(--ink); color:var(--paper); }
@@ -530,8 +544,10 @@
       <a href="#visit">Visit</a>
     </nav>
 
-    <div style="display:flex; align-items:center; gap:10px;">
-      <a class="btn btn--sauce" style="padding:9px 16px; font-size:13px;" href="order/">Order Online</a>
+    <div class="header-actions">
+      <a class="btn btn--sauce header-order-btn" href="order/">
+        <span class="long">Order Online</span><span class="short">Order</span>
+      </a>
       <a class="call-pill mono" href="tel:+18564358799">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.4-1.4a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.8 2z"/></svg>
         <span class="long">(856) 435-8799</span>
@@ -628,17 +644,11 @@
     <div class="about-grid">
       <div>
         <div class="about-media">
-          <img src="images/storefront.jpg" alt="Cifelli's Pizza storefront at 700 Chews Landing Rd, Lindenwold, NJ" loading="lazy" width="1000" height="750">
+          <img src="images/storefront.jpg" alt="Cifelli's Pizza storefront at 700 Chews Landing Rd, Lindenwold, NJ" loading="lazy" width="1200" height="926">
         </div>
         <div class="eyebrow">Our Counter</div>
         <h2 style="margin-top:10px;">Lindenwold's red-sauce kitchen since the oven first fired up.</h2>
-        <p style="margin-top:20px;">Cifelli's runs the way a family pizza shop should: dough made and stretched in-house, a menu long enough to feed an entire block party, and a fryer and a flat-top that never really stop moving on a Friday night. Pizza is the name over the door, but the steak and cheese, the chicken cutlet parm, and the Sunday-morning pork roll, egg and cheese all have their own regulars.</p>
-        <p>We carry Pepsi products, we still take orders the old-fashioned way, and we've got a different grease-pencil special chalked up every day of the week.</p>
-
-        <div class="stamp-note">
-          <b>Ordering Policy</b>
-          Order online for pickup or delivery, call the shop directly, or walk right up to the counter. Payment is made in person when your order is ready or delivered.
-        </div>
+        <p style="margin-top:20px;">Dough stretched by hand, a fryer and flat-top that don't stop on a Friday night, and a different chalkboard special every day of the week. Pizza's the name over the door, but the steak and cheese and the Sunday pork roll, egg and cheese have their own regulars too.</p>
       </div>
 
       <div class="about-facts">
@@ -661,6 +671,13 @@
           <div>
             <div class="t">700 Chews Landing Rd</div>
             <div class="d">Lindenwold, NJ 08021. Easy in-and-out parking, quick pickup, fast delivery.</div>
+          </div>
+        </div>
+        <div class="fact">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7 9 18l-5-5"/></svg>
+          <div>
+            <div class="t">Order your way</div>
+            <div class="d">Online, by phone, or right at the counter. Pay in person when it's ready or delivered.</div>
           </div>
         </div>
       </div>

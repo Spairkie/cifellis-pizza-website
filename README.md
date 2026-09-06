@@ -59,7 +59,9 @@ If this ever needs to grow past what Supabase's free tier or built-in
 features cover (SMS notifications, a receipt printer bridge, real payment
 processing), the natural next step is a small serverless function (a
 Supabase Edge Function, or a free Render web service) added alongside,
-not a rebuild.
+not a rebuild. See `docs/growth-options.md` for the research behind SMS,
+AI, online payment and tips, receipt printing, and hosting for a future
+custom domain, none of which is built yet.
 
 ## Getting it running
 
