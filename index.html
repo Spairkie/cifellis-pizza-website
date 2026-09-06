@@ -108,46 +108,6 @@
   }
 
   /* ---------- header ---------- */
-  /* ---------- intro video splash ---------- */
-  .intro-splash{
-    position:relative; height:100vh; height:100svh; min-height:420px; max-height:900px;
-    overflow:hidden; background:#0d0906;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .intro-splash video{
-    position:absolute; inset:0; width:100%; height:100%; z-index:0;
-    object-fit:cover; object-position:center 38%; background:#0d0906;
-  }
-  .intro-splash::after{
-    content:""; position:absolute; inset:0; z-index:1;
-    background:linear-gradient(180deg, rgba(13,9,6,.6) 0%, rgba(13,9,6,.1) 32%, rgba(13,9,6,.25) 68%, rgba(13,9,6,.92) 100%);
-  }
-  .intro-content{
-    position:relative; z-index:2; display:flex; flex-direction:column; align-items:center;
-    gap:14px; text-align:center; color:var(--paper); padding:0 24px;
-  }
-  .intro-logo{ width:96px; height:96px; filter:drop-shadow(0 10px 26px rgba(0,0,0,.55)); }
-  .intro-wordmark{ font-family:"Rye", serif; font-size:clamp(32px,7vw,54px); color:var(--paper); }
-  .intro-tagline{
-    font-family:"IBM Plex Mono", monospace; font-size:11.5px; letter-spacing:.2em;
-    text-transform:uppercase; color:var(--paper-dim);
-  }
-  .intro-scroll{
-    position:absolute; left:50%; bottom:26px; transform:translateX(-50%); z-index:2;
-    display:flex; flex-direction:column; align-items:center; gap:6px;
-    color:var(--paper-dim); background:none; border:none; cursor:pointer; padding:8px;
-    font-family:"IBM Plex Mono", monospace; font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
-  }
-  .intro-scroll:hover{ color:var(--paper); }
-  .intro-scroll svg{ width:18px; height:18px; animation:introBounce 1.8s ease-in-out infinite; }
-  @keyframes introBounce{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(6px); } }
-  @media (prefers-reduced-motion: reduce){
-    .intro-scroll svg{ animation:none; }
-  }
-  @media (max-width:600px){
-    .intro-logo{ width:78px; height:78px; }
-  }
-
   .site-header{
     position:sticky; top:0; z-index:50;
     background:rgba(28,23,18,.92);
@@ -256,8 +216,26 @@
     position:relative;
     padding:64px 0 48px;
     overflow:hidden;
+    background:#0d0906;
+  }
+  .hero-video-bg{
+    position:absolute; inset:0; z-index:0; overflow:hidden; background:#0d0906;
+  }
+  .hero-video-bg video{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; object-position:center 38%;
+  }
+  .hero-video-bg::after{
+    content:""; position:absolute; inset:0;
+    background:linear-gradient(100deg, rgba(13,9,6,.94) 0%, rgba(13,9,6,.82) 38%, rgba(13,9,6,.55) 62%, rgba(13,9,6,.3) 100%);
+  }
+  @media (max-width:900px){
+    .hero-video-bg::after{
+      background:linear-gradient(180deg, rgba(13,9,6,.55) 0%, rgba(13,9,6,.75) 55%, rgba(13,9,6,.95) 100%);
+    }
   }
   .hero .wrap{
+    position:relative; z-index:1;
     display:grid; grid-template-columns: 1.15fr .85fr; gap:48px; align-items:center;
   }
   .hero-eyebrow{ margin-bottom:14px; }
@@ -290,12 +268,25 @@
   }
   .ticket-strip .cell .v{ font-weight:700; font-size:14.5px; }
 
-  .hero-art{ position:relative; justify-self:center; width:100%; max-width:400px; }
-  .hero-art svg{ width:100%; height:auto; }
+  .hero-photo{
+    position:relative; justify-self:center; width:100%; max-width:380px;
+    aspect-ratio: 1 / 1; border-radius:20px; overflow:hidden;
+    border:3px solid rgba(244,234,214,.18);
+    box-shadow: 0 30px 60px -24px rgba(0,0,0,.7);
+    transform:rotate(2deg);
+  }
+  .hero-photo img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .hero-photo-badge{
+    position:absolute; left:14px; bottom:14px; z-index:1;
+    background:rgba(13,9,6,.78); backdrop-filter:blur(3px);
+    color:var(--paper); font-family:"IBM Plex Mono", monospace;
+    font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+    padding:8px 12px; border-radius:999px; border:1px solid rgba(244,234,214,.25);
+  }
 
   @media (max-width:900px){
     .hero .wrap{ grid-template-columns:1fr; }
-    .hero-art{ order:-1; width:70%; margin:0 auto; }
+    .hero-photo{ order:-1; width:60%; margin:0 auto; transform:rotate(0); }
   }
 
   /* ---------- section shell ---------- */
@@ -492,30 +483,6 @@
 </head>
 <body>
 
-<section class="intro-splash" id="introSplash" aria-label="Cifelli's Pizza intro">
-  <video id="introVideo" muted loop playsinline preload="auto"
-    poster="images/hero-poster.jpg" aria-hidden="true">
-    <source src="videos/hero-pizza.mp4" type="video/mp4">
-  </video>
-  <div class="intro-content">
-    <svg class="intro-logo" viewBox="0 0 100 100" role="img" aria-label="Cifelli's badge">
-      <circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="4"/>
-      <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
-      <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="none" stroke="#821e21" stroke-width="2"/>
-      <circle cx="50" cy="46" r="4.2" fill="#f4ead6"/>
-      <circle cx="40" cy="58" r="4.2" fill="#f4ead6"/>
-      <circle cx="60" cy="58" r="4.2" fill="#f4ead6"/>
-      <circle cx="50" cy="70" r="4.2" fill="#f4ead6"/>
-    </svg>
-    <div class="intro-wordmark">Cifelli's</div>
-    <div class="intro-tagline">Pizza &amp; Italian Kitchen &middot; Lindenwold, NJ</div>
-  </div>
-  <button class="intro-scroll" id="introScrollBtn" type="button" aria-label="Scroll down to the site">
-    <span>Scroll Down</span>
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
-  </button>
-</section>
-
 <header class="site-header" id="siteHeader">
   <div class="header-row wrap">
     <a class="brand" href="#home">
@@ -560,6 +527,11 @@
 </header>
 
 <section id="home" class="hero">
+  <div class="hero-video-bg" aria-hidden="true">
+    <video id="heroVideo" muted loop playsinline preload="auto" poster="images/hero-poster.jpg">
+      <source src="videos/hero-pizza.mp4" type="video/mp4">
+    </video>
+  </div>
   <div class="wrap">
     <div>
       <div class="eyebrow hero-eyebrow">700 Chews Landing Rd &middot; Lindenwold, NJ 08021</div>
@@ -587,52 +559,9 @@
       </div>
     </div>
 
-    <div class="hero-art">
-      <svg viewBox="0 0 400 400" role="img" aria-label="Illustration of a fresh pepperoni pizza">
-        <defs>
-          <radialGradient id="crustShade" cx="50%" cy="50%" r="60%">
-            <stop offset="78%" stop-color="#e7b463"/>
-            <stop offset="100%" stop-color="#c98a3c"/>
-          </radialGradient>
-        </defs>
-        <circle cx="200" cy="205" r="12" fill="rgba(0,0,0,.35)"/>
-        <circle cx="200" cy="200" r="178" fill="url(#crustShade)"/>
-        <circle cx="200" cy="200" r="178" fill="none" stroke="#a9702f" stroke-width="3"/>
-        <circle cx="200" cy="200" r="150" fill="#c22a2f"/>
-        <circle cx="200" cy="200" r="146" fill="#e2c26a" opacity=".92"/>
-        <g opacity=".85" fill="#eed9a0">
-          <ellipse cx="150" cy="150" rx="34" ry="20" transform="rotate(-15 150 150)"/>
-          <ellipse cx="255" cy="170" rx="30" ry="18" transform="rotate(10 255 170)"/>
-          <ellipse cx="180" cy="260" rx="38" ry="20" transform="rotate(6 180 260)"/>
-          <ellipse cx="260" cy="255" rx="26" ry="16" transform="rotate(-12 260 255)"/>
-          <ellipse cx="140" cy="215" rx="24" ry="15" transform="rotate(20 140 215)"/>
-        </g>
-        <g fill="#8f1d21">
-          <circle cx="150" cy="160" r="17"/>
-          <circle cx="215" cy="140" r="17"/>
-          <circle cx="255" cy="195" r="17"/>
-          <circle cx="150" cy="230" r="17"/>
-          <circle cx="220" cy="255" r="17"/>
-          <circle cx="270" cy="240" r="17"/>
-          <circle cx="195" cy="200" r="17"/>
-        </g>
-        <g fill="#6f1518" opacity=".55">
-          <circle cx="146" cy="156" r="3"/><circle cx="156" cy="164" r="2.4"/>
-          <circle cx="211" cy="136" r="3"/><circle cx="221" cy="144" r="2.4"/>
-          <circle cx="251" cy="191" r="3"/><circle cx="191" cy="196" r="3"/>
-        </g>
-        <g fill="#3f5a2f">
-          <ellipse cx="175" cy="185" rx="7" ry="3.4" transform="rotate(30 175 185)"/>
-          <ellipse cx="235" cy="220" rx="7" ry="3.4" transform="rotate(-20 235 220)"/>
-          <ellipse cx="205" cy="245" rx="7" ry="3.4" transform="rotate(60 205 245)"/>
-          <ellipse cx="160" cy="215" rx="7" ry="3.4" transform="rotate(-40 160 215)"/>
-        </g>
-        <g stroke="#f4ead6" stroke-width="6" fill="none" stroke-linecap="round" opacity=".55">
-          <path d="M120 90 C110 70, 130 60, 120 40"/>
-          <path d="M150 84 C140 64, 160 54, 150 34"/>
-          <path d="M180 90 C170 70, 190 60, 180 40"/>
-        </g>
-      </svg>
+    <div class="hero-photo">
+      <img src="images/order-cheesepull-thumb.jpg" alt="Fresh cheese pull from a Cifelli's pizza, straight out of the oven" width="416" height="416">
+      <span class="hero-photo-badge">Hand-Stretched Daily</span>
     </div>
   </div>
 </section>
@@ -1172,23 +1101,24 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  /* Intro splash video: only autoplay when the visitor hasn't asked for
-     reduced motion. Without that preference, the poster image alone
-     stands in for the video, which looks and behaves the same either
-     way since nothing here is required to understand the page. */
-  var introVideo = document.getElementById('introVideo');
-  var introScrollBtn = document.getElementById('introScrollBtn');
+  /* Hero background video: only autoplay when the visitor hasn't asked
+     for reduced motion and isn't on a metered/slow connection. Without
+     that, the poster image alone stands in for the video, which looks
+     and behaves the same either way since nothing here is required to
+     understand the page. */
+  var heroVideo = document.getElementById('heroVideo');
   var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (introVideo && !prefersReducedMotion){
-    var playPromise = introVideo.play();
+  var conn = navigator.connection || navigator.webkitConnection || navigator.mozConnection;
+  var saveData = conn && (conn.saveData || /2g/.test(conn.effectiveType || ''));
+  if (heroVideo && !prefersReducedMotion && !saveData){
+    var playPromise = heroVideo.play();
     if (playPromise && playPromise.catch){ playPromise.catch(function(){ /* autoplay blocked, poster stands in */ }); }
-  }
-  if (introScrollBtn){
-    introScrollBtn.addEventListener('click', function(){
-      var header = document.getElementById('siteHeader');
-      var target = header || document.getElementById('home');
-      if (target) target.scrollIntoView({ behavior:'smooth', block:'start' });
-    });
+  } else if (heroVideo){
+    heroVideo.removeAttribute('autoplay');
+    heroVideo.parentElement.style.backgroundImage = "url('images/hero-poster.jpg')";
+    heroVideo.parentElement.style.backgroundSize = 'cover';
+    heroVideo.parentElement.style.backgroundPosition = 'center 38%';
+    heroVideo.style.display = 'none';
   }
 
   var pills = document.querySelectorAll('#filterBar .pill');
