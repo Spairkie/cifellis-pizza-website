@@ -89,6 +89,43 @@ needs finer-grained roles (drivers who can't see the POS cash drawer, for
 instance), that is a further Supabase Auth policy worth adding before it
 becomes a real problem.
 
+## If you see "new row violates row-level security policy for table orders"
+
+This means Postgres is blocking the Customer Kiosk from creating an order.
+It almost always means the INSERT policy from `schema.sql` either never
+ran or isn't there anymore (a project reset, a partial run that hit an
+error partway through, or a table that got recreated from the Table
+Editor UI instead of the SQL script all cause this). Fix it by re-running
+just the access-rules section, safe to run as many times as you want:
+
+1. Open **SQL Editor** > **New query** in your Supabase project.
+2. Paste this and click **Run**:
+
+```sql
+alter table public.orders enable row level security;
+
+grant insert on public.orders to anon, authenticated;
+grant select, update on public.orders to authenticated;
+
+drop policy if exists "orders_insert_public" on public.orders;
+create policy "orders_insert_public" on public.orders
+  for insert to anon, authenticated
+  with check (true);
+```
+
+3. To confirm it took, run `select * from pg_policies where tablename =
+   'orders';` — you should see `orders_insert_public` listed with
+   `cmd = INSERT` and `roles = {anon,authenticated}`.
+4. Reload the Order Hub and try again.
+
+If it still fails, open the browser console when placing the order and
+look for the error's `code` field. `42501` with "row-level security" is
+the policy issue above. `PGRST301` or "JWT" usually means the
+`SUPABASE_ANON_KEY` in `order/supabase-config.js` doesn't match the
+project the policy was created in (e.g. it was copied from a different
+or older Supabase project). A plain "Failed to fetch" is a network or
+`SUPABASE_URL` typo, not RLS at all.
+
 ## If you would rather not use Supabase
 
 The app talks to the database only through `order/db-supabase.js`, a small

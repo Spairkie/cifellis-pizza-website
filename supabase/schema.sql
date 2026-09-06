@@ -22,15 +22,51 @@ create table if not exists public.orders (
   items         jsonb not null default '[]'::jsonb,
   subtotal      numeric(10,2) not null default 0,
   tax           numeric(10,2) not null default 0,
+  tip           numeric(10,2) not null default 0,
   total         numeric(10,2) not null default 0,
   status        text not null default 'new' check (status in ('new','preparing','ready','out_for_delivery','completed','cancelled')),
   driver        text,
+  -- Payment scaffold: not wired to a real processor yet. See
+  -- order/payments.js for where a Stripe (or similar) integration plugs
+  -- in. "cash"/"card" orders today are always paymentStatus 'unpaid'
+  -- (paid in person); once real card processing is added this becomes
+  -- 'paid' the moment the processor confirms the charge.
+  "paymentStatus"   text not null default 'unpaid' check ("paymentStatus" in ('unpaid','paid','refunded','failed')),
+  "paymentProvider" text,
+  "paymentIntentId" text,
+  -- SMS notification scaffold: not wired to a real sender yet. See
+  -- supabase/functions/send-order-sms/. A customer opting in stores
+  -- their consent here; smsStatus tracks whether a text was actually
+  -- sent once that function is implemented.
+  "phoneOptIn"  boolean not null default false,
+  "smsStatus"   text not null default 'not_sent' check ("smsStatus" in ('not_sent','sent','failed')),
   "createdAt"   bigint not null default (extract(epoch from now()) * 1000)::bigint,
   "updatedAt"   bigint not null default (extract(epoch from now()) * 1000)::bigint
 );
 
 create index if not exists orders_status_idx on public.orders (status);
 create index if not exists orders_created_idx on public.orders ("createdAt");
+
+-- Migration: add columns introduced after the table may have already been
+-- created on your project. Safe to re-run; each is a no-op once applied.
+alter table public.orders add column if not exists tip numeric(10,2) not null default 0;
+alter table public.orders add column if not exists "paymentStatus" text not null default 'unpaid';
+alter table public.orders add column if not exists "paymentProvider" text;
+alter table public.orders add column if not exists "paymentIntentId" text;
+alter table public.orders add column if not exists "phoneOptIn" boolean not null default false;
+alter table public.orders add column if not exists "smsStatus" text not null default 'not_sent';
+
+do $$ begin
+  alter table public.orders add constraint orders_paymentstatus_check
+    check ("paymentStatus" in ('unpaid','paid','refunded','failed'));
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  alter table public.orders add constraint orders_smsstatus_check
+    check ("smsStatus" in ('not_sent','sent','failed'));
+exception when duplicate_object then null;
+end $$;
 
 -- Keep updatedAt current on every row change, even a direct SQL edit in the
 -- Supabase dashboard, as a backstop (the app also sets it explicitly).
@@ -76,6 +112,16 @@ end $$;
 -- Users, then sign in at /staff/ with that email and password. See
 -- supabase/README.md.
 alter table public.orders enable row level security;
+
+-- Explicit grants. RLS policies only ever narrow what a grant already
+-- allows, they never grant access on their own (Postgres checks table
+-- grants first, then RLS). Some Supabase projects don't hand the anon
+-- and authenticated roles table privileges by default, which surfaces
+-- as the exact same "violates row-level security policy" error as a
+-- missing policy even though the policies below are correct. These
+-- grants make sure that is never the cause. Safe to re-run.
+grant insert on public.orders to anon, authenticated;
+grant select, update on public.orders to authenticated;
 
 drop policy if exists "orders_insert_anyone" on public.orders;
 drop policy if exists "orders_insert_public" on public.orders;

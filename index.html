@@ -10,6 +10,65 @@
 <meta property="og:title" content="Cifelli's Pizza">
 <meta property="og:description" content="Hand-stretched pizza, panzarotti, cheese steaks, hoagies, wings and more in Lindenwold, NJ. Order online or call (856) 435-8799.">
 <meta property="og:type" content="restaurant.menu">
+<meta property="og:url" content="https://spairkie.github.io/cifellis-pizza-website/">
+<meta property="og:image" content="https://spairkie.github.io/cifellis-pizza-website/images/storefront.jpg">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cifelli's Pizza">
+<meta name="twitter:description" content="Hand-stretched pizza, panzarotti, cheese steaks, hoagies, wings and more in Lindenwold, NJ.">
+<meta name="twitter:image" content="https://spairkie.github.io/cifellis-pizza-website/images/storefront.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Restaurant",
+  "name": "Cifelli's Pizza",
+  "image": "https://spairkie.github.io/cifellis-pizza-website/images/storefront.jpg",
+  "url": "https://spairkie.github.io/cifellis-pizza-website/",
+  "telephone": "+18564358799",
+  "priceRange": "$$",
+  "servesCuisine": ["Pizza", "Italian", "American"],
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "700 Chews Landing Rd",
+    "addressLocality": "Lindenwold",
+    "addressRegion": "NJ",
+    "postalCode": "08021",
+    "addressCountry": "US"
+  },
+  "menu": "https://spairkie.github.io/cifellis-pizza-website/#menu",
+  "acceptsReservations": "False",
+  "openingHoursSpecification": [
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Sunday", "Monday", "Tuesday", "Wednesday"],
+      "opens": "11:00",
+      "closes": "21:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Thursday", "Friday", "Saturday"],
+      "opens": "11:00",
+      "closes": "22:00"
+    }
+  ]
+}
+</script>
+<!--
+  Analytics scaffold: disabled until you add a measurement ID.
+  Free options worth comparing: Google Analytics 4 (most common, free,
+  more invasive tracking) or a privacy-friendly paid option like
+  Plausible or Simple Analytics (no cookie banner needed in most cases).
+  To turn on GA4: uncomment below and replace G-XXXXXXXXXX with your
+  own Measurement ID from analytics.google.com.
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX');
+</script>
+-->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23f4ead6'/%3E%3Cpath d='M50 22 L78 68 A32 32 0 0 1 22 68 Z' fill='%23c22a2f'/%3E%3Ccircle cx='50' cy='46' r='4.2' fill='%23f4ead6'/%3E%3Ccircle cx='40' cy='58' r='4.2' fill='%23f4ead6'/%3E%3Ccircle cx='60' cy='58' r='4.2' fill='%23f4ead6'/%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -588,49 +647,88 @@
     </div>
 
     <div class="hero-art">
-      <svg viewBox="0 0 400 400" role="img" aria-label="Illustration of a fresh pepperoni pizza">
+      <svg viewBox="0 0 420 420" role="img" aria-label="Illustration of a fresh pepperoni pizza">
         <defs>
-          <radialGradient id="crustShade" cx="50%" cy="50%" r="60%">
-            <stop offset="78%" stop-color="#e7b463"/>
-            <stop offset="100%" stop-color="#c98a3c"/>
+          <filter id="softBlur" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="10"/>
+          </filter>
+          <radialGradient id="crustShade" cx="40%" cy="36%" r="68%">
+            <stop offset="0%" stop-color="#f0c274"/>
+            <stop offset="68%" stop-color="#e0a758"/>
+            <stop offset="100%" stop-color="#b97b34"/>
+          </radialGradient>
+          <radialGradient id="cheeseShade" cx="40%" cy="34%" r="72%">
+            <stop offset="0%" stop-color="#f2dda0"/>
+            <stop offset="100%" stop-color="#dcb668"/>
+          </radialGradient>
+          <radialGradient id="pepperoniShade" cx="36%" cy="30%" r="72%">
+            <stop offset="0%" stop-color="#b23a2e"/>
+            <stop offset="60%" stop-color="#8f1d21"/>
+            <stop offset="100%" stop-color="#711217"/>
           </radialGradient>
         </defs>
-        <circle cx="200" cy="205" r="12" fill="rgba(0,0,0,.35)"/>
-        <circle cx="200" cy="200" r="178" fill="url(#crustShade)"/>
-        <circle cx="200" cy="200" r="178" fill="none" stroke="#a9702f" stroke-width="3"/>
-        <circle cx="200" cy="200" r="150" fill="#c22a2f"/>
-        <circle cx="200" cy="200" r="146" fill="#e2c26a" opacity=".92"/>
-        <g opacity=".85" fill="#eed9a0">
-          <ellipse cx="150" cy="150" rx="34" ry="20" transform="rotate(-15 150 150)"/>
-          <ellipse cx="255" cy="170" rx="30" ry="18" transform="rotate(10 255 170)"/>
-          <ellipse cx="180" cy="260" rx="38" ry="20" transform="rotate(6 180 260)"/>
-          <ellipse cx="260" cy="255" rx="26" ry="16" transform="rotate(-12 260 255)"/>
-          <ellipse cx="140" cy="215" rx="24" ry="15" transform="rotate(20 140 215)"/>
+
+        <ellipse cx="210" cy="382" rx="132" ry="18" fill="#000" opacity=".35" filter="url(#softBlur)"/>
+
+        <g stroke-linecap="round">
+          <path d="M120 96 C104 74, 118 52, 104 30" stroke="#f4ead6" stroke-width="7" fill="none" opacity=".35"/>
+          <path d="M150 88 C134 66, 150 44, 138 20" stroke="#f4ead6" stroke-width="7" fill="none" opacity=".45"/>
+          <path d="M180 96 C166 74, 182 52, 172 30" stroke="#f4ead6" stroke-width="7" fill="none" opacity=".35"/>
         </g>
-        <g fill="#8f1d21">
-          <circle cx="150" cy="160" r="17"/>
-          <circle cx="215" cy="140" r="17"/>
-          <circle cx="255" cy="195" r="17"/>
-          <circle cx="150" cy="230" r="17"/>
-          <circle cx="220" cy="255" r="17"/>
-          <circle cx="270" cy="240" r="17"/>
-          <circle cx="195" cy="200" r="17"/>
+
+        <circle cx="210" cy="206" r="176" fill="url(#crustShade)"/>
+        <circle cx="210" cy="206" r="176" fill="none" stroke="#a9702f" stroke-width="3"/>
+        <g fill="#a9702f" opacity=".45">
+          <circle cx="100" cy="130" r="4"/><circle cx="325" cy="150" r="3.5"/><circle cx="270" cy="70" r="3"/>
+          <circle cx="140" cy="320" r="4"/><circle cx="330" cy="280" r="3.5"/><circle cx="80" cy="240" r="3"/>
+          <circle cx="230" cy="55" r="3"/><circle cx="350" cy="210" r="3"/>
         </g>
-        <g fill="#6f1518" opacity=".55">
-          <circle cx="146" cy="156" r="3"/><circle cx="156" cy="164" r="2.4"/>
-          <circle cx="211" cy="136" r="3"/><circle cx="221" cy="144" r="2.4"/>
-          <circle cx="251" cy="191" r="3"/><circle cx="191" cy="196" r="3"/>
+        <path d="M210 206 m-176,0 a176,176 0 0 1 352,0 Z" fill="#fff" opacity=".08"/>
+
+        <circle cx="210" cy="206" r="148" fill="#c22a2f"/>
+        <circle cx="210" cy="206" r="144" fill="url(#cheeseShade)"/>
+        <g opacity=".5" fill="#eed9a0">
+          <ellipse cx="160" cy="156" rx="34" ry="20" transform="rotate(-15 160 156)"/>
+          <ellipse cx="265" cy="176" rx="30" ry="18" transform="rotate(10 265 176)"/>
+          <ellipse cx="190" cy="266" rx="38" ry="20" transform="rotate(6 190 266)"/>
+          <ellipse cx="270" cy="261" rx="26" ry="16" transform="rotate(-12 270 261)"/>
+          <ellipse cx="150" cy="221" rx="24" ry="15" transform="rotate(20 150 221)"/>
+          <ellipse cx="245" cy="130" rx="20" ry="13" transform="rotate(-8 245 130)"/>
         </g>
+
+        <g>
+          <circle cx="160" cy="166" r="18" fill="url(#pepperoniShade)"/>
+          <circle cx="225" cy="146" r="18" fill="url(#pepperoniShade)"/>
+          <circle cx="265" cy="201" r="18" fill="url(#pepperoniShade)"/>
+          <circle cx="160" cy="240" r="18" fill="url(#pepperoniShade)"/>
+          <circle cx="230" cy="261" r="18" fill="url(#pepperoniShade)"/>
+          <circle cx="280" cy="246" r="18" fill="url(#pepperoniShade)"/>
+          <circle cx="205" cy="206" r="18" fill="url(#pepperoniShade)"/>
+        </g>
+        <g fill="#e9c98a" opacity=".85">
+          <ellipse cx="154" cy="160" rx="5.5" ry="3.4" transform="rotate(-20 154 160)"/>
+          <ellipse cx="219" cy="140" rx="5.5" ry="3.4" transform="rotate(-20 219 140)"/>
+          <ellipse cx="259" cy="195" rx="5.5" ry="3.4" transform="rotate(-20 259 195)"/>
+          <ellipse cx="154" cy="234" rx="5.5" ry="3.4" transform="rotate(-20 154 234)"/>
+          <ellipse cx="224" cy="255" rx="5.5" ry="3.4" transform="rotate(-20 224 255)"/>
+          <ellipse cx="274" cy="240" rx="5.5" ry="3.4" transform="rotate(-20 274 240)"/>
+          <ellipse cx="199" cy="200" rx="5.5" ry="3.4" transform="rotate(-20 199 200)"/>
+        </g>
+        <g fill="#5f1215" opacity=".55">
+          <circle cx="156" cy="162" r="2.8"/><circle cx="166" cy="170" r="2.2"/>
+          <circle cx="221" cy="142" r="2.8"/><circle cx="231" cy="150" r="2.2"/>
+          <circle cx="261" cy="197" r="2.8"/><circle cx="201" cy="202" r="2.8"/>
+          <circle cx="226" cy="257" r="2.6"/><circle cx="276" cy="242" r="2.4"/>
+          <circle cx="156" cy="236" r="2.4"/>
+        </g>
+
         <g fill="#3f5a2f">
-          <ellipse cx="175" cy="185" rx="7" ry="3.4" transform="rotate(30 175 185)"/>
-          <ellipse cx="235" cy="220" rx="7" ry="3.4" transform="rotate(-20 235 220)"/>
-          <ellipse cx="205" cy="245" rx="7" ry="3.4" transform="rotate(60 205 245)"/>
-          <ellipse cx="160" cy="215" rx="7" ry="3.4" transform="rotate(-40 160 215)"/>
-        </g>
-        <g stroke="#f4ead6" stroke-width="6" fill="none" stroke-linecap="round" opacity=".55">
-          <path d="M120 90 C110 70, 130 60, 120 40"/>
-          <path d="M150 84 C140 64, 160 54, 150 34"/>
-          <path d="M180 90 C170 70, 190 60, 180 40"/>
+          <path d="M185 191 q-11 -11 0 -18 q11 7 0 18 Z" transform="rotate(20 185 191)"/>
+          <path d="M245 226 q-11 -11 0 -18 q11 7 0 18 Z" transform="rotate(-30 245 226)"/>
+          <path d="M215 256 q-11 -11 0 -18 q11 7 0 18 Z" transform="rotate(65 215 256)"/>
+          <path d="M168 221 q-11 -11 0 -18 q11 7 0 18 Z" transform="rotate(-50 168 221)"/>
+          <path d="M265 140 q-11 -11 0 -18 q11 7 0 18 Z" transform="rotate(35 265 140)"/>
+          <path d="M195 130 q-11 -11 0 -18 q11 7 0 18 Z" transform="rotate(-10 195 130)"/>
         </g>
       </svg>
     </div>

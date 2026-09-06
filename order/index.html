@@ -156,6 +156,11 @@
   .today-banner .p{ margin-left:auto; font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); }
 
   .menu-section{ margin-bottom:26px; }
+  .menu-section-banner{
+    width:100%; height:120px; object-fit:cover; border-radius:10px;
+    margin-bottom:10px; border:1px solid var(--line-on-ink); display:block;
+    background:var(--ink-soft);
+  }
   .menu-section h3{ font-size:19px; color:var(--paper); border-bottom:2px solid var(--line-on-ink); padding-bottom:8px; margin-bottom:10px; display:flex; align-items:baseline; gap:10px; }
   .menu-section .note{ font-family:"Work Sans"; font-size:11.5px; font-style:italic; color:var(--gold); font-weight:500; }
   .item-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; }
@@ -319,17 +324,17 @@ const CATEGORIES = [
   { key:'panzarotti', label:'Panzarotti', note:'Deep fried and golden brown', items:[
     { name:'Panzarotti', price:8.25, desc:'Add $0.75 per extra ingredient' },
   ]},
-  { key:'stromboli', label:'Stromboli', items:[
+  { key:'stromboli', label:'Stromboli', photo:'../images/menu/stromboli.jpg', placeholder:'../images/menu/stromboli.svg', items:[
     { name:'Cheese Stromboli', price:17.99, desc:'+$2.50 per topping, +$5.00 steak or chicken' },
     { name:'Steak & Onion Stromboli', price:24.99 },
   ]},
-  { key:'calzones', label:'Calzones', items:[
+  { key:'calzones', label:'Calzones', photo:'../images/menu/calzone.jpg', placeholder:'../images/menu/calzone.svg', items:[
     { name:'Calzone', price:14.99, desc:'Ham, ricotta, mozzarella and sauce' },
   ]},
   { key:'turnover', label:'Pizza Turnover', items:[
     { name:'Pizza Turnover', price:13.50, desc:'Mozzarella and pizza sauce, $1 per extra ingredient' },
   ]},
-  { key:'wings', label:'Wings', note:'All wings come with bread and blue cheese', items:[
+  { key:'wings', label:'Wings', note:'All wings come with bread and blue cheese', photo:'../images/menu/wings.jpg', placeholder:'../images/menu/wings.svg', items:[
     { name:'Wings', size:'8 pc', price:9.50 },
     { name:'Wings', size:'12 pc', price:14.99 },
     { name:'Wings', size:'16 pc', price:18.99 },
@@ -342,12 +347,12 @@ const CATEGORIES = [
     { name:'Buffalo Chicken Cheese Steak', price:13.00 }, { name:'Broccoli Garlic & Oil Chicken Cheese Steak', price:13.00 },
     { name:'Cheese Steak Special', price:13.75 }, { name:'Cheese Steak Platter', price:14.99 },
   ]},
-  { key:'hoagies', label:'Hoagies', note:'All hoagies made with lettuce, tomato, onion and oil', items:[
+  { key:'hoagies', label:'Hoagies', note:'All hoagies made with lettuce, tomato, onion and oil', photo:'../images/menu/hoagie.jpg', placeholder:'../images/menu/hoagie.svg', items:[
     { name:'Mixed Cheese', price:11.00 }, { name:'American', price:11.50 }, { name:'Ham & Cheese', price:12.00 },
     { name:'Italian', price:12.00 }, { name:'Turkey & Cheese', price:12.00 }, { name:'Roast Beef, Provolone or American', price:13.00 },
     { name:'Fried Fish Hoagie', price:13.00 },
   ]},
-  { key:'pasta', label:'Pasta', note:'Served with soup, salad and garlic bread, spaghetti or ziti', items:[
+  { key:'pasta', label:'Pasta', note:'Served with soup, salad and garlic bread, spaghetti or ziti', photo:'../images/menu/pasta.jpg', placeholder:'../images/menu/pasta.svg', items:[
     { name:'Tomato Sauce', price:12.99 }, { name:'Meatballs', price:16.99 }, { name:'Sausage', price:16.99 },
   ]},
   { key:'parm', label:'Parmigiana Dinners', note:'Served with salad and garlic bread or a side of spaghetti/ziti', items:[
@@ -366,7 +371,7 @@ const CATEGORIES = [
     { name:'BLT Club', price:12.99 }, { name:'Chicken Finger Platter', price:13.99 }, { name:'Ham & Cheese Club', price:13.99 },
     { name:'Chicken Club', price:14.99 }, { name:'Roast Beef Club', price:14.99 }, { name:'Turkey Club', price:14.99 }, { name:'Shrimp Platter', price:14.99 },
   ]},
-  { key:'burgers', label:'Quarter Pound Burgers', items:[
+  { key:'burgers', label:'Quarter Pound Burgers', photo:'../images/menu/burger.jpg', placeholder:'../images/menu/burger.svg', items:[
     { name:'Hamburger', price:7.00 }, { name:'Cheeseburger', price:8.00 }, { name:'Bacon Cheeseburger', price:9.00 },
     { name:'Pizza Burger', price:9.00 }, { name:'Cheese Burger Sub', price:13.00 },
   ]},
@@ -383,7 +388,7 @@ const CATEGORIES = [
     { name:'Pasta Faggioli', size:'Small', price:4.99 }, { name:'Pasta Faggioli', size:'Quart', price:8.99 },
     { name:'Chili', size:'Small, winter', price:6.50 }, { name:'Chili', size:'Quart, winter', price:11.99 },
   ]},
-  { key:'salads', label:'Salads', items:[
+  { key:'salads', label:'Salads', photo:'../images/menu/salad.jpg', placeholder:'../images/menu/salad.svg', items:[
     { name:'Tossed Salad', price:7.99 }, { name:'Antipasta', price:12.99 }, { name:'Chef Salad', price:12.99 },
     { name:'Chicken Caesar Salad', price:12.99 }, { name:'Grilled Chicken Salad', price:12.99 },
   ]},
@@ -433,10 +438,11 @@ function showToast(msg){
   clearTimeout(showToast._h);
   showToast._h = setTimeout(()=>t.classList.remove('show'), 2200);
 }
-function computeTotals(items){
+function computeTotals(items, tip){
   const subtotal = items.reduce((s,it)=> s + it.unitPrice*it.qty, 0);
   const tax = subtotal * TAX_RATE;
-  return { subtotal, tax, total: subtotal+tax };
+  const tipAmt = tip || 0;
+  return { subtotal, tax, tip: tipAmt, total: subtotal+tax+tipAmt };
 }
 function lineLabel(it){
   return it.name + (it.size ? ' (' + it.size + ')' : '');
@@ -511,7 +517,14 @@ async function submitOrder(order){
   try{
     await db.collection('orders').add(body);
   }catch(e){
-    showToast('Could not save order: ' + (e && e.message ? e.message : 'unknown error'));
+    const code = e && e.code;
+    const raw = e && e.message ? e.message : 'unknown error';
+    console.error('Order save failed:', e);
+    if (code === '42501' || /row-level security/i.test(raw)){
+      showToast('Online ordering is temporarily down (setup issue on our end). Please call (856) 435-8799 to order, sorry about that.');
+    } else {
+      showToast('Could not save order: ' + raw + '. Please call (856) 435-8799 to order instead.');
+    }
     return null;
   }
   return ticket;
@@ -562,10 +575,10 @@ window.addEventListener('appinstalled', () => {
 /* =========================================================================
    ORDERING (shared by Customer Kiosk and Staff POS)
    ========================================================================= */
-let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash' };
+let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null };
 
 function resetOrderCtx(mode){
-  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash' };
+  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null };
 }
 
 function addLine(line){
@@ -628,6 +641,7 @@ function buildMenuPaneHTML(mode){
 
   CATEGORIES.forEach(cat => {
     html += `<div class="menu-section" data-section="${cat.key}">
+      ${cat.photo ? `<img class="menu-section-banner" src="${cat.photo}" alt="${escapeHtml(cat.label)}" loading="lazy" onerror="this.onerror=null; this.src='${cat.placeholder}';">` : ''}
       <h3>${escapeHtml(cat.label)}${cat.note ? ` <span class="note">${escapeHtml(cat.note)}</span>` : ''}</h3>
       <div class="item-grid">`;
     cat.items.forEach((it, idx) => {
@@ -660,6 +674,10 @@ function buildCartPaneHTML(mode){
         </div>
         <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Your name"></div>
         <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
+        <div class="field-group" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="smsoptin-${mode}" style="width:auto;">
+          <label for="smsoptin-${mode}" style="margin:0; text-transform:none; font-size:13px; letter-spacing:normal; color:var(--paper-dim); font-family:inherit;">Text me when my order's ready (standard rates may apply)</label>
+        </div>
         <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ"></div>
         <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Allergies, extra sauce, etc."></div>
         <div class="field-group"><label>Payment</label>
@@ -669,8 +687,19 @@ function buildCartPaneHTML(mode){
           </div>
           <div style="font-size:11px; color:var(--paper-dim); margin-top:6px;">Paid in person at pickup or delivery. Card processing isn't connected here.</div>
         </div>
+        <div class="field-group" id="tipgroup-${mode}" hidden><label>Add a Tip for Your Driver</label>
+          <div class="seg" id="tipseg-${mode}">
+            <button type="button" data-v="0" aria-pressed="true">No Tip</button>
+            <button type="button" data-v="0.15">15%</button>
+            <button type="button" data-v="0.18">18%</button>
+            <button type="button" data-v="0.20">20%</button>
+            <button type="button" data-v="custom">Custom</button>
+          </div>
+          <input id="tipcustom-${mode}" type="number" step="0.01" min="0" placeholder="Custom tip amount" hidden style="margin-top:8px;">
+        </div>
         <div class="row-between" style="margin-top:14px;"><span>Subtotal</span><span class="mono" id="subtotal-${mode}"></span></div>
         <div class="row-between"><span>Tax</span><span class="mono" id="tax-${mode}"></span></div>
+        <div class="row-between" id="tiprow-${mode}" hidden><span>Tip</span><span class="mono" id="tipamount-${mode}"></span></div>
         <div class="row-between total"><span>Total</span><span id="total-${mode}"></span></div>
         <button class="btn btn-sauce" id="submit-${mode}" type="button" style="width:100%; justify-content:center; margin-top:14px; padding:14px;">Place Order</button>
       </div>`;
@@ -702,6 +731,7 @@ function buildCartPaneHTML(mode){
       <div class="field-group" id="cashgroup-${mode}"><label>Cash Tendered</label><input id="tendered-${mode}" type="number" step="0.01" placeholder="0.00"></div>
       <div class="row-between" style="margin-top:10px;"><span>Subtotal</span><span class="mono" id="subtotal-${mode}"></span></div>
       <div class="row-between"><span>Tax</span><span class="mono" id="tax-${mode}"></span></div>
+      <div class="row-between" id="tiprow-${mode}" hidden><span>Tip</span><span class="mono" id="tipamount-${mode}"></span></div>
       <div class="row-between total"><span>Total</span><span id="total-${mode}"></span></div>
       <div class="row-between" id="changerow-${mode}" style="color:var(--gold); font-weight:700;"></div>
       <button class="btn btn-sauce" id="submit-${mode}" type="button" style="width:100%; justify-content:center; margin-top:14px; padding:14px;">Ring Up Order</button>
@@ -833,9 +863,19 @@ function renderCart(mode){
       btn.addEventListener('click', ()=> changeQty(btn.getAttribute('data-key'), +btn.getAttribute('data-d')));
     });
   }
-  const totals = computeTotals(orderCtx.cart);
+  if (orderCtx.tipPct != null){
+    const rawSubtotal = orderCtx.cart.reduce((s,it)=> s + it.unitPrice*it.qty, 0);
+    orderCtx.tip = Math.round(rawSubtotal * orderCtx.tipPct * 100) / 100;
+  }
+  const totals = computeTotals(orderCtx.cart, orderCtx.tip);
   document.getElementById(`subtotal-${mode}`).textContent = money(totals.subtotal);
   document.getElementById(`tax-${mode}`).textContent = money(totals.tax);
+  const tipRow = document.getElementById(`tiprow-${mode}`);
+  const tipAmountEl = document.getElementById(`tipamount-${mode}`);
+  if (tipRow && tipAmountEl){
+    tipRow.hidden = totals.tip <= 0;
+    tipAmountEl.textContent = money(totals.tip);
+  }
   document.getElementById(`total-${mode}`).textContent = money(totals.total);
   if (mode==='pos') updateChangeDue(mode, totals.total);
   const submitBtn = document.getElementById(`submit-${mode}`);
@@ -900,7 +940,49 @@ function renderOrderLayout(mode){
   wireSeg(`ordertype-${mode}`, 'orderType', (v) => {
     const addrGroup = document.getElementById(`addrgroup-${mode}`);
     if (addrGroup) addrGroup.hidden = (v !== 'delivery');
+    const tipGroup = document.getElementById(`tipgroup-${mode}`);
+    if (tipGroup){
+      tipGroup.hidden = (v !== 'delivery');
+      if (v !== 'delivery'){
+        orderCtx.tip = 0;
+        orderCtx.tipPct = null;
+        renderCart(mode);
+      }
+    }
   });
+  if (mode === 'customer'){
+    const tipSeg = document.getElementById(`tipseg-${mode}`);
+    const tipCustom = document.getElementById(`tipcustom-${mode}`);
+    if (tipSeg){
+      tipSeg.querySelectorAll('button').forEach(btn=>{
+        btn.addEventListener('click', () => {
+          tipSeg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));
+          btn.setAttribute('aria-pressed','true');
+          const v = btn.getAttribute('data-v');
+          if (v === 'custom'){
+            tipCustom.hidden = false;
+            tipCustom.focus();
+            const subtotal = computeTotals(orderCtx.cart, 0).subtotal;
+            orderCtx.tip = Number(tipCustom.value) || 0;
+            orderCtx.tipPct = null;
+          } else {
+            tipCustom.hidden = true;
+            const subtotal = computeTotals(orderCtx.cart, 0).subtotal;
+            orderCtx.tipPct = Number(v);
+            orderCtx.tip = Math.round(subtotal * Number(v) * 100) / 100;
+          }
+          renderCart(mode);
+        });
+      });
+    }
+    if (tipCustom){
+      tipCustom.addEventListener('input', () => {
+        orderCtx.tip = Number(tipCustom.value) || 0;
+        orderCtx.tipPct = null;
+        renderCart(mode);
+      });
+    }
+  }
   wireSeg(`paymethod-${mode}`, 'payMethod', () => {
     if (mode === 'pos'){
       const cashGroup = document.getElementById(`cashgroup-${mode}`);
@@ -937,13 +1019,15 @@ function initCustomerView(){
 async function submitCustomerOrder(){
   const name = document.getElementById('custname-customer').value.trim();
   const phone = document.getElementById('custphone-customer').value.trim();
+  const smsOptInEl = document.getElementById('smsoptin-customer');
+  const phoneOptIn = smsOptInEl ? smsOptInEl.checked : false;
   const addrField = document.getElementById('custaddr-customer');
   const addr = addrField ? addrField.value.trim() : '';
   const notes = document.getElementById('custnotes-customer').value.trim();
   if (!orderCtx.cart.length){ showToast('Your order is empty'); return; }
   if (!name || !phone){ showToast('Please add your name and phone number'); return; }
   if (orderCtx.orderType === 'delivery' && !addr){ showToast('Please add a delivery address'); return; }
-  const totals = computeTotals(orderCtx.cart);
+  const totals = computeTotals(orderCtx.cart, orderCtx.tip);
   const submitBtn = document.getElementById('submit-customer');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Placing order...';
@@ -956,7 +1040,8 @@ async function submitCustomerOrder(){
     orderType: orderCtx.orderType,
     payMethod: orderCtx.payMethod,
     items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', unitPrice:l.unitPrice, qty:l.qty, notes:l.notes||'' })),
-    subtotal: totals.subtotal, tax: totals.tax, total: totals.total,
+    subtotal: totals.subtotal, tax: totals.tax, tip: totals.tip, total: totals.total,
+    phoneOptIn,
   });
   if (!ticket){
     submitBtn.disabled = false;

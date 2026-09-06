@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /staff/
+
+Sitemap: https://spairkie.github.io/cifellis-pizza-website/sitemap.xml

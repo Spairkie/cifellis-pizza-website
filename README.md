@@ -98,6 +98,38 @@ person (cash or card at pickup/delivery), matching how the shop operates
 today. Adding real card processing later (Stripe, Square, or similar) is a
 separate, deliberate step, not something to bolt on quietly.
 
+## What's scaffolded but not finished yet
+
+These exist in the repo as a starting point, not as working features.
+Each has a comment at the top of its main file explaining exactly what's
+left to do:
+
+- **Tipping** — actually works today. The Customer Kiosk shows a tip
+  picker (15%/18%/20%/custom) for delivery orders, added to the total
+  and stored on the order.
+- **Online card payments** — not wired up. `order/payments.js` documents
+  the steps to add Stripe (or another processor); today "Card" just
+  tells the counter to bring the card reader over, no money moves
+  through the site yet.
+- **SMS order notifications** — not wired up.
+  `supabase/functions/send-order-sms/` is a Supabase Edge Function stub
+  with the Twilio integration steps documented; the Customer Kiosk
+  already has a "text me when it's ready" opt-in checkbox that stores
+  consent (`phoneOptIn` on the order), nothing sends a text yet.
+- **Receipt printing** — partially works. `print-bridge/` is a separate
+  Node.js service (run on a mini PC near the printer) that turns an
+  order into a real ESC/POS receipt and can send it to a network
+  printer today. USB printer support and the Staff Hub's "send this to
+  the bridge" call are both stubbed with exact next steps. See
+  `print-bridge/README.md`.
+- **Analytics & SEO** — `index.html` has Open Graph/Twitter meta tags and
+  Restaurant structured data (JSON-LD) for search engines, plus
+  `robots.txt` and `sitemap.xml` at the repo root. Analytics itself
+  (e.g. Google Analytics 4) is a commented-out snippet in `index.html`'s
+  `<head>` — uncomment it and add your own Measurement ID when you have
+  one. `/staff/` is excluded from search indexing and the sitemap since
+  it's a private tool, not a public page.
+
 ## Research notes (for whoever picks this up later)
 
 A quick summary of what shaped the choices above, useful if this needs to

@@ -1,0 +1,34 @@
+<svg viewBox="0 0 800 320" xmlns="http://www.w3.org/2000/svg" role="img">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+  <stop offset="0%" stop-color="#3a2416"/>
+  <stop offset="100%" stop-color="#1c1712"/>
+</linearGradient>
+<radialGradient id="sbowl" cx="50%" cy="20%" r="85%">
+  <stop offset="0%" stop-color="#eee3c9"/><stop offset="100%" stop-color="#cbb98e"/>
+</radialGradient>
+</defs>
+<rect width="800" height="320" fill="url(#bg)"/>
+<g opacity=".08" fill="#f4ead6">
+  <circle cx="60" cy="40" r="3"/><circle cx="120" cy="90" r="3"/><circle cx="40" cy="200" r="3"/>
+  <circle cx="740" cy="60" r="3"/><circle cx="700" cy="260" r="3"/><circle cx="770" cy="150" r="3"/>
+  <circle cx="200" cy="280" r="3"/><circle cx="600" cy="30" r="3"/>
+</g>
+<g transform="translate(400,185)">
+  <path d="M -230 -10 A 230 95 0 0 0 230 -10 L 205 55 A 205 78 0 0 1 -205 55 Z" fill="url(#sbowl)"/>
+  <ellipse cx="0" cy="-10" rx="230" ry="95" fill="#3f5a2f"/>
+  <g fill="#557a3f">
+    <ellipse cx="-140" cy="-30" rx="38" ry="22" transform="rotate(-10 -140 -30)"/>
+    <ellipse cx="-60" cy="-55" rx="42" ry="24" transform="rotate(8 -60 -55)"/>
+    <ellipse cx="30" cy="-60" rx="40" ry="22" transform="rotate(-6 30 -60)"/>
+    <ellipse cx="120" cy="-45" rx="40" ry="24" transform="rotate(12 120 -45)"/>
+    <ellipse cx="180" cy="-15" rx="34" ry="20" transform="rotate(-8 180 -15)"/>
+  </g>
+  <g fill="#c22a2f">
+    <circle cx="-100" cy="-25" r="12"/><circle cx="-10" cy="-45" r="12"/><circle cx="90" cy="-20" r="12"/>
+  </g>
+  <g fill="#f4ead6">
+    <circle cx="-60" cy="-15" r="9"/><circle cx="40" cy="-30" r="9"/><circle cx="140" cy="-25" r="9"/>
+  </g>
+</g>
+</svg>
