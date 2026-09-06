@@ -52,9 +52,18 @@
         },
 
         async add(data) {
-          const { data: rows, error } = await client.from(name).insert(data).select('id').single();
+          // Deliberately no .select() here: chaining .select() after
+          // insert makes PostgREST read the new row back before
+          // returning, which requires a SELECT policy. The anon role
+          // (Customer Kiosk) only has INSERT on orders by design (see
+          // supabase/schema.sql), so a request that also required SELECT
+          // gets rejected as an RLS violation even though the insert
+          // itself is allowed. Nothing in this app needs the row back
+          // (the ticket number is generated client-side before this is
+          // ever called), so a plain insert avoids the problem entirely.
+          const { error } = await client.from(name).insert(data);
           if (error) throw error;
-          return { id: rows.id };
+          return { id: data.id || null };
         },
 
         onSnapshot(next, error) {

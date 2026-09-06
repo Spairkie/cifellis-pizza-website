@@ -91,12 +91,32 @@ becomes a real problem.
 
 ## If you see "new row violates row-level security policy for table orders"
 
-This means Postgres is blocking the Customer Kiosk from creating an order.
-It almost always means the INSERT policy from `schema.sql` either never
-ran or isn't there anymore (a project reset, a partial run that hit an
-error partway through, or a table that got recreated from the Table
-Editor UI instead of the SQL script all cause this). Fix it by re-running
-just the access-rules section, safe to run as many times as you want:
+There are two different causes that produce this exact same message.
+Fixed as of the code in this repo, but documented here in case it comes
+back (e.g. you're comparing against an older copy, or debugging
+something similar in a new table):
+
+**Cause 1: the actual root cause we hit** — `order/db-supabase.js`'s
+`add()` used to chain `.select('id')` after the insert, so it could
+hand back the new row's id. But chaining `.select()` makes PostgREST
+read the row back before responding, which requires a SELECT policy —
+and the anon role (Customer Kiosk) deliberately only has INSERT on
+`orders`, not SELECT (see "About security" below). So the insert itself
+was fine, but the read-back after it was rejected, and Postgres reports
+that as the exact same "row-level security policy" error as a missing
+INSERT policy, even though INSERT was never the problem. The fix
+(already applied): `add()` no longer selects the row back, since
+nothing in this app needs it — the ticket number is generated
+client-side before `add()` is ever called. If you see this error and
+you're confident your policies and grants are right (check with the
+query in cause 2 below), check `order/db-supabase.js` for a stray
+`.select()` chained onto an `insert()` call anywhere anon touches.
+
+**Cause 2: the INSERT policy or grant is actually missing** — a project
+reset, a partial `schema.sql` run that hit an error partway through, or
+a table recreated from the Table Editor UI instead of the SQL script.
+Fix it by re-running just the access-rules section, safe to run as many
+times as you want:
 
 1. Open **SQL Editor** > **New query** in your Supabase project.
 2. Paste this and click **Run**:
