@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cifelli's Order Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Order Cifelli's Pizza online, and the staff POS, kitchen board and driver app used to run it.">
+<meta name="theme-color" content="#1c1712">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Order Hub">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23f4ead6'/%3E%3Cpath d='M50 22 L78 68 A32 32 0 0 1 22 68 Z' fill='%23c22a2f'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rye&family=Work+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --ink:#1c1712; --ink-soft:#2a231d; --ink-softer:#382f27;
+    --paper:#f4ead6; --paper-dim:#e9dcbf;
+    --sauce:#c22a2f; --sauce-deep:#821e21;
+    --gold:#dc9f34; --basil:#4c6b3a;
+    --line-on-ink: rgba(244,234,214,.16);
+    --line-on-paper: rgba(28,23,18,.18);
+    --ok:#4c8c5a; --warn:#dc9f34; --bad:#c22a2f;
+  }
+  *,*::before,*::after{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--ink); color:var(--paper);
+    font-family:"Work Sans", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{ font-family:"Rye", Georgia, serif; font-weight:400; margin:0; line-height:1.1; }
+  button{ font-family:inherit; cursor:pointer; }
+  input,select,textarea{ font-family:inherit; }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+  [hidden]{ display:none !important; }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line-on-ink); border-radius:4px; }
+
+  /* ---------- role picker ---------- */
+  #screen-role{
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:40px 20px; gap:28px; text-align:center;
+  }
+  #screen-role .badge{ width:64px; height:64px; }
+  #screen-role h1{ font-size:clamp(32px,6vw,48px); }
+  #screen-role .sub{ color:var(--paper-dim); font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.1em; text-transform:uppercase; }
+  .role-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; max-width:900px; width:100%; }
+  .role-card{
+    background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
+    padding:26px 20px; color:var(--paper); text-align:left; transition:border-color .15s ease, transform .15s ease;
+  }
+  .role-card:hover{ border-color:var(--gold); transform:translateY(-2px); }
+  .role-card svg{ width:30px; height:30px; color:var(--gold); margin-bottom:14px; }
+  .role-card .t{ font-family:"Rye",serif; font-size:22px; }
+  .role-card .d{ font-size:12.5px; color:var(--paper-dim); margin-top:6px; line-height:1.4; }
+
+  /* ---------- app shell ---------- */
+  #app-shell{ min-height:100vh; display:flex; flex-direction:column; }
+  #app-header{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 18px; background:var(--ink-soft); border-bottom:1px solid var(--line-on-ink);
+    position:sticky; top:0; z-index:40;
+  }
+  #app-header .brand{ display:flex; align-items:center; gap:10px; }
+  #app-header .brand svg{ width:30px; height:30px; }
+  #app-header .brand .name{ font-family:"Rye",serif; font-size:18px; }
+  #app-header .role-tag{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); }
+  #app-header .right{ display:flex; align-items:center; gap:10px; }
+  .btn{ display:inline-flex; align-items:center; gap:8px; border:none; border-radius:999px; padding:10px 18px; font-weight:700; font-size:13.5px; }
+  .btn-sauce{ background:var(--sauce); color:var(--paper); }
+  .btn-sauce:hover{ background:var(--sauce-deep); }
+  .btn-outline{ background:transparent; color:var(--paper); border:1.5px solid var(--line-on-ink); }
+  .btn-outline:hover{ border-color:var(--paper-dim); }
+  .btn-ghost{ background:transparent; color:var(--paper-dim); border:none; font-size:12.5px; text-decoration:underline; padding:6px 4px; }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  main{ flex:1; min-height:0; }
+  .view{ height:100%; }
+
+  /* generic pieces reused across views */
+  .pill{
+    font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600; padding:8px 14px;
+    border-radius:999px; border:1.5px solid var(--line-on-ink); background:transparent; color:var(--paper-dim); white-space:nowrap;
+  }
+  .pill[aria-pressed="true"]{ background:var(--sauce); border-color:var(--sauce); color:var(--paper); }
+  .status-chip{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:999px; }
+  .status-new{ background:rgba(220,159,52,.18); color:var(--gold); }
+  .status-preparing{ background:rgba(220,159,52,.28); color:var(--gold); }
+  .status-ready{ background:rgba(76,140,90,.25); color:#7fc98f; }
+  .status-out_for_delivery{ background:rgba(76,108,140,.25); color:#8fb8d9; }
+  .status-completed{ background:rgba(244,234,214,.12); color:var(--paper-dim); }
+  .status-cancelled{ background:rgba(194,42,47,.2); color:#e59a9c; }
+
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:var(--paper); color:var(--ink); font-weight:700; font-size:14px; padding:12px 22px;
+    border-radius:999px; box-shadow:0 10px 30px -10px rgba(0,0,0,.6); transition:opacity .2s ease, transform .2s ease; z-index:100; pointer-events:none;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* ================= CUSTOMER / POS shared ordering layout ================= */
+  .order-layout{ display:grid; grid-template-columns:1fr 360px; height:calc(100vh - 57px); }
+  .order-menu-pane{ overflow-y:auto; padding:18px 20px 40px; background:var(--ink); }
+  .order-cart-pane{ background:var(--ink-soft); border-left:1px solid var(--line-on-ink); display:flex; flex-direction:column; height:100%; }
+  @media (max-width:860px){
+    .order-layout{ grid-template-columns:1fr; height:auto; }
+    .order-cart-pane{ border-left:none; border-top:1px solid var(--line-on-ink); }
+  }
+
+  .cat-bar{ display:flex; gap:8px; overflow-x:auto; padding-bottom:12px; margin-bottom:14px; position:sticky; top:0; background:var(--ink); z-index:5; }
+
+  .today-banner{
+    display:flex; align-items:center; gap:10px; background:linear-gradient(90deg, rgba(220,159,52,.16), transparent);
+    border:1px solid rgba(220,159,52,.4); border-radius:8px; padding:12px 16px; margin-bottom:16px; cursor:pointer;
+  }
+  .today-banner .t{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.12em; color:var(--gold); }
+  .today-banner .n{ font-family:"Rye",serif; font-size:17px; color:var(--paper); }
+  .today-banner .p{ margin-left:auto; font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); }
+
+  .menu-section{ margin-bottom:26px; }
+  .menu-section h3{ font-size:19px; color:var(--paper); border-bottom:2px solid var(--line-on-ink); padding-bottom:8px; margin-bottom:10px; display:flex; align-items:baseline; gap:10px; }
+  .menu-section .note{ font-family:"Work Sans"; font-size:11.5px; font-style:italic; color:var(--gold); font-weight:500; }
+  .item-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; }
+  .item-card{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; text-align:left; color:var(--paper);
+  }
+  .item-card:hover{ border-color:var(--gold); }
+  .item-card .n{ font-weight:600; font-size:13.5px; }
+  .item-card .s{ font-size:11px; color:var(--paper-dim); display:block; margin-top:2px; }
+  .item-card .p{ font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); white-space:nowrap; }
+  .item-card .plus{ width:26px; height:26px; border-radius:50%; background:var(--sauce); color:var(--paper); display:flex; align-items:center; justify-content:center; font-size:16px; flex:none; }
+
+  /* pizza builder */
+  .builder{ background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .size-row{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 14px; }
+  .size-opt{ flex:1; min-width:130px; background:var(--ink); border:1.5px solid var(--line-on-ink); border-radius:8px; padding:10px 12px; text-align:left; color:var(--paper); }
+  .size-opt[aria-pressed="true"]{ border-color:var(--sauce); background:rgba(194,42,47,.12); }
+  .size-opt .n{ font-weight:700; font-size:13px; }
+  .size-opt .p{ font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--gold); margin-top:2px; }
+  .topping-grid{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 14px; }
+  .topping-chip{ font-size:12.5px; padding:7px 13px; border-radius:999px; border:1.5px solid var(--line-on-ink); background:transparent; color:var(--paper-dim); }
+  .topping-chip[aria-pressed="true"]{ background:var(--gold); border-color:var(--gold); color:var(--ink); font-weight:700; }
+  .builder-total{ display:flex; align-items:center; justify-content:space-between; }
+
+  /* cart */
+  .cart-head{ padding:16px 18px; border-bottom:1px solid var(--line-on-ink); }
+  .cart-head h3{ font-size:18px; }
+  .cart-items{ flex:1; overflow-y:auto; padding:10px 18px; }
+  .cart-line{ display:flex; gap:8px; align-items:flex-start; padding:10px 0; border-bottom:1px dashed var(--line-on-ink); }
+  .cart-line .n{ font-weight:600; font-size:13px; flex:1; }
+  .cart-line .meta{ font-size:11px; color:var(--paper-dim); margin-top:2px; }
+  .cart-line .qty{ display:flex; align-items:center; gap:6px; }
+  .qty-btn{ width:22px; height:22px; border-radius:50%; border:1px solid var(--line-on-ink); background:transparent; color:var(--paper); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; }
+  .cart-line .p{ font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:13px; white-space:nowrap; }
+  .cart-empty{ text-align:center; color:var(--paper-dim); font-size:13px; padding:30px 10px; }
+  .cart-foot{ padding:14px 18px 18px; border-top:1px solid var(--line-on-ink); }
+  .row-between{ display:flex; justify-content:space-between; align-items:center; font-size:13.5px; margin:4px 0; }
+  .row-between.total{ font-size:18px; font-weight:700; font-family:"IBM Plex Mono",monospace; margin-top:8px; }
+
+  .field-group{ margin-top:10px; }
+  .field-group label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper-dim); margin-bottom:5px; font-family:"IBM Plex Mono",monospace; }
+  .field-group input, .field-group textarea{
+    width:100%; background:var(--ink); border:1.5px solid var(--line-on-ink); border-radius:6px; color:var(--paper);
+    padding:9px 11px; font-size:13.5px;
+  }
+  .field-group input:focus, .field-group textarea:focus{ outline:none; border-color:var(--gold); }
+  .seg{ display:flex; border:1.5px solid var(--line-on-ink); border-radius:8px; overflow:hidden; }
+  .seg button{ flex:1; background:transparent; border:none; color:var(--paper-dim); padding:9px 8px; font-size:12.5px; font-weight:600; }
+  .seg button[aria-pressed="true"]{ background:var(--sauce); color:var(--paper); }
+
+  /* order confirmation */
+  .confirm-wrap{ height:calc(100vh - 57px); display:flex; align-items:center; justify-content:center; padding:30px; text-align:center; }
+  .confirm-card{ max-width:420px; }
+  .confirm-ticket{ font-family:"Rye",serif; font-size:56px; color:var(--gold); }
+
+  /* ================= KITCHEN BOARD ================= */
+  #view-kitchen{ padding:16px 20px; height:calc(100vh - 57px); overflow-y:auto; }
+  .kanban{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; align-items:start; }
+  @media (max-width:1000px){ .kanban{ grid-template-columns:1fr 1fr; } }
+  .kanban-col{ background:var(--ink-soft); border-radius:10px; padding:12px; min-height:120px; }
+  .kanban-col h4{ font-size:13px; font-family:"IBM Plex Mono",monospace; text-transform:uppercase; letter-spacing:.1em; color:var(--paper-dim); padding:4px 6px 10px; display:flex; justify-content:space-between; }
+  .ticket{
+    background:var(--paper); color:var(--ink); border-radius:8px; padding:12px 13px; margin-bottom:10px;
+    box-shadow:0 8px 20px -10px rgba(0,0,0,.5); border-left:5px solid var(--ok);
+  }
+  .ticket.age-warn{ border-left-color:var(--warn); }
+  .ticket.age-bad{ border-left-color:var(--bad); }
+  .ticket .top{ display:flex; justify-content:space-between; align-items:baseline; }
+  .ticket .num{ font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:15px; }
+  .ticket .type{ font-size:10px; font-family:"IBM Plex Mono",monospace; text-transform:uppercase; padding:2px 7px; border-radius:999px; background:rgba(28,23,18,.1); }
+  .ticket .age{ font-size:11px; color:var(--sauce-deep); font-weight:700; margin-top:2px; }
+  .ticket ul{ list-style:none; margin:8px 0; padding:0; font-size:12.5px; }
+  .ticket li{ padding:2px 0; }
+  .ticket .who{ font-size:11.5px; color:rgba(28,23,18,.65); margin-top:4px; }
+  .ticket .advance{ width:100%; margin-top:10px; background:var(--ink); color:var(--paper); border:none; border-radius:6px; padding:9px; font-weight:700; font-size:12px; }
+  .ticket .advance:hover{ background:var(--sauce); }
+  .kanban-empty{ font-size:12px; color:var(--paper-dim); padding:10px 6px; }
+
+  /* ================= DRIVER APP ================= */
+  #view-driver{ max-width:520px; margin:0 auto; padding:16px 16px 60px; }
+  .driver-setup{ text-align:center; padding:60px 20px; }
+  .driver-card{
+    background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:14px;
+  }
+  .driver-card .top{ display:flex; justify-content:space-between; align-items:center; }
+  .driver-card .addr{ font-weight:700; font-size:15px; margin-top:8px; }
+  .driver-card .sub{ font-size:12.5px; color:var(--paper-dim); margin-top:2px; }
+  .driver-card .due{ font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); font-size:16px; margin-top:10px; }
+  .driver-actions{ display:flex; gap:8px; margin-top:12px; }
+  .driver-actions a, .driver-actions button{ flex:1; text-align:center; text-decoration:none; }
+  .section-label{ font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); margin:22px 0 10px; }
+  .db-banner{ position:relative; background:var(--sauce); color:var(--paper); font-size:12.5px; font-weight:700; text-align:center; padding:8px 14px; z-index:200; }
+  .db-banner a{ color:var(--paper); text-decoration:underline; }
+</style>
+</head>
+<body>
+
+<div class="db-banner" id="db-banner" hidden></div>
+
+<!-- ============== ROLE PICKER ============== -->
+<div id="screen-role">
+  <svg class="badge" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="48" fill="#f4ead6"/>
+    <circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="5"/>
+    <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+    <circle cx="50" cy="46" r="4.2" fill="#f4ead6"/><circle cx="40" cy="58" r="4.2" fill="#f4ead6"/><circle cx="60" cy="58" r="4.2" fill="#f4ead6"/>
+  </svg>
+  <div>
+    <h1>Cifelli's Order Hub</h1>
+    <div class="sub">One live order queue &middot; four screens</div>
+  </div>
+  <div class="role-grid">
+    <button class="role-card" data-role="customer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 6 22M18 2 18 22M3 8h18M3 16h18"/></svg>
+      <div class="t">Customer Kiosk</div>
+      <div class="d">Browse the menu and place an order. For the counter kiosk or a customer's phone.</div>
+    </button>
+    <button class="role-card" data-role="pos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><path d="M2 13h20"/></svg>
+      <div class="t">Staff POS</div>
+      <div class="d">Ring up phone and walk-in orders, take cash, manage what's in progress.</div>
+    </button>
+    <button class="role-card" data-role="kitchen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg>
+      <div class="t">Kitchen Board</div>
+      <div class="d">The live current-orders screen: new, in progress, ready, out the door.</div>
+    </button>
+    <button class="role-card" data-role="driver">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 13l2-6h9l3 6M3 13h16M3 13v4h2m14-4v4h-2"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg>
+      <div class="t">Driver App</div>
+      <div class="d">Claim deliveries, get the address, mark them out the door and delivered.</div>
+    </button>
+  </div>
+  <button class="btn-ghost" id="installBtn" type="button" hidden style="margin-top:6px; font-size:13px;">Install this app on this device &darr;</button>
+</div>
+
+<!-- ============== APP SHELL ============== -->
+<div id="app-shell" hidden>
+  <div id="app-header">
+    <div class="brand">
+      <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="#f4ead6"/><circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="6"/><path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/></svg>
+      <div>
+        <div class="name">Cifelli's</div>
+        <div class="role-tag" id="role-label">&hellip;</div>
+      </div>
+    </div>
+    <div class="right" id="header-right"></div>
+  </div>
+  <main>
+    <div class="view" id="view-customer" hidden></div>
+    <div class="view" id="view-pos" hidden></div>
+    <div class="view" id="view-kitchen" hidden></div>
+    <div class="view" id="view-driver" hidden></div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="supabase-config.js"></script>
+<script src="db-supabase.js"></script>
+
+<script>
+/* =========================================================================
+   MENU DATA: mirrors the real Cifelli's menu
+   ========================================================================= */
+const TAX_RATE = 0.06625;
+
+const PIZZA_SIZES = [
+  { key:'personal', label:'Personal Pan (9")', base:8.00, perTopping:1.00 },
+  { key:'medium',   label:'Medium (14")',      base:14.50, perTopping:3.00 },
+  { key:'large',    label:'Large (16")',       base:15.99, perTopping:3.50 },
+  { key:'sicilian', label:'Sicilian (16x16")', base:17.99, perTopping:4.00 },
+];
+const TOPPINGS = ['Pepperoni','Sausage','Bacon','Meatball','Ham','Extra Cheese','Green Pepper','Onion','Black Olive','Mushroom','Anchovy','Pineapple','Spinach','Broccoli'];
+const SPECIALTY_PIZZAS = [
+  { name:'Bacon BBQ Chicken Ranch', sizes:[{label:'Medium',price:24.00},{label:'Large',price:26.00}] },
+  { name:'Buffalo Chicken',         sizes:[{label:'Medium',price:24.00},{label:'Large',price:26.00}] },
+  { name:'Hawaiian',                sizes:[{label:'Medium',price:20.50},{label:'Large',price:22.99},{label:'Sicilian',price:24.99}] },
+  { name:'White Pie',               sizes:[{label:'Medium',price:14.50},{label:'Large',price:15.99},{label:'Sicilian',price:17.99}] },
+  { name:'The Works',               sizes:[{label:'Medium',price:24.00},{label:'Large',price:25.99},{label:'Sicilian',price:29.99}] },
+];
+
+const CATEGORIES = [
+  { key:'panzarotti', label:'Panzarotti', note:'Deep fried and golden brown', items:[
+    { name:'Panzarotti', price:8.25, desc:'Add $0.75 per extra ingredient' },
+  ]},
+  { key:'stromboli', label:'Stromboli', items:[
+    { name:'Cheese Stromboli', price:17.99, desc:'+$2.50 per topping, +$5.00 steak or chicken' },
+    { name:'Steak & Onion Stromboli', price:24.99 },
+  ]},
+  { key:'calzones', label:'Calzones', items:[
+    { name:'Calzone', price:14.99, desc:'Ham, ricotta, mozzarella and sauce' },
+  ]},
+  { key:'turnover', label:'Pizza Turnover', items:[
+    { name:'Pizza Turnover', price:13.50, desc:'Mozzarella and pizza sauce, $1 per extra ingredient' },
+  ]},
+  { key:'wings', label:'Wings', note:'All wings come with bread and blue cheese', items:[
+    { name:'Wings', size:'8 pc', price:9.50 },
+    { name:'Wings', size:'12 pc', price:14.99 },
+    { name:'Wings', size:'16 pc', price:18.99 },
+    { name:'Wings', size:'24 pc', price:27.99 },
+  ]},
+  { key:'steaks', label:'Steaks', note:'Chicken made with 100% boneless, skinless breast meat', items:[
+    { name:'Plain Steak', price:11.00 }, { name:'Cheese Steak', price:12.00 }, { name:'Chicken Cheese Steak', price:12.00 },
+    { name:'Bacon Cheese Steak', price:13.00 }, { name:'Cheese Steak Sub', price:13.00 }, { name:'Chicken Cheese Steak Sub', price:13.00 },
+    { name:'Mushroom Cheese Steak', price:13.00 }, { name:'Pepperoni Cheese Steak', price:13.00 }, { name:'Pizza Steak', price:13.00 },
+    { name:'Buffalo Chicken Cheese Steak', price:13.00 }, { name:'Broccoli Garlic & Oil Chicken Cheese Steak', price:13.00 },
+    { name:'Cheese Steak Special', price:13.75 }, { name:'Cheese Steak Platter', price:14.99 },
+  ]},
+  { key:'hoagies', label:'Hoagies', note:'All hoagies made with lettuce, tomato, onion and oil', items:[
+    { name:'Mixed Cheese', price:11.00 }, { name:'American', price:11.50 }, { name:'Ham & Cheese', price:12.00 },
+    { name:'Italian', price:12.00 }, { name:'Turkey & Cheese', price:12.00 }, { name:'Roast Beef, Provolone or American', price:13.00 },
+    { name:'Fried Fish Hoagie', price:13.00 },
+  ]},
+  { key:'pasta', label:'Pasta', note:'Served with soup, salad and garlic bread, spaghetti or ziti', items:[
+    { name:'Tomato Sauce', price:12.99 }, { name:'Meatballs', price:16.99 }, { name:'Sausage', price:16.99 },
+  ]},
+  { key:'parm', label:'Parmigiana Dinners', note:'Served with salad and garlic bread or a side of spaghetti/ziti', items:[
+    { name:'Eggplant Parmigiana', price:15.99 }, { name:'Chicken Cutlet Parmigiana', price:16.99 },
+  ]},
+  { key:'hotsand', label:'Hot Sandwiches', items:[
+    { name:'Homemade Meatball Sandwich', price:11.50 }, { name:'Eggplant Parmigiana', price:11.00 },
+    { name:'Homemade Meatball Parmigiana', price:12.50 }, { name:'Chicken Parmigiana', price:12.50 },
+    { name:'Sausage Parmigiana', price:12.50 }, { name:'Hot Roast Beef', price:12.00 },
+    { name:'Hot Roast Beef with Cheese', price:13.00 }, { name:'Sausage Supreme', price:12.99 },
+  ]},
+  { key:'italian', label:'Italian Specialties', note:'Served with soup, salad and garlic bread', items:[
+    { name:'Baked Ziti', price:16.99 }, { name:'Cheese Ravioli', price:16.99 }, { name:'Stuffed Shells Parmigiana', price:16.99 },
+  ]},
+  { key:'platters', label:'Platters', items:[
+    { name:'BLT Club', price:12.99 }, { name:'Chicken Finger Platter', price:13.99 }, { name:'Ham & Cheese Club', price:13.99 },
+    { name:'Chicken Club', price:14.99 }, { name:'Roast Beef Club', price:14.99 }, { name:'Turkey Club', price:14.99 }, { name:'Shrimp Platter', price:14.99 },
+  ]},
+  { key:'burgers', label:'Quarter Pound Burgers', items:[
+    { name:'Hamburger', price:7.00 }, { name:'Cheeseburger', price:8.00 }, { name:'Bacon Cheeseburger', price:9.00 },
+    { name:'Pizza Burger', price:9.00 }, { name:'Cheese Burger Sub', price:13.00 },
+  ]},
+  { key:'sides', label:'Side Orders', items:[
+    { name:'French Fries', price:5.75 }, { name:'Onion Rings', price:8.00 }, { name:'Poppers', size:'Cheddar', price:8.00 },
+    { name:'Breaded Mushrooms', price:8.50 }, { name:'Broccoli Bites', price:8.50 }, { name:'Meatballs', price:8.50 },
+    { name:'Mozzarella Sticks', price:8.50 }, { name:'Pizza Fries', size:'Small', price:8.50 }, { name:'Pizza Fries', size:'Large', price:10.50 },
+    { name:'Sausage', price:8.50 }, { name:'Fried Tomato', price:9.00 }, { name:'Cheese Fries', size:'Small', price:6.50 },
+    { name:'Cheese Fries', size:'Large', price:9.00 }, { name:'Loaded Fries', size:'Small', price:9.50 }, { name:'Loaded Fries', size:'Large', price:10.50 },
+    { name:'Homemade Cole Slaw', size:'Pint', price:3.50 }, { name:'Homemade Cole Slaw', size:'Quart', price:7.00 },
+    { name:'Something Sweet Zeppoli', size:'Small', price:4.00 }, { name:'Something Sweet Zeppoli', size:'Large', price:8.00 },
+  ]},
+  { key:'soups', label:'Soups', items:[
+    { name:'Pasta Faggioli', size:'Small', price:4.99 }, { name:'Pasta Faggioli', size:'Quart', price:8.99 },
+    { name:'Chili', size:'Small, winter', price:6.50 }, { name:'Chili', size:'Quart, winter', price:11.99 },
+  ]},
+  { key:'salads', label:'Salads', items:[
+    { name:'Tossed Salad', price:7.99 }, { name:'Antipasta', price:12.99 }, { name:'Chef Salad', price:12.99 },
+    { name:'Chicken Caesar Salad', price:12.99 }, { name:'Grilled Chicken Salad', price:12.99 },
+  ]},
+  { key:'breakfast', label:'Breakfast', items:[
+    { name:'Grilled Cheese', price:7.00, desc:'+$1 to add ham or bacon' }, { name:'Bacon, Lettuce & Tomato', price:8.00 },
+    { name:'Pepper and Egg', price:10.00 }, { name:'Bacon, Egg and Cheese', price:11.00 },
+    { name:'Sausage, Egg and Cheese', price:11.00 }, { name:'Pork Roll, Egg and Cheese', price:11.00 },
+  ]},
+  { key:'knots', label:'Garlic Knots', items:[ { name:'Garlic Knots', size:'6 pc', price:4.75 } ]},
+  { key:'drinks', label:'Drinks', note:'We carry Pepsi products', items:[
+    { name:'Bottled Soda', size:'20 oz', price:2.75 }, { name:'Bottled Soda', size:'2 Liter', price:4.50 },
+  ]},
+];
+
+const SPECIALS_BY_DAY = {
+  0:{ name:'4 Original Panzarotti', price:25.99 },
+  1:{ name:'2 Cheese Steaks', price:20.99 },
+  2:{ name:'Large Pizza', price:13.99 },
+  3:{ name:'Sicilian Pie', price:15.99 },
+  4:{ name:'2 Chicken Finger Platters', price:22.99 },
+  5:{ name:'Stromboli + 2 Liter Soda', price:18.50 },
+  6:{ name:'Cheese Steak Platter', price:13.99 },
+};
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+</script>
+
+<script>
+/* =========================================================================
+   UTILITIES
+   ========================================================================= */
+function money(n){ return '$' + (Math.round(n*100)/100).toFixed(2); }
+function newTicket(){ return 'T' + String(Date.now()).slice(-6); }
+function newId(){ return 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function timeAgo(ts){
+  const mins = Math.max(0, Math.floor((Date.now()-ts)/60000));
+  if (mins < 1) return 'just in';
+  if (mins === 1) return '1 min';
+  return mins + ' min';
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function computeTotals(items){
+  const subtotal = items.reduce((s,it)=> s + it.unitPrice*it.qty, 0);
+  const tax = subtotal * TAX_RATE;
+  return { subtotal, tax, total: subtotal+tax };
+}
+function lineLabel(it){
+  return it.name + (it.size ? ' (' + it.size + ')' : '');
+}
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const App = {
+  role: null,
+  db: null,
+  dbReady: false,
+  unsub: [],
+  cart: [],
+  driverName: null,
+};
+
+function showDbBanner(msg){
+  const banner = document.getElementById('db-banner');
+  if (!banner) return;
+  if (!msg){ banner.hidden = true; banner.textContent = ''; return; }
+  banner.hidden = false;
+  banner.innerHTML = msg;
+}
+
+async function getDb(){
+  if (App.db || App.dbReady) return App.db;
+  App.dbReady = true;
+  try{
+    const url = window.SUPABASE_URL;
+    const key = window.SUPABASE_ANON_KEY;
+    if (!url || !key){
+      showDbBanner('Not connected to a database yet. See supabase/README.md to finish setup (edit order/supabase-config.js).');
+      App.db = null;
+      return App.db;
+    }
+    if (typeof window.supabase === 'undefined' || typeof window.createSupabaseDb === 'undefined'){
+      showDbBanner('Database scripts failed to load. Check your internet connection and reload.');
+      App.db = null;
+      return App.db;
+    }
+    const client = window.supabase.createClient(url, key);
+    App.db = window.createSupabaseDb(client);
+  }catch(e){
+    showDbBanner('Could not connect to the database: ' + (e && e.message ? e.message : 'unknown error'));
+    App.db = null;
+  }
+  return App.db;
+}
+
+function ordersCol(){
+  return App.db ? App.db.collection('orders') : null;
+}
+
+/* Create an order document. Returns the ticket number. */
+async function submitOrder(order){
+  const ticket = newTicket();
+  const body = Object.assign({
+    ticket,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    status: 'new',
+    driver: null,
+  }, order);
+  const db = await getDb();
+  if (!db){
+    showToast('Offline: order not saved (no database connection)');
+    return ticket;
+  }
+  await db.collection('orders').add(body);
+  return ticket;
+}
+
+async function updateOrder(docId, patch){
+  const db = await getDb();
+  if (!db) return;
+  patch = Object.assign({ updatedAt: Date.now() }, patch);
+  try{ await db.collection('orders').doc(docId).update(patch); }
+  catch(e){ /* last-writer-wins; ignore transient errors */ }
+}
+</script>
+
+<script>
+/* =========================================================================
+   BOOT + ROLE SWITCHING
+   ========================================================================= */
+const ROLE_LABELS = { customer:'Customer Kiosk', pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App' };
+
+function stopAllSubscriptions(){
+  App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
+  App.unsub = [];
+}
+
+function goToRole(role){
+  App.role = role;
+  localStorage.setItem('cifellis_role', role);
+  document.getElementById('screen-role').hidden = true;
+  document.getElementById('app-shell').hidden = false;
+  document.getElementById('role-label').textContent = ROLE_LABELS[role];
+  document.querySelectorAll('.view').forEach(v => v.hidden = true);
+  stopAllSubscriptions();
+
+  const right = document.getElementById('header-right');
+  right.innerHTML = '<button class="btn-ghost" id="switch-role-btn">Switch screen</button>';
+  document.getElementById('switch-role-btn').addEventListener('click', () => {
+    localStorage.removeItem('cifellis_role');
+    stopAllSubscriptions();
+    document.getElementById('app-shell').hidden = true;
+    document.getElementById('screen-role').hidden = false;
+  });
+
+  if (role === 'customer'){ document.getElementById('view-customer').hidden = false; initCustomerView(); }
+  if (role === 'pos'){ document.getElementById('view-pos').hidden = false; initPosView(); }
+  if (role === 'kitchen'){ document.getElementById('view-kitchen').hidden = false; initKitchenView(); }
+  if (role === 'driver'){ document.getElementById('view-driver').hidden = false; initDriverView(); }
+}
+
+document.querySelectorAll('.role-card').forEach(btn => {
+  btn.addEventListener('click', () => goToRole(btn.getAttribute('data-role')));
+});
+
+(async function boot(){
+  await getDb();
+  const saved = localStorage.getItem('cifellis_role');
+  if (saved && ROLE_LABELS[saved]) goToRole(saved);
+})();
+
+/* Install prompt: Chrome/Edge/Android fire beforeinstallprompt; iOS Safari
+   never does (there is no programmatic install there), so the button
+   simply never appears on iOS and staff use Share > Add to Home Screen. */
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.hidden = false;
+});
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  document.getElementById('installBtn').hidden = true;
+});
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.hidden = true;
+});
+</script>
+
+<script>
+/* =========================================================================
+   ORDERING (shared by Customer Kiosk and Staff POS)
+   ========================================================================= */
+let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash' };
+
+function resetOrderCtx(mode){
+  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash' };
+}
+
+function addLine(line){
+  const key = line.name+'|'+(line.size||'')+'|'+(line.notes||'');
+  const existing = orderCtx.cart.find(l => l._key===key);
+  if (existing){ existing.qty += line.qty||1; }
+  else { orderCtx.cart.push(Object.assign({_key:key, qty:line.qty||1}, line)); }
+  renderCart(orderCtx.mode);
+}
+function changeQty(key, delta){
+  const l = orderCtx.cart.find(x=>x._key===key);
+  if (!l) return;
+  l.qty += delta;
+  if (l.qty<=0) orderCtx.cart = orderCtx.cart.filter(x=>x._key!==key);
+  renderCart(orderCtx.mode);
+}
+
+function buildMenuPaneHTML(mode){
+  const today = SPECIALS_BY_DAY[new Date().getDay()];
+  let html = `<div class="cat-bar" id="catbar-${mode}">
+    <button class="pill" data-cat="all" aria-pressed="true">All</button>
+    <button class="pill" data-cat="pizza">Pizza</button>`;
+  CATEGORIES.forEach(c => html += `<button class="pill" data-cat="${c.key}">${escapeHtml(c.label)}</button>`);
+  html += `</div>`;
+
+  html += `<div class="today-banner" id="todaybanner-${mode}">
+    <div><div class="t">Today's Special, ${DAY_NAMES[new Date().getDay()]}</div><div class="n">${escapeHtml(today.name)}</div></div>
+    <div class="p">${money(today.price)}</div>
+  </div>`;
+
+  html += `<div class="menu-section" data-section="pizza">
+    <h3>Pizza</h3>
+    <div class="builder" id="builder-${mode}">
+      <div style="font-size:12.5px; color:var(--paper-dim); margin-bottom:4px;">Build your own</div>
+      <div class="size-row" id="sizerow-${mode}"></div>
+      <div style="font-size:12.5px; color:var(--paper-dim); margin:6px 0 2px;">Toppings</div>
+      <div class="topping-grid" id="toppingrow-${mode}"></div>
+      <div class="builder-total">
+        <div class="mono" id="buildertotal-${mode}" style="font-weight:700; font-size:16px; color:var(--gold);"></div>
+        <button class="btn btn-sauce" id="addpizza-${mode}" type="button">Add Pizza</button>
+      </div>
+    </div>
+    <div style="margin-top:14px; font-size:13px; color:var(--paper-dim); font-weight:700;">Specialty Pies</div>
+    <div class="item-grid" style="margin-top:8px;" id="specialty-${mode}"></div>
+  </div>`;
+
+  CATEGORIES.forEach(cat => {
+    html += `<div class="menu-section" data-section="${cat.key}">
+      <h3>${escapeHtml(cat.label)}${cat.note ? ` <span class="note">${escapeHtml(cat.note)}</span>` : ''}</h3>
+      <div class="item-grid">`;
+    cat.items.forEach((it, idx) => {
+      html += `<button type="button" class="item-card" data-add-cat="${cat.key}" data-add-idx="${idx}">
+        <span><span class="n">${escapeHtml(it.name)}</span>${it.size?`<span class="s">${escapeHtml(it.size)}</span>`:''}${it.desc?`<span class="s">${escapeHtml(it.desc)}</span>`:''}</span>
+        <span style="display:flex; align-items:center; gap:8px;"><span class="p">${money(it.price)}</span><span class="plus">+</span></span>
+      </button>`;
+    });
+    html += `</div></div>`;
+  });
+  return html;
+}
+
+function buildCartPaneHTML(mode){
+  if (mode==='customer'){
+    return `
+      <div class="cart-head"><h3>Your Order</h3></div>
+      <div class="cart-items" id="cartitems-${mode}"></div>
+      <div class="cart-foot">
+        <div class="field-group"><label>Order Type</label>
+          <div class="seg" id="ordertype-${mode}">
+            <button type="button" data-v="pickup" aria-pressed="true">Pickup</button>
+            <button type="button" data-v="delivery">Delivery</button>
+          </div>
+        </div>
+        <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Your name"></div>
+        <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
+        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ"></div>
+        <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Allergies, extra sauce, etc."></div>
+        <div class="field-group"><label>Payment</label>
+          <div class="seg" id="paymethod-${mode}">
+            <button type="button" data-v="cash" aria-pressed="true">Cash</button>
+            <button type="button" data-v="card">Card</button>
+          </div>
+          <div style="font-size:11px; color:var(--paper-dim); margin-top:6px;">Paid in person at pickup or delivery. Card processing isn't connected here.</div>
+        </div>
+        <div class="row-between" style="margin-top:14px;"><span>Subtotal</span><span class="mono" id="subtotal-${mode}"></span></div>
+        <div class="row-between"><span>Tax</span><span class="mono" id="tax-${mode}"></span></div>
+        <div class="row-between total"><span>Total</span><span id="total-${mode}"></span></div>
+        <button class="btn btn-sauce" id="submit-${mode}" type="button" style="width:100%; justify-content:center; margin-top:14px; padding:14px;">Place Order</button>
+      </div>`;
+  }
+  return `
+    <div class="cart-head" style="display:flex; justify-content:space-between; align-items:center;">
+      <h3 style="font-size:18px;">New Order</h3>
+      <button class="btn-ghost" id="viewqueue-${mode}" type="button">Manage current orders &rarr;</button>
+    </div>
+    <div class="cart-items" id="cartitems-${mode}"></div>
+    <div class="cart-foot">
+      <div class="field-group"><label>Order Type</label>
+        <div class="seg" id="ordertype-${mode}">
+          <button type="button" data-v="phone" aria-pressed="true">Phone</button>
+          <button type="button" data-v="walkin">Walk-in</button>
+          <button type="button" data-v="delivery">Delivery</button>
+        </div>
+      </div>
+      <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Customer name"></div>
+      <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
+      <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ"></div>
+      <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Order notes"></div>
+      <div class="field-group"><label>Tender</label>
+        <div class="seg" id="paymethod-${mode}">
+          <button type="button" data-v="cash" aria-pressed="true">Cash</button>
+          <button type="button" data-v="card">Card</button>
+        </div>
+      </div>
+      <div class="field-group" id="cashgroup-${mode}"><label>Cash Tendered</label><input id="tendered-${mode}" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="row-between" style="margin-top:10px;"><span>Subtotal</span><span class="mono" id="subtotal-${mode}"></span></div>
+      <div class="row-between"><span>Tax</span><span class="mono" id="tax-${mode}"></span></div>
+      <div class="row-between total"><span>Total</span><span id="total-${mode}"></span></div>
+      <div class="row-between" id="changerow-${mode}" style="color:var(--gold); font-weight:700;"></div>
+      <button class="btn btn-sauce" id="submit-${mode}" type="button" style="width:100%; justify-content:center; margin-top:14px; padding:14px;">Ring Up Order</button>
+    </div>`;
+}
+
+function wireCategoryBar(mode){
+  const bar = document.getElementById(`catbar-${mode}`);
+  bar.querySelectorAll('.pill').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      bar.querySelectorAll('.pill').forEach(b=>b.setAttribute('aria-pressed','false'));
+      btn.setAttribute('aria-pressed','true');
+      const cat = btn.getAttribute('data-cat');
+      document.querySelectorAll(`#menupane-${mode} .menu-section`).forEach(sec=>{
+        sec.hidden = !(cat==='all' || sec.getAttribute('data-section')===cat);
+      });
+    });
+  });
+}
+function wireItemButtons(mode){
+  document.querySelectorAll(`#menupane-${mode} [data-add-cat]`).forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const cat = CATEGORIES.find(c=>c.key===btn.getAttribute('data-add-cat'));
+      const it = cat.items[+btn.getAttribute('data-add-idx')];
+      addLine({ name: it.name, size: it.size||'', unitPrice: it.price, qty:1, notes:'' });
+      showToast(it.name+' added');
+    });
+  });
+}
+function renderSpecialtyPizzas(mode){
+  const el = document.getElementById(`specialty-${mode}`);
+  let html='';
+  SPECIALTY_PIZZAS.forEach((p,pi)=>{
+    p.sizes.forEach((s,si)=>{
+      html += `<button type="button" class="item-card" data-sp="${pi}" data-ss="${si}">
+        <span><span class="n">${escapeHtml(p.name)}</span><span class="s">${escapeHtml(s.label)}</span></span>
+        <span style="display:flex; align-items:center; gap:8px;"><span class="p">${money(s.price)}</span><span class="plus">+</span></span>
+      </button>`;
+    });
+  });
+  el.innerHTML = html;
+}
+function wireSpecialtyButtons(mode){
+  document.querySelectorAll(`#specialty-${mode} [data-sp]`).forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const p = SPECIALTY_PIZZAS[+btn.getAttribute('data-sp')];
+      const s = p.sizes[+btn.getAttribute('data-ss')];
+      addLine({ name:p.name, size:s.label, unitPrice:s.price, qty:1, notes:'' });
+      showToast(p.name+' added');
+    });
+  });
+}
+function renderPizzaBuilder(mode){
+  const sizeRow = document.getElementById(`sizerow-${mode}`);
+  sizeRow.innerHTML = PIZZA_SIZES.map(s => `<button type="button" class="size-opt" data-size="${s.key}" aria-pressed="${orderCtx.pizzaSize===s.key}"><div class="n">${s.label}</div><div class="p">${money(s.base)} + ${money(s.perTopping)}/topping</div></button>`).join('');
+  sizeRow.querySelectorAll('.size-opt').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ orderCtx.pizzaSize = btn.getAttribute('data-size'); renderPizzaBuilder(mode); });
+  });
+  const topRow = document.getElementById(`toppingrow-${mode}`);
+  topRow.innerHTML = TOPPINGS.map(t => `<button type="button" class="topping-chip" data-t="${escapeHtml(t)}" aria-pressed="${orderCtx.pizzaToppings.has(t)}">${escapeHtml(t)}</button>`).join('');
+  topRow.querySelectorAll('.topping-chip').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const t = btn.getAttribute('data-t');
+      if (orderCtx.pizzaToppings.has(t)) orderCtx.pizzaToppings.delete(t); else orderCtx.pizzaToppings.add(t);
+      renderPizzaBuilder(mode);
+    });
+  });
+  const sizeObj = PIZZA_SIZES.find(s=>s.key===orderCtx.pizzaSize);
+  const total = sizeObj.base + sizeObj.perTopping*orderCtx.pizzaToppings.size;
+  document.getElementById(`buildertotal-${mode}`).textContent = money(total);
+  document.getElementById(`addpizza-${mode}`).onclick = () => {
+    const toppingsArr = Array.from(orderCtx.pizzaToppings);
+    addLine({
+      name: sizeObj.label.replace(/\s*\(.+\)$/,'') + ' Pizza',
+      size: sizeObj.label,
+      unitPrice: total,
+      qty: 1,
+      notes: toppingsArr.length ? toppingsArr.join(', ') : '',
+    });
+    orderCtx.pizzaToppings = new Set();
+    renderPizzaBuilder(mode);
+    showToast('Pizza added');
+  };
+}
+
+function wireSeg(segId, stateKey, onChange){
+  const seg = document.getElementById(segId);
+  seg.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));
+      btn.setAttribute('aria-pressed','true');
+      orderCtx[stateKey] = btn.getAttribute('data-v');
+      if (onChange) onChange(orderCtx[stateKey]);
+    });
+  });
+}
+
+function updateChangeDue(mode, total){
+  const row = document.getElementById(`changerow-${mode}`);
+  if (!row) return;
+  if (orderCtx.payMethod!=='cash'){ row.innerHTML=''; return; }
+  const tenderedInput = document.getElementById(`tendered-${mode}`);
+  const tendered = tenderedInput ? parseFloat(tenderedInput.value||'0') : 0;
+  if (!tendered){ row.innerHTML = ''; return; }
+  row.innerHTML = `<span>Change Due</span><span class="mono">${money(Math.max(0,tendered-total))}</span>`;
+}
+
+function renderCart(mode){
+  if (!mode) return;
+  const wrap = document.getElementById(`cartitems-${mode}`);
+  if (!wrap) return;
+  if (!orderCtx.cart.length){
+    wrap.innerHTML = `<div class="cart-empty">Nothing in the order yet.<br>Tap items on the left to add them.</div>`;
+  } else {
+    wrap.innerHTML = orderCtx.cart.map(l => `
+      <div class="cart-line">
+        <div style="flex:1;">
+          <div class="n">${escapeHtml(lineLabel(l))}</div>
+          ${l.notes ? `<div class="meta">${escapeHtml(l.notes)}</div>` : ''}
+          <div class="qty" style="margin-top:6px;">
+            <button type="button" class="qty-btn" data-key="${escapeHtml(l._key)}" data-d="-1">&minus;</button>
+            <span class="mono">${l.qty}</span>
+            <button type="button" class="qty-btn" data-key="${escapeHtml(l._key)}" data-d="1">+</button>
+          </div>
+        </div>
+        <div class="p">${money(l.unitPrice*l.qty)}</div>
+      </div>`).join('');
+    wrap.querySelectorAll('.qty-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> changeQty(btn.getAttribute('data-key'), +btn.getAttribute('data-d')));
+    });
+  }
+  const totals = computeTotals(orderCtx.cart);
+  document.getElementById(`subtotal-${mode}`).textContent = money(totals.subtotal);
+  document.getElementById(`tax-${mode}`).textContent = money(totals.tax);
+  document.getElementById(`total-${mode}`).textContent = money(totals.total);
+  if (mode==='pos') updateChangeDue(mode, totals.total);
+  const submitBtn = document.getElementById(`submit-${mode}`);
+  if (submitBtn) submitBtn.disabled = orderCtx.cart.length===0;
+}
+</script>
+
+<script>
+/* =========================================================================
+   CUSTOMER KIOSK + STAFF POS: view setup and submit
+   ========================================================================= */
+function renderOrderLayout(mode){
+  const view = document.getElementById(mode==='customer' ? 'view-customer' : 'view-pos');
+  view.innerHTML = `
+    <div class="order-layout">
+      <div class="order-menu-pane" id="menupane-${mode}"></div>
+      <div class="order-cart-pane" id="cartpane-${mode}"></div>
+    </div>`;
+  document.getElementById(`menupane-${mode}`).innerHTML = buildMenuPaneHTML(mode);
+  document.getElementById(`cartpane-${mode}`).innerHTML = buildCartPaneHTML(mode);
+  wireCategoryBar(mode);
+  wireItemButtons(mode);
+  renderSpecialtyPizzas(mode);
+  wireSpecialtyButtons(mode);
+  renderPizzaBuilder(mode);
+  wireSeg(`ordertype-${mode}`, 'orderType', (v) => {
+    const addrGroup = document.getElementById(`addrgroup-${mode}`);
+    if (addrGroup) addrGroup.hidden = (v !== 'delivery');
+  });
+  wireSeg(`paymethod-${mode}`, 'payMethod', () => {
+    if (mode === 'pos'){
+      const cashGroup = document.getElementById(`cashgroup-${mode}`);
+      if (cashGroup) cashGroup.hidden = (orderCtx.payMethod !== 'cash');
+      renderCart(mode);
+    }
+  });
+  if (mode === 'pos'){
+    const tenderedInput = document.getElementById(`tendered-${mode}`);
+    if (tenderedInput) tenderedInput.addEventListener('input', () => renderCart(mode));
+    const queueBtn = document.getElementById(`viewqueue-${mode}`);
+    if (queueBtn) queueBtn.addEventListener('click', () => renderPosQueue());
+  }
+  const banner = document.getElementById(`todaybanner-${mode}`);
+  if (banner){
+    banner.addEventListener('click', () => {
+      const today = SPECIALS_BY_DAY[new Date().getDay()];
+      addLine({ name: today.name, size:'', unitPrice: today.price, qty:1, notes:'Daily special' });
+      showToast(today.name + ' added');
+    });
+  }
+  const submitBtn = document.getElementById(`submit-${mode}`);
+  submitBtn.addEventListener('click', () => mode === 'customer' ? submitCustomerOrder() : submitPosOrder());
+  renderCart(mode);
+}
+
+function initCustomerView(){
+  stopAllSubscriptions();
+  resetOrderCtx('customer');
+  orderCtx.orderType = 'pickup';
+  renderOrderLayout('customer');
+}
+
+async function submitCustomerOrder(){
+  const name = document.getElementById('custname-customer').value.trim();
+  const phone = document.getElementById('custphone-customer').value.trim();
+  const addrField = document.getElementById('custaddr-customer');
+  const addr = addrField ? addrField.value.trim() : '';
+  const notes = document.getElementById('custnotes-customer').value.trim();
+  if (!orderCtx.cart.length){ showToast('Your order is empty'); return; }
+  if (!name || !phone){ showToast('Please add your name and phone number'); return; }
+  if (orderCtx.orderType === 'delivery' && !addr){ showToast('Please add a delivery address'); return; }
+  const totals = computeTotals(orderCtx.cart);
+  const submitBtn = document.getElementById('submit-customer');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Placing order...';
+  const ticket = await submitOrder({
+    source: 'customer',
+    customerName: name,
+    phone,
+    address: orderCtx.orderType === 'delivery' ? addr : '',
+    notes,
+    orderType: orderCtx.orderType,
+    payMethod: orderCtx.payMethod,
+    items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', unitPrice:l.unitPrice, qty:l.qty, notes:l.notes||'' })),
+    subtotal: totals.subtotal, tax: totals.tax, total: totals.total,
+  });
+  showOrderConfirmation(ticket, totals.total);
+}
+
+function showOrderConfirmation(ticket, total){
+  const view = document.getElementById('view-customer');
+  view.innerHTML = `
+    <div class="confirm-wrap">
+      <div class="confirm-card">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);">Order Placed</div>
+        <div class="confirm-ticket">${escapeHtml(ticket)}</div>
+        <div style="font-size:15px; color:var(--paper-dim); margin-top:6px;">Total due: <span class="mono" style="color:var(--paper); font-weight:700;">${money(total)}</span></div>
+        <div style="font-size:13px; color:var(--paper-dim); margin-top:16px; line-height:1.5;">Thank you. Your ticket number is on the screen above. Pay in person when your order is ready or delivered.</div>
+        <button class="btn btn-sauce" style="margin-top:24px;" id="newOrderBtn" type="button">Start a New Order</button>
+      </div>
+    </div>`;
+  document.getElementById('newOrderBtn').addEventListener('click', initCustomerView);
+}
+
+function initPosView(){
+  stopAllSubscriptions();
+  resetOrderCtx('pos');
+  orderCtx.orderType = 'phone';
+  renderOrderLayout('pos');
+}
+
+async function submitPosOrder(){
+  const name = document.getElementById('custname-pos').value.trim();
+  const phone = document.getElementById('custphone-pos').value.trim();
+  const addrField = document.getElementById('custaddr-pos');
+  const addr = addrField ? addrField.value.trim() : '';
+  const notes = document.getElementById('custnotes-pos').value.trim();
+  if (!orderCtx.cart.length){ showToast('Add items to the order first'); return; }
+  if (orderCtx.orderType === 'delivery' && !addr){ showToast('Delivery address is required'); return; }
+  const totals = computeTotals(orderCtx.cart);
+  if (orderCtx.payMethod === 'cash'){
+    const tenderedField = document.getElementById('tendered-pos');
+    const tendered = parseFloat((tenderedField && tenderedField.value) || '0');
+    if (!tendered || tendered < totals.total){ showToast('Cash tendered must cover the total'); return; }
+  }
+  const ticket = await submitOrder({
+    source: 'pos',
+    customerName: name || 'Walk-in',
+    phone,
+    address: orderCtx.orderType === 'delivery' ? addr : '',
+    notes,
+    orderType: orderCtx.orderType,
+    payMethod: orderCtx.payMethod,
+    items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', unitPrice:l.unitPrice, qty:l.qty, notes:l.notes||'' })),
+    subtotal: totals.subtotal, tax: totals.tax, total: totals.total,
+  });
+  showToast('Order rung up, ticket ' + ticket);
+  resetOrderCtx('pos');
+  orderCtx.orderType = 'phone';
+  renderOrderLayout('pos');
+}
+
+/* ---- POS: manage current orders (flat live queue) ---- */
+function renderPosQueue(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-pos');
+  view.innerHTML = `
+    <div style="padding:18px 20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h3 style="font-size:22px;">Current Orders</h3>
+        <button class="btn btn-outline" id="newOrderFromQueue" type="button">New Order</button>
+      </div>
+      <div id="pos-queue-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>`;
+  document.getElementById('newOrderFromQueue').addEventListener('click', initPosView);
+  const list = document.getElementById('pos-queue-list');
+  if (!App.db){
+    list.innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>';
+    return;
+  }
+  try{
+    const unsub = App.db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
+      const active = docs.filter(o => o.status !== 'completed' && o.status !== 'cancelled');
+      list.innerHTML = active.length ? active.map(renderQueueRow).join('') : '<div class="cart-empty">No active orders right now.</div>';
+      active.forEach(o => {
+        const advanceBtn = document.getElementById(`queue-advance-${o.id}`);
+        if (advanceBtn) advanceBtn.addEventListener('click', () => {
+          const next = nextStatus(o);
+          if (next) updateOrder(o.id, { status: next });
+        });
+        const cancelBtn = document.getElementById(`queue-cancel-${o.id}`);
+        if (cancelBtn) cancelBtn.addEventListener('click', () => updateOrder(o.id, { status:'cancelled' }));
+      });
+    }, () => { list.innerHTML = '<div class="cart-empty">Could not load live orders.</div>'; });
+    App.unsub.push(unsub);
+  }catch(e){
+    list.innerHTML = '<div class="cart-empty">Could not load live orders.</div>';
+  }
+}
+
+function renderQueueRow(o){
+  const next = nextStatus(o);
+  return `<div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span>
+    <span class="status-chip status-${o.status}">${escapeHtml(statusName(o.status))}</span>
+    <span style="font-size:12.5px; color:var(--paper-dim); text-transform:capitalize;">${escapeHtml(o.orderType||'')}</span>
+    <span style="flex:1; min-width:120px; font-size:13px;">${escapeHtml(o.customerName||'')}</span>
+    <span class="mono" style="font-weight:600;">${money(o.total||0)}</span>
+    <span style="font-size:11.5px; color:var(--paper-dim);">${timeAgo(o.createdAt)}</span>
+    ${next ? `<button class="btn btn-outline" style="padding:6px 12px; font-size:12px;" id="queue-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>` : ''}
+    ${(o.status!=='out_for_delivery') ? `<button class="btn-ghost" id="queue-cancel-${o.id}" type="button">Cancel</button>` : ''}
+  </div>`;
+}
+</script>
+
+<script>
+/* =========================================================================
+   KITCHEN BOARD (live current-orders view)
+   ========================================================================= */
+const KITCHEN_STATUSES = ['new','preparing','ready','out_for_delivery'];
+const KITCHEN_COL_LABELS = { new:'New', preparing:'Preparing', ready:'Ready', out_for_delivery:'Out for Delivery' };
+
+function statusName(s){
+  return ({ new:'New', preparing:'Preparing', ready:'Ready', out_for_delivery:'Out for Delivery', completed:'Completed', cancelled:'Cancelled' })[s] || s;
+}
+function statusLabel(s){
+  return ({ new:'New', preparing:'Start Preparing', ready:'Mark Ready', out_for_delivery:'Send Out for Delivery', completed:'Mark Completed', cancelled:'Cancelled' })[s] || s;
+}
+function nextStatus(o){
+  if (o.status === 'new') return 'preparing';
+  if (o.status === 'preparing') return 'ready';
+  if (o.status === 'ready') return (o.orderType === 'delivery') ? 'out_for_delivery' : 'completed';
+  return null;
+}
+
+function initKitchenView(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-kitchen');
+  view.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px;">
+      <h2 style="font-size:26px;">Current Orders</h2>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--paper-dim);">Updates live</span>
+    </div>
+    <div class="kanban" id="kanban-root"></div>`;
+  if (!App.db){
+    document.getElementById('kanban-root').innerHTML = '<div class="kanban-empty">Not connected to the live order database.</div>';
+    return;
+  }
+  let latestOrders = [];
+  try{
+    const unsub = App.db.collection('orders').orderBy('createdAt','asc').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
+      latestOrders = docs.filter(o => KITCHEN_STATUSES.includes(o.status));
+      renderKanban(latestOrders);
+    }, () => {
+      document.getElementById('kanban-root').innerHTML = '<div class="kanban-empty">Could not load live orders.</div>';
+    });
+    App.unsub.push(unsub);
+  }catch(e){
+    document.getElementById('kanban-root').innerHTML = '<div class="kanban-empty">Could not load live orders.</div>';
+    return;
+  }
+  const ageInterval = setInterval(() => renderKanban(latestOrders), 30000);
+  App.unsub.push(() => clearInterval(ageInterval));
+}
+
+function renderKanban(orders){
+  const root = document.getElementById('kanban-root');
+  if (!root) return;
+  root.innerHTML = KITCHEN_STATUSES.map(status => {
+    const col = orders.filter(o => o.status === status);
+    return `<div class="kanban-col">
+      <h4><span>${KITCHEN_COL_LABELS[status]}</span><span class="mono">${col.length}</span></h4>
+      ${col.length ? col.map(renderTicket).join('') : '<div class="kanban-empty">Nothing here.</div>'}
+    </div>`;
+  }).join('');
+  orders.forEach(o => {
+    const btn = document.getElementById(`ticket-advance-${o.id}`);
+    if (btn) btn.addEventListener('click', () => {
+      const next = nextStatus(o);
+      if (next) updateOrder(o.id, { status: next });
+    });
+  });
+}
+
+function renderTicket(o){
+  const ageMin = Math.floor((Date.now() - (o.createdAt||Date.now())) / 60000);
+  let ageClass = '';
+  if (ageMin >= 25) ageClass = 'age-bad'; else if (ageMin >= 15) ageClass = 'age-warn';
+  const next = nextStatus(o);
+  return `<div class="ticket ${ageClass}">
+    <div class="top">
+      <span class="num">${escapeHtml(o.ticket||'')}</span>
+      <span class="type">${escapeHtml(o.orderType||'')}</span>
+    </div>
+    <div class="age">${ageMin} min old</div>
+    <ul>${(o.items||[]).map(it => `<li>${it.qty} &times; ${escapeHtml(lineLabel(it))}</li>`).join('')}</ul>
+    ${o.notes ? `<div class="who">Note: ${escapeHtml(o.notes)}</div>` : ''}
+    <div class="who">${escapeHtml(o.customerName||'')}${o.address ? ', ' + escapeHtml(o.address) : ''}</div>
+    ${next ? `<button class="advance" id="ticket-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>` : ''}
+  </div>`;
+}
+</script>
+
+<script>
+/* =========================================================================
+   DELIVERY DRIVER APP
+   ========================================================================= */
+function initDriverView(){
+  stopAllSubscriptions();
+  const saved = localStorage.getItem('cifellis_driver');
+  if (saved){ App.driverName = saved; renderDriverLists(); }
+  else{
+    const view = document.getElementById('view-driver');
+    view.innerHTML = `
+      <div class="driver-setup">
+        <h3 style="font-size:24px;">Driver Sign-in</h3>
+        <div style="font-size:13px; color:var(--paper-dim); margin-top:8px;">Enter your name to see deliveries.</div>
+        <div class="field-group" style="max-width:280px; margin:16px auto 0; text-align:left;">
+          <label>Your Name</label>
+          <input id="driver-name-input" placeholder="Driver name">
+        </div>
+        <button class="btn btn-sauce" id="driver-start-btn" style="margin-top:14px;" type="button">Start Shift</button>
+      </div>`;
+    document.getElementById('driver-start-btn').addEventListener('click', () => {
+      const name = document.getElementById('driver-name-input').value.trim();
+      if (!name){ showToast('Enter your name first'); return; }
+      localStorage.setItem('cifellis_driver', name);
+      App.driverName = name;
+      renderDriverLists();
+    });
+  }
+}
+
+function renderDriverLists(){
+  const view = document.getElementById('view-driver');
+  view.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:baseline; padding:16px 0 6px;">
+      <div style="font-size:13px; color:var(--paper-dim);">Driver: <span style="color:var(--paper); font-weight:700;">${escapeHtml(App.driverName)}</span></div>
+      <button class="btn-ghost" id="driver-switch" type="button">Not you?</button>
+    </div>
+    <div class="section-label">Available Deliveries</div>
+    <div id="driver-available"></div>
+    <div class="section-label">My Deliveries</div>
+    <div id="driver-mine"></div>`;
+  document.getElementById('driver-switch').addEventListener('click', () => {
+    localStorage.removeItem('cifellis_driver');
+    App.driverName = null;
+    stopAllSubscriptions();
+    initDriverView();
+  });
+  if (!App.db){
+    document.getElementById('driver-available').innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>';
+    return;
+  }
+  try{
+    const unsub = App.db.collection('orders').orderBy('createdAt','asc').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
+      const deliveries = docs.filter(o => o.orderType === 'delivery');
+      const available = deliveries.filter(o => o.status === 'ready' && !o.driver);
+      const mine = deliveries.filter(o => o.status === 'out_for_delivery' && o.driver === App.driverName);
+      document.getElementById('driver-available').innerHTML = available.length ? available.map(o => renderDriverCard(o,false)).join('') : '<div class="cart-empty">No deliveries ready right now.</div>';
+      document.getElementById('driver-mine').innerHTML = mine.length ? mine.map(o => renderDriverCard(o,true)).join('') : '<div class="cart-empty">You have no deliveries out.</div>';
+      available.forEach(o => {
+        const btn = document.getElementById(`claim-${o.id}`);
+        if (btn) btn.addEventListener('click', () => updateOrder(o.id, { status:'out_for_delivery', driver: App.driverName }));
+      });
+      mine.forEach(o => {
+        const btn = document.getElementById(`complete-${o.id}`);
+        if (btn) btn.addEventListener('click', () => updateOrder(o.id, { status:'completed' }));
+      });
+    }, () => {
+      document.getElementById('driver-available').innerHTML = '<div class="cart-empty">Could not load live deliveries.</div>';
+    });
+    App.unsub.push(unsub);
+  }catch(e){
+    document.getElementById('driver-available').innerHTML = '<div class="cart-empty">Could not load live deliveries.</div>';
+  }
+}
+
+function renderDriverCard(o, mine){
+  const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(o.address || '');
+  return `<div class="driver-card">
+    <div class="top">
+      <span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span>
+      <span class="status-chip status-${o.status}">${escapeHtml(statusName(o.status))}</span>
+    </div>
+    <div class="addr">${escapeHtml(o.address||'')}</div>
+    <div class="sub">${escapeHtml(o.customerName||'')}${o.phone ? ', ' + escapeHtml(o.phone) : ''}</div>
+    ${o.payMethod === 'cash' ? `<div class="due">Collect ${money(o.total||0)} cash</div>` : `<div class="due">Paid by card</div>`}
+    <div class="driver-actions">
+      <a href="${mapsUrl}" target="_blank" rel="noopener" class="btn btn-outline">Directions</a>
+      ${mine ? `<button class="btn btn-sauce" id="complete-${o.id}" type="button">Mark Delivered</button>` : `<button class="btn btn-sauce" id="claim-${o.id}" type="button">Claim Delivery</button>`}
+    </div>
+  </div>`;
+}
+</script>
+
+<script>
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+</script>
+</body>
+</html>
+
+
