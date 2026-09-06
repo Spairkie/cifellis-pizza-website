@@ -4,17 +4,20 @@
   <stop offset="0%" stop-color="#3a2416"/>
   <stop offset="100%" stop-color="#1c1712"/>
 </linearGradient>
+<filter id="blur6" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
 <radialGradient id="cal" cx="50%" cy="35%" r="75%">
   <stop offset="0%" stop-color="#e7b463"/><stop offset="100%" stop-color="#b97b34"/>
 </radialGradient>
 </defs>
 <rect width="800" height="320" fill="url(#bg)"/>
-<g opacity=".08" fill="#f4ead6">
+<g opacity=".07" fill="#f4ead6">
   <circle cx="60" cy="40" r="3"/><circle cx="120" cy="90" r="3"/><circle cx="40" cy="200" r="3"/>
   <circle cx="740" cy="60" r="3"/><circle cx="700" cy="260" r="3"/><circle cx="770" cy="150" r="3"/>
   <circle cx="200" cy="280" r="3"/><circle cx="600" cy="30" r="3"/>
 </g>
+<ellipse cx="400" cy="248" rx="230" ry="22" fill="#000" opacity=".25" filter="url(#blur6)"/>
 <g transform="translate(400,175)">
+  <path d="M -222 22 A 222 152 0 0 1 222 22 Z" fill="#000" opacity=".18"/>
   <path d="M -220 20 A 220 150 0 0 1 220 20 Z" fill="url(#cal)"/>
   <g fill="#c98a3c">
     <circle cx="-200" cy="20" r="14"/><circle cx="-160" cy="-30" r="14"/><circle cx="-110" cy="-64" r="14"/>
@@ -22,6 +25,7 @@
     <circle cx="130" cy="-64" r="14"/><circle cx="180" cy="-30" r="14"/><circle cx="215" cy="20" r="14"/>
   </g>
   <path d="M -200 20 A 200 130 0 0 1 200 20 Z" fill="#e2c26a" opacity=".9"/>
+  <path d="M -180 10 A 180 110 0 0 1 40 -95" stroke="#fff" stroke-width="8" fill="none" opacity=".2"/>
   <g fill="#8f1d21" opacity=".7">
     <circle cx="-90" cy="-10" r="10"/><circle cx="0" cy="-30" r="10"/><circle cx="90" cy="-10" r="10"/>
     <circle cx="-40" cy="-20" r="7"/><circle cx="45" cy="-24" r="7"/>

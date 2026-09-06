@@ -4,18 +4,22 @@
   <stop offset="0%" stop-color="#3a2416"/>
   <stop offset="100%" stop-color="#1c1712"/>
 </linearGradient>
+<filter id="blur6" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
 <linearGradient id="log" x1="0" y1="0" x2="0" y2="1">
   <stop offset="0%" stop-color="#e7b463"/><stop offset="100%" stop-color="#b97b34"/>
 </linearGradient>
 </defs>
 <rect width="800" height="320" fill="url(#bg)"/>
-<g opacity=".08" fill="#f4ead6">
+<g opacity=".07" fill="#f4ead6">
   <circle cx="60" cy="40" r="3"/><circle cx="120" cy="90" r="3"/><circle cx="40" cy="200" r="3"/>
   <circle cx="740" cy="60" r="3"/><circle cx="700" cy="260" r="3"/><circle cx="770" cy="150" r="3"/>
   <circle cx="200" cy="280" r="3"/><circle cx="600" cy="30" r="3"/>
 </g>
+<ellipse cx="400" cy="225" rx="270" ry="28" fill="#000" opacity=".25" filter="url(#blur6)"/>
 <g transform="translate(400,160) rotate(-6)">
+  <rect x="-262" y="-54" width="524" height="108" rx="54" fill="#000" opacity=".2"/>
   <rect x="-260" y="-52" width="520" height="104" rx="52" fill="url(#log)"/>
+  <rect x="-260" y="-52" width="520" height="34" rx="24" fill="#fff" opacity=".13"/>
   <g stroke="#8f5a22" stroke-width="4" opacity=".55">
     <line x1="-180" y1="-52" x2="-210" y2="52"/>
     <line x1="-90" y1="-52" x2="-120" y2="52"/>
@@ -29,5 +33,6 @@
   </g>
   <ellipse cx="230" cy="0" rx="34" ry="52" fill="#e2c26a"/>
   <path d="M 230 -50 A 34 52 0 0 1 230 50" fill="#eed9a0"/>
+  <path d="M 210 -48 Q 245 0 210 48" stroke="#fff" stroke-width="6" fill="none" opacity=".18"/>
 </g>
 </svg>
