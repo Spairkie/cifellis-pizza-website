@@ -54,12 +54,22 @@
 }
 </script>
 <!--
-  Analytics scaffold: disabled until you add a measurement ID.
-  Free options worth comparing: Google Analytics 4 (most common, free,
-  more invasive tracking) or a privacy-friendly paid option like
-  Plausible or Simple Analytics (no cookie banner needed in most cases).
-  To turn on GA4: uncomment below and replace G-XXXXXXXXXX with your
-  own Measurement ID from analytics.google.com.
+  Analytics scaffold: disabled until you add an ID/token. See
+  ROADMAP.md section 5 for the comparison and recommendation
+  (short version: start with Cloudflare, it's free with no privacy
+  trade-off; switch to GA4 below only if you want deeper funnels).
+
+  RECOMMENDED — Cloudflare Web Analytics (free, no cookies, no DNS
+  change needed). Sign up at cloudflare.com/web-analytics, then
+  uncomment and replace YOUR_TOKEN with the token it gives you:
+
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "YOUR_TOKEN"}'></script>
+-->
+<!--
+  ALTERNATIVE — Google Analytics 4 (free, unlimited traffic, more
+  powerful, more complex, and Google uses the data for ad products).
+  Replace G-XXXXXXXXXX with your own Measurement ID from
+  analytics.google.com, then uncomment:
 
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
 <script>
