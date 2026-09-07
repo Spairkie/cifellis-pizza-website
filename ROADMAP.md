@@ -7,6 +7,42 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Active-user indicator (who's online), 2026-09-07 (Claude Code)
+
+First Tier 2 item. A small "● N online" widget in the Staff Hub header
+(next to the clock) — click it to see who else is signed in and which
+screen each person is on right now.
+
+**Deliberately not Supabase Realtime Presence.** That was the obvious
+first approach, but Realtime presence/broadcast channels aren't gated
+by RLS the way table reads are — anyone holding the project's public
+anon key (which the customer kiosk also uses, by design, since anon
+keys are meant to be public) could join a presence channel by a
+guessable name and see staff email addresses without ever signing in
+as staff, since there's no server-side check tying channel access to
+`is_staff()`. Built a plain `staff_presence` table instead, with the
+exact same `is_staff()`-gated RLS as everything else in this project —
+any signed-in staff member can read the whole table, but each row can
+only ever be written by its own owner (`id = auth.uid()`). Confirmed
+directly with an anon (unauthenticated) client against the live
+project: even with a real row in the table, an anon `select` returns
+zero rows.
+
+**How it works:** every ~20 seconds while any Staff Hub screen is open,
+and immediately on every role switch, the client upserts its own row
+(email + current screen + timestamp). "Online" means seen in the last
+45 seconds (2-3x the heartbeat interval). Own row is deleted on sign-out
+so a stale session doesn't show as online for the last 45 seconds after
+leaving; if the tab is just closed without signing out, the row simply
+ages out of the online window on its own — no special handling needed.
+
+Tested end-to-end with two simultaneous real sessions (different
+browser contexts, both real test accounts) against the live backend:
+each correctly saw "2 online" with the other's email prefix and current
+screen, the widget's dropdown listed both with "(you)" on the right
+one, signing one out dropped the other's count to 1, and both rows were
+gone from the table once fully signed out.
+
 ## Kitchen notification sound + badge, and Till/end-of-day management, 2026-09-07 (Claude Code)
 
 The remaining two Tier 1 backlog items, same session as the pause/Store
@@ -199,10 +235,12 @@ actually taking live orders.
 - [ ] **System clock** in the Staff Hub header — trivial on its own,
   bundling with Store Settings since both live in the same header
   area.
-- [ ] **Active-user indicators** — who else is signed into the Staff
+- [x] **Active-user indicators** — who else is signed into the Staff
   Hub right now (useful for a small team coordinating who's on
   register vs. kitchen). Needs a lightweight presence mechanism
-  (Supabase Realtime Presence is built for exactly this).
+  (Supabase Realtime Presence is built for exactly this). Shipped
+  2026-09-07 — used a plain RLS-gated table instead of Realtime
+  Presence, see "Active-user indicator (who's online)" above for why.
 - [ ] **CRM/analytics improvements**: repeat-customer flagging beyond
   what Analytics already shows, small inline sparkline-style charts
   instead of just numbers, a horizontal timeline of today's order

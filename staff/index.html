@@ -163,6 +163,13 @@
   .kitchen-pause-badge.is-clickable{ cursor:pointer; }
   .kitchen-pause-badge.is-clickable:hover{ border-color:var(--gold); color:var(--gold); }
   .header-clock{ font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--paper-dim); }
+  .presence-wrap{ position:relative; display:inline-flex; }
+  .presence-widget{ display:flex; align-items:center; gap:6px; background:none; border:1px solid var(--line-on-ink); border-radius:999px; padding:6px 12px; font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--paper-dim); cursor:pointer; }
+  .presence-widget:hover{ border-color:var(--gold); color:var(--gold); }
+  .presence-widget .dot{ width:7px; height:7px; border-radius:50%; background:var(--ok); flex:none; }
+  .presence-dropdown{ position:absolute; top:calc(100% + 8px); right:0; min-width:220px; background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:10px 14px; box-shadow:0 12px 28px -12px rgba(0,0,0,.6); text-align:left; z-index:20; }
+  .presence-dropdown .row{ display:flex; justify-content:space-between; gap:10px; padding:5px 0; font-size:12.5px; color:var(--paper); white-space:nowrap; }
+  .presence-dropdown .row .who{ color:var(--paper-dim); }
   .kitchen-new-badge{ font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:700; line-height:1; background:var(--sauce); color:#fff; border:none; border-radius:999px; min-width:26px; height:26px; padding:0 8px; cursor:pointer; animation:kitchen-badge-pop .25s ease-out; }
   .kitchen-new-badge:hover{ filter:brightness(1.1); }
   @keyframes kitchen-badge-pop{ from{ transform:scale(0.6); opacity:0; } to{ transform:scale(1); opacity:1; } }
@@ -794,6 +801,97 @@ function applyRoleVisibility(){
   });
 }
 
+/* Active-user indicator: "who else is signed into the Staff Hub right
+   now". Backed by a real table (staff_presence) with the same
+   is_staff()-gated RLS as everything else, not a Realtime Presence
+   channel -- see the note in supabase/schema.sql for why (the customer
+   kiosk shares the same public anon key, and presence/broadcast
+   channels aren't RLS-gated the way table reads are). */
+let presenceHeartbeatTimer = null;
+let presenceListTimer = null;
+const PRESENCE_ONLINE_WINDOW_MS = 45000; // 2-3x the heartbeat interval below
+
+async function touchPresence(){
+  const db = App.db || await getDb();
+  if (!db || !App.myEmail) return;
+  try{
+    const { data: sessionData } = await db.auth.getSession();
+    const uid = sessionData && sessionData.session && sessionData.session.user && sessionData.session.user.id;
+    if (!uid) return;
+    await db.collection('staff_presence').doc(uid).set({
+      email: App.myEmail,
+      role: App.role || null,
+      lastSeenAt: Date.now(),
+    });
+  }catch(e){ /* purely a nice-to-have display -- fail silent */ }
+}
+
+async function deleteOwnPresence(db){
+  try{
+    const { data: sessionData } = await db.auth.getSession();
+    const uid = sessionData && sessionData.session && sessionData.session.user && sessionData.session.user.id;
+    if (uid) await db.collection('staff_presence').doc(uid).delete();
+  }catch(e){ /* stale row just ages out of the online window instead */ }
+}
+
+function startPresenceHeartbeat(){
+  touchPresence();
+  refreshPresenceList();
+  clearInterval(presenceHeartbeatTimer);
+  presenceHeartbeatTimer = setInterval(touchPresence, 20000);
+  clearInterval(presenceListTimer);
+  presenceListTimer = setInterval(refreshPresenceList, 20000);
+}
+
+function stopPresenceHeartbeat(){
+  clearInterval(presenceHeartbeatTimer);
+  clearInterval(presenceListTimer);
+}
+
+async function refreshPresenceList(){
+  const widget = document.getElementById('presence-widget');
+  if (!App.db || !widget) return;
+  try{
+    const snap = await App.db.collection('staff_presence').get();
+    const rows = (snap.docs || []).map(d => d.data());
+    const cutoff = Date.now() - PRESENCE_ONLINE_WINDOW_MS;
+    const online = rows.filter(r => (r.lastSeenAt||0) >= cutoff)
+      .sort((a,b) => (a.email === App.myEmail ? -1 : b.email === App.myEmail ? 1 : 0));
+    widget.hidden = false;
+    widget.innerHTML = `<span class="dot"></span>${online.length} online`;
+    const list = document.getElementById('presence-dropdown-list');
+    if (list){
+      list.innerHTML = online.length ? online.map(r => `
+        <div class="row">
+          <span>${escapeHtml((r.email||'').split('@')[0] || 'unknown')}${r.email === App.myEmail ? ' (you)' : ''}</span>
+          <span class="who">${escapeHtml(ROLE_LABELS[r.role] || '—')}</span>
+        </div>`).join('') : '<div class="row"><span class="who">Nobody else online</span></div>';
+    }
+  }catch(e){ widget.hidden = true; }
+}
+
+function wirePresenceWidget(){
+  const widget = document.getElementById('presence-widget');
+  const wrap = document.getElementById('presence-wrap');
+  if (!widget || !wrap) return;
+  widget.addEventListener('click', (e) => {
+    e.stopPropagation();
+    let dropdown = document.getElementById('presence-dropdown');
+    if (dropdown){ dropdown.remove(); return; } // toggle closed
+    // A sibling of the button, not a child of it -- appending inside the
+    // clicked element itself changes its bounding box mid-click, which
+    // both looks janky and confuses Playwright's actionability retries.
+    dropdown = document.createElement('div');
+    dropdown.id = 'presence-dropdown';
+    dropdown.className = 'presence-dropdown';
+    dropdown.innerHTML = '<div id="presence-dropdown-list">Loading...</div>';
+    wrap.appendChild(dropdown);
+    refreshPresenceList();
+    const closeOnOutsideClick = () => { dropdown.remove(); document.removeEventListener('click', closeOnOutsideClick); };
+    setTimeout(() => document.addEventListener('click', closeOnOutsideClick), 0);
+  });
+}
+
 let headerClockTimer = null;
 function startHeaderClock(){
   clearInterval(headerClockTimer);
@@ -824,8 +922,11 @@ function goToRole(role){
   stopAllSubscriptions();
 
   const right = document.getElementById('header-right');
-  right.innerHTML = '<span class="header-clock" id="header-clock"></span><button class="btn-ghost" id="switch-role-btn">Switch screen</button><button class="btn-ghost" id="signout-btn">Sign Out</button>';
+  right.innerHTML = '<span class="header-clock" id="header-clock"></span><span class="presence-wrap" id="presence-wrap"><button type="button" id="presence-widget" class="presence-widget" hidden></button></span><button class="btn-ghost" id="switch-role-btn">Switch screen</button><button class="btn-ghost" id="signout-btn">Sign Out</button>';
   startHeaderClock();
+  wirePresenceWidget();
+  touchPresence(); // reflect the newly-switched-to screen right away, don't wait for the next heartbeat tick
+  refreshPresenceList(); // ditto for the widget itself -- don't sit hidden until the next 20s tick
   document.getElementById('switch-role-btn').addEventListener('click', () => {
     localStorage.removeItem('cifellis_role');
     stopAllSubscriptions();
@@ -834,7 +935,10 @@ function goToRole(role){
   });
   document.getElementById('signout-btn').addEventListener('click', async () => {
     const db = await getDb();
-    if (db && db.auth) await db.auth.signOut();
+    if (db && db.auth){
+      await deleteOwnPresence(db);
+      await db.auth.signOut();
+    }
   });
 
   if (role === 'pos'){ document.getElementById('view-pos').hidden = false; initPosView(); }
@@ -888,7 +992,10 @@ async function initAuthGate(){
   async function loadMyStaffRow(){
     const { data: sessionData } = await auth.getSession();
     const uid = sessionData && sessionData.session && sessionData.session.user && sessionData.session.user.id;
+    const email = sessionData && sessionData.session && sessionData.session.user && sessionData.session.user.email;
+    App.myEmail = email || '';
     if (!uid || !db) return;
+    startPresenceHeartbeat();
     try{
       const row = await db.collection('staff').doc(uid).get();
       App.isAdmin = !!(row.data() && row.data().isAdmin);
@@ -907,7 +1014,7 @@ async function initAuthGate(){
 
   auth.onAuthStateChange((_event, session) => {
     if (session) showRolePicker();
-    else { stopAllSubscriptions(); showLogin(); }
+    else { stopAllSubscriptions(); stopPresenceHeartbeat(); showLogin(); }
   });
 
   document.getElementById('loginForm').addEventListener('submit', async (e) => {

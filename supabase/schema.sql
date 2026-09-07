@@ -498,6 +498,50 @@ create policy "register_shifts_staff_all" on public.register_shifts
 -- history, fix mistakes by hand in the dashboard rather than an undo UI.
 
 -- =========================================================================
+-- Staff presence ("who's online" indicator in the Staff Hub header)
+-- =========================================================================
+-- One row per staff member, upserted every ~20s while any Staff Hub
+-- screen is open (and on every role switch) with their email and current
+-- screen; someone's "online" if lastSeenAt is recent. A real table
+-- rather than Supabase Realtime Presence deliberately -- Realtime
+-- presence/broadcast channels aren't gated by RLS the way table data is,
+-- and this project's customer kiosk shares the same public anon key as
+-- the Staff Hub, so a channel by a guessable name could leak staff
+-- emails to anyone holding that key without ever signing in. A plain
+-- table with the same is_staff()-gated RLS as everything else avoids
+-- that entirely: only an authenticated staff member can read it, and
+-- only ever their own row to write it.
+create table if not exists public.staff_presence (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null default '',
+  role text,
+  "lastSeenAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+alter table public.staff_presence enable row level security;
+grant select, insert, update, delete on public.staff_presence to authenticated;
+
+drop policy if exists "staff_presence_select_staff" on public.staff_presence;
+create policy "staff_presence_select_staff" on public.staff_presence
+  for select to authenticated
+  using (public.is_staff());
+
+drop policy if exists "staff_presence_own_insert" on public.staff_presence;
+create policy "staff_presence_own_insert" on public.staff_presence
+  for insert to authenticated
+  with check (id = auth.uid() and public.is_staff());
+
+drop policy if exists "staff_presence_own_update" on public.staff_presence;
+create policy "staff_presence_own_update" on public.staff_presence
+  for update to authenticated
+  using (id = auth.uid())
+  with check (id = auth.uid());
+
+drop policy if exists "staff_presence_own_delete" on public.staff_presence;
+create policy "staff_presence_own_delete" on public.staff_presence
+  for delete to authenticated
+  using (id = auth.uid());
+
+-- =========================================================================
 -- Menu configuration (admin-editable pricing/menu, Staff Hub > Menu Editor)
 -- =========================================================================
 -- A single JSON row holding everything that would otherwise be hardcoded
