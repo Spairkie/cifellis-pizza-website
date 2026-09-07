@@ -373,6 +373,11 @@
       <div class="t">Till</div>
       <div class="d">Open the register with a starting cash count, close out at the end of your shift.</div>
     </button>
+    <button class="role-card" data-role="bugreports" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="6" width="8" height="12" rx="4"/><path d="M8 9H4M8 13H4M8 17H5M16 9h4M16 13h4M16 17h3M12 3v3M9 5l1.5 1M15 5l-1.5 1"/></svg>
+      <div class="t">Bug Reports</div>
+      <div class="d">What staff have flagged as broken from inside the app. For managers.</div>
+    </button>
     <button class="role-card" data-role="storesettings" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       <div class="t">Store Settings</div>
@@ -403,6 +408,7 @@
     <div class="view" id="view-menu" hidden></div>
     <div class="view" id="view-storesettings" hidden></div>
     <div class="view" id="view-till" hidden></div>
+    <div class="view" id="view-bugreports" hidden></div>
   </main>
 </div>
 
@@ -784,7 +790,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till', bugreports:'Bug Reports' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -821,6 +827,7 @@ function computeRolePermissions(){
     menu: isAdmin,
     storesettings: isAdmin,
     till: isAdmin || !isDriver,
+    bugreports: isAdmin,
   };
 }
 
@@ -952,7 +959,8 @@ function goToRole(role){
   stopAllSubscriptions();
 
   const right = document.getElementById('header-right');
-  right.innerHTML = '<span class="header-clock" id="header-clock"></span><span class="presence-wrap" id="presence-wrap"><button type="button" id="presence-widget" class="presence-widget" hidden></button></span><button class="btn-ghost" id="switch-role-btn">Switch screen</button><button class="btn-ghost" id="signout-btn">Sign Out</button>';
+  right.innerHTML = '<span class="header-clock" id="header-clock"></span><span class="presence-wrap" id="presence-wrap"><button type="button" id="presence-widget" class="presence-widget" hidden></button></span><button class="btn-ghost" id="report-bug-btn" type="button">Report a Bug</button><button class="btn-ghost" id="switch-role-btn">Switch screen</button><button class="btn-ghost" id="signout-btn">Sign Out</button>';
+  document.getElementById('report-bug-btn').addEventListener('click', openBugReportModal);
   startHeaderClock();
   wirePresenceWidget();
   touchPresence(); // reflect the newly-switched-to screen right away, don't wait for the next heartbeat tick
@@ -979,6 +987,7 @@ function goToRole(role){
   if (role === 'menu'){ document.getElementById('view-menu').hidden = false; initMenuEditorView(); }
   if (role === 'storesettings'){ document.getElementById('view-storesettings').hidden = false; initStoreSettingsView(); }
   if (role === 'till'){ document.getElementById('view-till').hidden = false; initTillView(); }
+  if (role === 'bugreports'){ document.getElementById('view-bugreports').hidden = false; initBugReportsView(); }
 }
 
 document.querySelectorAll('.role-card').forEach(btn => {
@@ -3166,6 +3175,110 @@ async function closeRegisterShift(){
   }catch(e){
     statusEl.textContent = 'Could not close register: ' + (e && e.message ? e.message : 'unknown error');
     btn.disabled = false;
+  }
+}
+</script>
+
+<script>
+/* =========================================================================
+   LIVE BUG REPORTING -- bug_reports table
+   ========================================================================= */
+// Available to every staff member (the header button), not just admins --
+// anyone might spot something broken mid-shift. Only an admin can see
+// the list and resolve them (Bug Reports role, admin-only).
+function openBugReportModal(){
+  showConfirmModal({
+    title: 'Report a Bug',
+    body: "Describe what's broken or not working right — this goes straight to the admin, along with which screen you were on.",
+    withReason: true,
+    reasonPlaceholder: 'What happened? Be as specific as you can.',
+    confirmLabel: 'Send Report',
+    onConfirm: (message) => submitBugReport(message),
+  });
+}
+
+async function submitBugReport(message){
+  const msg = (message || '').trim();
+  if (!msg){ showToast('No description entered — nothing sent.'); return; }
+  const db = App.db || await getDb();
+  if (!db){ showToast('Not connected to the database.'); return; }
+  try{
+    const { data: sessionData } = await db.auth.getSession();
+    const user = sessionData && sessionData.session && sessionData.session.user;
+    await db.collection('bug_reports').add({
+      reportedBy: user ? user.id : null,
+      reportedByEmail: user ? user.email : '',
+      role: App.role || null,
+      message: msg,
+      status: 'open',
+    });
+    showToast('Thanks — sent to the admin.');
+  }catch(e){
+    showToast('Could not send report: ' + (e && e.message ? e.message : 'unknown error'));
+  }
+}
+
+async function initBugReportsView(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-bugreports');
+  view.innerHTML = '<p style="color:var(--paper-dim);">Loading bug reports...</p>';
+  const db = App.db || await getDb();
+  if (!db){ view.innerHTML = '<p style="color:var(--bad);">Not connected to the database.</p>'; return; }
+  try{
+    const unsub = db.collection('bug_reports').orderBy('createdAt','desc').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => d.data());
+      renderBugReports(docs);
+    }, () => { view.innerHTML = '<div class="cart-empty">Could not load bug reports.</div>'; });
+    App.unsub.push(unsub);
+  }catch(e){
+    view.innerHTML = '<div class="cart-empty">Could not load bug reports.</div>';
+  }
+}
+
+function renderBugReports(reports){
+  const view = document.getElementById('view-bugreports');
+  const who = (email) => escapeHtml((email || '').split('@')[0] || 'unknown');
+  const open = reports.filter(r => r.status === 'open');
+  const resolved = reports.filter(r => r.status === 'resolved').slice(0, 20);
+
+  const row = (r) => `
+    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; margin-bottom:8px;">
+      <div class="row-between" style="align-items:flex-start; gap:12px;">
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:13.5px;">${escapeHtml(r.message)}</div>
+          <div style="font-size:11.5px; color:var(--paper-dim); margin-top:6px;">${who(r.reportedByEmail)} &middot; ${escapeHtml(ROLE_LABELS[r.role] || '—')} &middot; ${new Date(r.createdAt).toLocaleString()}</div>
+          ${r.status === 'resolved' ? `<div style="font-size:11.5px; color:var(--ok); margin-top:4px;">Resolved by ${who(r.resolvedByEmail)} &middot; ${new Date(r.resolvedAt).toLocaleString()}</div>` : ''}
+        </div>
+        ${r.status === 'open' ? `<button class="btn-ghost" data-resolve="${r.id}" type="button">Mark Resolved</button>` : ''}
+      </div>
+    </div>`;
+
+  view.innerHTML = `
+    <div class="view-header"><h2>Bug Reports</h2></div>
+    <h3 style="font-size:17px; margin-bottom:10px;">Open (${open.length})</h3>
+    ${open.length ? open.map(row).join('') : '<div class="cart-empty">Nothing open right now.</div>'}
+    <h3 style="font-size:17px; margin:24px 0 10px;">Recently Resolved</h3>
+    ${resolved.length ? resolved.map(row).join('') : '<div class="cart-empty">Nothing resolved yet.</div>'}`;
+
+  view.querySelectorAll('[data-resolve]').forEach(btn => {
+    btn.addEventListener('click', () => resolveBugReport(btn.getAttribute('data-resolve')));
+  });
+}
+
+async function resolveBugReport(id){
+  const db = App.db || await getDb();
+  if (!db) return;
+  try{
+    const { data: sessionData } = await db.auth.getSession();
+    const user = sessionData && sessionData.session && sessionData.session.user;
+    await db.collection('bug_reports').doc(id).update({
+      status: 'resolved',
+      resolvedBy: user ? user.id : null,
+      resolvedByEmail: user ? user.email : '',
+      resolvedAt: Date.now(),
+    });
+  }catch(e){
+    showToast('Could not mark resolved: ' + (e && e.message ? e.message : 'unknown error'));
   }
 }
 </script>

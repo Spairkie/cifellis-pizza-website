@@ -498,6 +498,66 @@ create policy "register_shifts_staff_all" on public.register_shifts
 -- history, fix mistakes by hand in the dashboard rather than an undo UI.
 
 -- =========================================================================
+-- Bug reports (Staff Hub > "Report a Bug", admin-only Bug Reports screen)
+-- =========================================================================
+-- Lets any signed-in staff member flag something broken from inside the
+-- app, mid-shift, instead of it only being caught whenever someone
+-- happens to review the codebase directly. Any staff member can submit
+-- one; only an admin can see the list and mark them resolved -- staff
+-- don't need the list, just the ability to add to it.
+create table if not exists public.bug_reports (
+  id uuid primary key default gen_random_uuid(),
+  "reportedBy" uuid not null references auth.users(id),
+  "reportedByEmail" text not null default '',
+  role text,
+  message text not null,
+  status text not null default 'open' check (status in ('open','resolved')),
+  "resolvedBy" uuid references auth.users(id),
+  "resolvedByEmail" text,
+  "resolvedAt" bigint,
+  "createdAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+create index if not exists bug_reports_status_idx on public.bug_reports (status);
+
+alter table public.bug_reports enable row level security;
+grant select, insert, update on public.bug_reports to authenticated;
+
+drop policy if exists "bug_reports_staff_insert" on public.bug_reports;
+create policy "bug_reports_staff_insert" on public.bug_reports
+  for insert to authenticated
+  with check ("reportedBy" = auth.uid() and public.is_staff());
+
+drop policy if exists "bug_reports_admin_select" on public.bug_reports;
+create policy "bug_reports_admin_select" on public.bug_reports
+  for select to authenticated
+  using (public.is_admin());
+
+drop policy if exists "bug_reports_admin_update" on public.bug_reports;
+create policy "bug_reports_admin_update" on public.bug_reports
+  for update to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+-- No delete policy -- same reasoning as orders/register_shifts: keep the
+-- full history, remove by hand in the dashboard if it's ever needed.
+
+-- Realtime: the admin-only Bug Reports screen live-subscribes (new
+-- reports and resolutions from any tab show up immediately), so this
+-- table needs to be in the realtime publication the same way orders/
+-- drivers/driver_shifts are above -- easy to miss since most of the
+-- other newer tables in this file (store_settings, register_shifts,
+-- staff_presence) deliberately use one-shot fetches instead and don't
+-- need this.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'bug_reports'
+  ) then
+    alter publication supabase_realtime add table public.bug_reports;
+  end if;
+end $$;
+
+-- =========================================================================
 -- Staff presence ("who's online" indicator in the Staff Hub header)
 -- =========================================================================
 -- One row per staff member, upserted every ~20s while any Staff Hub

@@ -7,6 +7,45 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Live bug reporting, 2026-09-07 (Claude Code)
+
+First Tier 3 item — picked over the other Tier 3 entries specifically
+because it didn't need a decision or information only the owner would
+have (promo codes need a fraud policy call, the driver map and keypad
+shortcuts need info about hardware/cost tradeoffs the owner would weigh
+in on). A "Report a Bug" button now sits in the Staff Hub header for
+every signed-in staff member — describes what's broken, auto-tags which
+screen they were on, goes straight into a new admin-only "Bug Reports"
+screen (open reports first, most recently resolved below, Mark Resolved
+button). Staff don't need to see the list, just the ability to add to
+it — mirrors the write-only/read-restricted split already used for
+similar staff-vs-admin screens in this project.
+
+**A real, live bug caught building this feature, worth flagging for
+whoever reads this next:** the Bug Reports screen subscribes live
+(`onSnapshot`) so a report or resolution shows up immediately in every
+open tab — but `bug_reports` was never added to the `supabase_realtime`
+publication the way `orders`/`drivers`/`driver_shifts` are, so Postgres
+change notifications for it were never actually being broadcast. The
+underlying database writes worked fine either way (confirmed directly
+via SQL) — only the *live* re-render silently never fired, so a report
+would sit unresolved-looking on screen even after clicking "Mark
+Resolved" until the page was manually reloaded. Fixed in `schema.sql`
+by adding the same realtime-publication block the other three tables
+use. Worth remembering for any future onSnapshot-based screen: the
+other newer tables added this session (`store_settings`,
+`register_shifts`, `staff_presence`) all deliberately use one-shot
+`.get()` fetches instead and don't need this — it's specifically
+`onSnapshot` usage that requires the table be in the publication.
+
+Tested end-to-end against the real live backend, including
+re-confirming after the realtime fix: a non-admin test account can't
+see the Bug Reports card at all, submitting a report from POS records
+the right message/screen/reporter, the admin's live view shows it
+immediately, resolving it updates instantly with no reload needed, and
+the resolution correctly records who resolved it and when. Cleaned up
+all test rows afterward, confirmed the table's empty.
+
 ## CRM/analytics improvements, 2026-09-07 (Claude Code)
 
 Second Tier 2 item, the "CRM/analytics improvements" backlog bullet's
@@ -312,10 +351,10 @@ about before starting.
   (works today with zero code, standard keycodes), or something needing
   actual driver-level integration? Needs to know the actual hardware
   before scoping.
-- [ ] **Live bug reporting** (a way for staff to flag something broken
+- [x] **Live bug reporting** (a way for staff to flag something broken
   from inside the app, mid-shift). Useful long-term, not urgent while
   a person can review the codebase directly the way this session has
-  been doing.
+  been doing. Shipped 2026-09-07 — see "Live bug reporting" above.
 - [ ] **UI audio asset library** beyond the one kitchen notification
   sound — sourcing/licensing real audio files is a different kind of
   work than writing code (can't fabricate copyright-clear audio the
