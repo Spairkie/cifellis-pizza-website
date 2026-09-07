@@ -93,17 +93,49 @@ Kiosk (`/order/`) works with no login.
    sign in at `/staff/` on whatever device runs POS, Kitchen Board, or
    Driver App. Signing in is remembered on that device until they sign out.
 
+## Bootstrap your first admin
+
+Approving driver applications from the app (rather than the SQL
+Editor every time) requires at least one **admin** — a staff member
+with `isAdmin` checked. Nothing in the app can grant the very first
+admin that permission (that would be a hole an attacker could drive a
+truck through), so it's a one-time manual step:
+
+1. Find your own user id: **Authentication** > **Users**, copy the id
+   next to your account.
+2. Run in the SQL Editor:
+   ```sql
+   update public.staff set "isAdmin" = true where id = '<your-user-id>';
+   ```
+
+After that, you (and anyone else you make an admin the same way) can
+approve driver applications and add other staff/admins right from the
+Staff Hub, no SQL Editor needed for routine approvals.
+
 ## Driver accounts
 
-Drivers sign in the same way staff do (a Supabase Auth account from
-step 5 above, with `isDriver` checked in the `staff` table), but they
-also need a profile row in the `drivers` table — that's where their
-name, phone, car info, and preferences live, and it's what their
-earnings/mileage/rating history attaches to. Create that profile from
-the Staff Hub itself: **Driver Roster** > **Add Driver**, using the
-*same email* as their Supabase Auth account. That email is how the app
-matches a signed-in driver to their profile the first time they open
-the Driver App.
+Two ways someone becomes a driver:
+
+**They apply themselves (recommended for most hires).** Send them to
+`/staff/apply.html` — no login needed to get there. They pick their
+own email/password (that's their Supabase Auth login, created right
+in that step) and fill in their name, phone, and car info. It lands in
+**Staff Hub > Driver Roster > Pending Applications**, where an admin
+clicks **Approve**. That one click does everything: adds them to the
+`staff` table (`isDriver` true) and marks their driver profile
+approved. Before that click, their login exists but grants access to
+nothing — signing in just shows "no driver profile found."
+
+**You add them directly.** Useful if you'd rather not have them
+self-serve. Create their Supabase Auth account yourself (step 5
+above), add them to `staff` with `isDriver` checked, then **Driver
+Roster > Add Driver** using the same email. This path skips the
+pending/approval step entirely since you're vouching for them by
+creating the account yourself.
+
+Either way, the email on the `drivers` profile is what matches a
+signed-in driver to their profile and their history (deliveries,
+miles, tips, ratings) the first time they open the Driver App.
 
 ## Customer accounts
 

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Apply to Drive | Cifelli's Pizza</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rye&family=Work+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ink:#1c1712; --ink-soft:#2a231d; --paper:#f4ead6; --paper-dim:#e9dcbf;
+    --sauce:#c22a2f; --gold:#dc9f34; --line-on-ink: rgba(244,234,214,.16);
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; background:var(--ink); color:var(--paper);
+    font-family:"Work Sans",sans-serif; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{ max-width:420px; width:100%; }
+  .center{ text-align:center; }
+  h1{ font-family:"Rye",serif; font-size:28px; margin:12px 0 4px; }
+  p{ color:var(--paper-dim); font-size:13.5px; line-height:1.5; }
+  .field-group{ margin-top:14px; text-align:left; }
+  .field-group label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper-dim); margin-bottom:5px; font-family:"IBM Plex Mono",monospace; }
+  .field-group input, .field-group textarea{
+    width:100%; background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
+    color:var(--paper); padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  .row2{ display:flex; gap:10px; }
+  .row2 > div{ flex:1; }
+  .btn{
+    display:block; width:100%; margin-top:18px; padding:13px; border:none; border-radius:999px;
+    background:var(--sauce); color:var(--paper); font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .msg{ margin-top:14px; font-size:13px; text-align:center; }
+  .msg.error{ color:#e07b7b; }
+  .msg.ok{ color:#8ec98a; }
+  .section-label{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--paper-dim); margin:20px 0 4px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="center">
+    <svg viewBox="0 0 100 100" width="56" height="56">
+      <circle cx="50" cy="50" r="48" fill="#f4ead6"/><circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="5"/>
+      <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+    </svg>
+    <h1>Drive for Cifelli's</h1>
+    <p>Fill this out to apply. A manager reviews every application — you'll be able to sign in once you're approved, not before.</p>
+  </div>
+
+  <div id="formStep">
+    <div class="section-label">Your Info</div>
+    <div class="field-group"><label>Name</label><input id="apl-name" placeholder="Your full name"></div>
+    <div class="field-group"><label>Phone</label><input id="apl-phone" placeholder="(856) 555-0100"></div>
+
+    <div class="section-label">Sign-in (create your login)</div>
+    <div class="field-group"><label>Email</label><input id="apl-email" type="email" placeholder="you@example.com"></div>
+    <div class="field-group"><label>Password</label><input id="apl-password" type="password" placeholder="At least 6 characters"></div>
+
+    <div class="section-label">Vehicle</div>
+    <div class="row2">
+      <div class="field-group"><label>Make</label><input id="apl-carMake" placeholder="Honda"></div>
+      <div class="field-group"><label>Model</label><input id="apl-carModel" placeholder="Civic"></div>
+    </div>
+    <div class="row2">
+      <div class="field-group"><label>Color</label><input id="apl-carColor" placeholder="Silver"></div>
+      <div class="field-group"><label>Plate</label><input id="apl-carPlate" placeholder=""></div>
+    </div>
+
+    <div class="field-group"><label>Anything else? (availability, preferences)</label><textarea id="apl-notes" rows="3" placeholder="Weeknights only, prefer close-by deliveries, etc."></textarea></div>
+
+    <button class="btn" id="submitBtn" type="button">Submit Application</button>
+  </div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="../order/supabase-config.js"></script>
+<script>
+  document.getElementById('submitBtn').addEventListener('click', async () => {
+    const name = document.getElementById('apl-name').value.trim();
+    const phone = document.getElementById('apl-phone').value.trim();
+    const email = document.getElementById('apl-email').value.trim();
+    const password = document.getElementById('apl-password').value;
+    const carMake = document.getElementById('apl-carMake').value.trim();
+    const carModel = document.getElementById('apl-carModel').value.trim();
+    const carColor = document.getElementById('apl-carColor').value.trim();
+    const carPlate = document.getElementById('apl-carPlate').value.trim();
+    const notes = document.getElementById('apl-notes').value.trim();
+    const msg = document.getElementById('msg');
+    const btn = document.getElementById('submitBtn');
+    msg.textContent = ''; msg.className = 'msg';
+
+    if (!name || !phone || !email || password.length < 6){
+      msg.textContent = 'Please fill in your name, phone, email, and a password of at least 6 characters.';
+      msg.className = 'msg error';
+      return;
+    }
+    if (typeof window.supabase === 'undefined' || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY){
+      msg.textContent = 'Applications are not connected right now — please try again later or contact the shop directly.';
+      msg.className = 'msg error';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    const client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+
+    const { data: signUpData, error: signUpError } = await client.auth.signUp({ email, password });
+    if (signUpError){
+      msg.textContent = signUpError.message;
+      msg.className = 'msg error';
+      btn.disabled = false; btn.textContent = 'Submit Application';
+      return;
+    }
+    const user = signUpData && signUpData.user;
+    if (!user){
+      msg.textContent = 'Check your email to confirm your address, then come back and apply again.';
+      msg.className = 'msg ok';
+      document.getElementById('formStep').style.display = 'none';
+      return;
+    }
+    const { error: insertError } = await client.from('drivers').insert({
+      name, phone, email, carMake, carModel, carColor, carPlate, notes,
+      authUserId: user.id, approved: false,
+    });
+    if (insertError){
+      msg.textContent = 'Your login was created, but we could not save your application: ' + insertError.message + '. Please contact the shop directly.';
+      msg.className = 'msg error';
+      btn.disabled = false; btn.textContent = 'Submit Application';
+      return;
+    }
+    document.getElementById('formStep').style.display = 'none';
+    msg.textContent = "Application submitted! We'll review it and let you know. Once approved, sign in at the Staff Hub with the email and password you just set.";
+    msg.className = 'msg ok';
+  });
+</script>
+</body>
+</html>

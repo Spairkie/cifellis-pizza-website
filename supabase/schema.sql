@@ -151,25 +151,53 @@ alter table public.orders enable row level security;
 create table if not exists public.staff (
   id uuid primary key references auth.users(id) on delete cascade,
   "isDriver" boolean not null default false,
+  "isAdmin"  boolean not null default false,
+  active     boolean not null default true,
   "createdAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
 );
+alter table public.staff add column if not exists "isAdmin" boolean not null default false;
+alter table public.staff add column if not exists active boolean not null default true;
 alter table public.staff enable row level security;
-grant select on public.staff to authenticated;
+grant select, insert, update on public.staff to authenticated;
 drop policy if exists "staff_select_staff" on public.staff;
 create policy "staff_select_staff" on public.staff
   for select to authenticated
-  using (exists (select 1 from public.staff s where s.id = auth.uid()));
--- No insert/update/delete policy on purpose: add or remove staff from
--- the Supabase dashboard's Table Editor (or SQL Editor), not the app.
--- That keeps "who can see every customer's data" a deliberate action
--- you take once per person, not something any code path can do.
+  using (exists (select 1 from public.staff s where s.id = auth.uid() and s.active));
+
+-- Only an admin can add or edit staff rows through the app (this is
+-- what lets Driver Roster's "Approve" button work without anyone
+-- needing the Supabase dashboard for routine approvals). Adding the
+-- very first admin still has to happen by hand in the SQL Editor —
+-- see "Bootstrap your first admin" below — there's no safe way for
+-- the app to grant the very first admin permission to itself.
+drop policy if exists "staff_admin_insert" on public.staff;
+create policy "staff_admin_insert" on public.staff
+  for insert to authenticated
+  with check (exists (select 1 from public.staff s where s.id = auth.uid() and s.active and s."isAdmin"));
+
+drop policy if exists "staff_admin_update" on public.staff;
+create policy "staff_admin_update" on public.staff
+  for update to authenticated
+  using (exists (select 1 from public.staff s where s.id = auth.uid() and s.active and s."isAdmin"))
+  with check (exists (select 1 from public.staff s where s.id = auth.uid() and s.active and s."isAdmin"));
+-- No delete policy: to remove someone's access, an admin sets
+-- active = false via update (above) rather than deleting the row —
+-- keeps a record of who used to have access instead of erasing it.
 
 create or replace function public.is_staff()
 returns boolean
 language sql stable security definer
 set search_path = public
 as $$
-  select exists (select 1 from public.staff where id = auth.uid());
+  select exists (select 1 from public.staff where id = auth.uid() and active);
+$$;
+
+create or replace function public.is_admin()
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.staff where id = auth.uid() and active and "isAdmin");
 $$;
 
 -- MIGRATION: if you already had staff signing in before this table
@@ -182,6 +210,14 @@ $$;
 -- Do NOT run that after customer accounts exist — it would make every
 -- customer staff too. Run it once, now, before customers start signing
 -- up, or hand-pick rows in the Table Editor instead.
+
+-- BOOTSTRAP YOUR FIRST ADMIN: the policies above mean only an admin
+-- can create staff/approve drivers through the app — which means the
+-- very first admin has to be set by hand, once, here in the SQL
+-- Editor (nothing after this needs the SQL Editor again for routine
+-- staff/driver approvals). Find your user id in Authentication > Users,
+-- then:
+--   update public.staff set "isAdmin" = true where id = '<your-user-id>';
 
 -- Customers (optional accounts). Anonymous ordering never requires
 -- this table — the order still gets created and the phone number still
@@ -212,12 +248,20 @@ create trigger customers_set_updated_at
   before update on public.customers
   for each row execute function public.set_orders_updated_at();
 
--- Drivers. A driver profile is created by staff (Staff Hub > Driver
--- Roster); the driver signs in with their own Supabase Auth account
--- (created the same way staff accounts are, via the dashboard) and is
--- matched to their profile by email. Being in this table does NOT by
--- itself make someone staff — add them to the staff table too (with
--- "isDriver" true) so they can sign in and reach the Driver App.
+-- Drivers. Two ways a profile row here gets created:
+--   1. Staff add one directly (Staff Hub > Driver Roster > Add Driver),
+--      then create the driver's Supabase Auth login from the dashboard
+--      the same way staff accounts are made, and separately add them
+--      to the staff table with "isDriver" true.
+--   2. The driver applies themselves at /staff/apply.html: they pick
+--      their own email/password (creates their Supabase Auth login in
+--      the same step) and fill in their own profile. That row starts
+--      "approved" = false and grants no access at all — it's just an
+--      application sitting in Driver Roster's "Pending" list until an
+--      admin approves it, which is the one action that actually adds
+--      them to the staff table and lets them sign in to anything.
+-- Either way, being in this table does NOT by itself grant access —
+-- only a matching, active row in the staff table does.
 create table if not exists public.drivers (
   id uuid primary key default gen_random_uuid(),
   name text not null default '',
@@ -229,9 +273,20 @@ create table if not exists public.drivers (
   "carPlate" text not null default '',
   notes text not null default '',
   active boolean not null default true,
+  "authUserId" uuid references auth.users(id),
+  approved boolean not null default false,
   "createdAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
   "updatedAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
 );
+alter table public.drivers add column if not exists "authUserId" uuid references auth.users(id);
+alter table public.drivers add column if not exists approved boolean not null default false;
+-- Existing rows (added by staff directly, before self-apply existed)
+-- were already trusted, so treat them as pre-approved rather than
+-- retroactively hiding drivers who were already working. Only rows
+-- with no linked auth account are "manually added by staff" — the
+-- self-apply flow always sets authUserId, so this only back-fills the
+-- old kind.
+update public.drivers set approved = true where "authUserId" is null and approved = false;
 create unique index if not exists drivers_email_idx on public.drivers (lower(email)) where email <> '';
 alter table public.drivers enable row level security;
 grant select, insert, update on public.drivers to authenticated;
@@ -240,6 +295,24 @@ create policy "drivers_staff_all" on public.drivers
   for all to authenticated
   using (public.is_staff())
   with check (public.is_staff());
+
+-- Self-apply: someone who just signed up (not staff yet, maybe never
+-- will be) can create exactly one application row for themselves, and
+-- can only ever see their own — never the roster, never other
+-- applicants. They cannot set approved themselves (with check strips
+-- it back to false regardless of what they send), so this never grants
+-- access on its own — only an admin approving it (see Driver Roster)
+-- does that, via the staff table insert, which has its own admin-only
+-- policy above.
+drop policy if exists "drivers_self_apply_insert" on public.drivers;
+create policy "drivers_self_apply_insert" on public.drivers
+  for insert to authenticated
+  with check ("authUserId" = auth.uid() and approved = false);
+
+drop policy if exists "drivers_self_select" on public.drivers;
+create policy "drivers_self_select" on public.drivers
+  for select to authenticated
+  using ("authUserId" = auth.uid());
 
 drop trigger if exists drivers_set_updated_at on public.drivers;
 create trigger drivers_set_updated_at
