@@ -7,6 +7,40 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## CRM/analytics improvements, 2026-09-07 (Claude Code)
+
+Second Tier 2 item, the "CRM/analytics improvements" backlog bullet's
+three sub-items, all built together since they touch the same data:
+
+**Repeat-customer flagging beyond Analytics.** A small gold "Regular"
+badge now shows next to a customer's name on Kitchen Board tickets and
+the POS live queue — not just in the Analytics tab — whenever 2+ orders
+on file share that phone number. Both those screens already fetch the
+full live orders table before filtering down to active-only, so this
+reuses that same fetch (`buildRegularsIndex()`) rather than a separate
+query.
+
+**Sparklines on the Analytics stat cards.** "Orders Today" and "Revenue
+Today" now show a 7-day trend line (a small inline SVG polyline, no
+charting library) under the number — shape only, no axis or numbers, so
+it reads as "trending up/down/flat" at a glance rather than something to
+study.
+
+**Horizontal timeline of today's order events.** A new section on
+Analytics: every order placed today plotted as a dot across a 24-hour
+bar, colored by outcome (in progress / completed / cancelled), hover for
+ticket/time/status/total. Deliberately built from *all* of today's
+orders including cancellations — the only place on this screen that
+shows cancelled orders at all, since a cancellation is still a real
+event of the day even though it's excluded from every revenue number
+elsewhere on the page.
+
+Tested end-to-end against the real live backend: inserted a historical
+order and a same-day, same-phone active order, confirmed the Regular
+badge renders on both Kitchen Board and the POS queue for the active
+one, confirmed both sparklines and timeline dots render with no console
+errors. Cleaned up test orders afterward, confirmed no leftover rows.
+
 ## Active-user indicator (who's online), 2026-09-07 (Claude Code)
 
 First Tier 2 item. A small "● N online" widget in the Staff Hub header
@@ -241,10 +275,10 @@ actually taking live orders.
   (Supabase Realtime Presence is built for exactly this). Shipped
   2026-09-07 — used a plain RLS-gated table instead of Realtime
   Presence, see "Active-user indicator (who's online)" above for why.
-- [ ] **CRM/analytics improvements**: repeat-customer flagging beyond
+- [x] **CRM/analytics improvements**: repeat-customer flagging beyond
   what Analytics already shows, small inline sparkline-style charts
   instead of just numbers, a horizontal timeline of today's order
-  events.
+  events. Shipped 2026-09-07 — see "CRM/analytics improvements" above.
 - [ ] **High-contrast / day mode toggle**. The whole site is currently
   one dark theme by design (matches the brand), so this is a real
   toggle to build (a second color scheme), not just respecting a

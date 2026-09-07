@@ -158,6 +158,12 @@
   .item-card--soldout{ opacity:.55; cursor:not-allowed; }
   .item-card--soldout:hover{ border-color:var(--line-on-ink); }
   .soldout-badge{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--paper-dim); border:1px solid var(--line-on-ink); border-radius:999px; padding:4px 10px; white-space:nowrap; }
+  .regular-badge{ font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink); background:var(--gold); border-radius:999px; padding:2px 7px; white-space:nowrap; vertical-align:middle; }
+  .timeline-track{ position:relative; height:14px; background:var(--ink); border:1px solid var(--line-on-ink); border-radius:999px; }
+  .timeline-dot{ position:absolute; top:50%; width:9px; height:9px; border-radius:50%; transform:translate(-50%,-50%); box-shadow:0 0 0 2px var(--ink-soft); }
+  .timeline-now{ position:absolute; top:-5px; bottom:-5px; width:2px; background:var(--paper-dim); }
+  .timeline-labels{ display:flex; justify-content:space-between; font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--paper-dim); margin-top:8px; }
+  .timeline-legend-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
   .kitchen-pause-badge{ font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; border-radius:999px; padding:6px 14px; white-space:nowrap; border:1px solid var(--line-on-ink); background:var(--ink-soft); color:var(--paper-dim); cursor:default; }
   .kitchen-pause-badge.is-paused{ border-color:var(--bad); color:var(--bad); }
   .kitchen-pause-badge.is-clickable{ cursor:pointer; }
@@ -612,6 +618,30 @@ function timeAgo(ts){
   if (mins < 1) return 'just in';
   if (mins === 1) return '1 min';
   return mins + ' min';
+}
+
+/* Repeat-customer flagging, shared by POS queue and Kitchen Board (both
+   already fetch the full live orders table before filtering down to
+   just active ones -- this reuses that same fetch rather than a
+   separate query). Rebuilt on every snapshot from whichever of those
+   two screens is currently open; "regular" mirrors Analytics' own bar
+   of 2+ orders on file under the same phone number. */
+let RegularsIndex = new Map();
+function buildRegularsIndex(allDocs){
+  const map = new Map();
+  allDocs.forEach(o => {
+    const phone = (o.phone||'').trim();
+    if (!phone) return;
+    map.set(phone, (map.get(phone)||0) + 1);
+  });
+  RegularsIndex = map;
+}
+function isRegular(phone){
+  const p = (phone||'').trim();
+  return !!p && (RegularsIndex.get(p)||0) >= 2;
+}
+function regularBadgeHtml(phone){
+  return isRegular(phone) ? ' <span class="regular-badge" title="2+ orders on file with this phone number">Regular</span>' : '';
 }
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -1600,6 +1630,7 @@ function renderPosQueue(){
   try{
     const unsub = App.db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
+      buildRegularsIndex(docs);
       const active = docs.filter(o => o.status !== 'completed' && o.status !== 'cancelled');
       list.innerHTML = active.length ? active.map(renderQueueRow).join('') : '<div class="cart-empty">No active orders right now.</div>';
       active.forEach(o => {
@@ -1678,7 +1709,7 @@ function renderQueueRow(o){
     <span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span>
     <span class="status-chip status-${o.status}">${escapeHtml(statusName(o.status))}</span>
     <span style="font-size:12.5px; color:var(--paper-dim); text-transform:capitalize;">${escapeHtml(o.orderType||'')}</span>
-    <span style="flex:1; min-width:120px; font-size:13px;">${escapeHtml(o.customerName||'')}</span>
+    <span style="flex:1; min-width:120px; font-size:13px;">${escapeHtml(o.customerName||'')}${regularBadgeHtml(o.phone)}</span>
     <span class="mono" style="font-weight:600;">${money(o.total||0)}${o.tip ? `<span style="color:var(--gold); font-weight:400;"> (+${money(o.tip)} tip)</span>` : ''}</span>
     <span style="font-size:11.5px; color:var(--paper-dim);">${timeAgo(o.createdAt)}</span>
     ${(o.status==='new') ? `<button class="btn-ghost" id="queue-edit-${o.id}" type="button">Edit</button>` : ''}
@@ -1828,6 +1859,7 @@ function initKitchenView(){
       // sitting in 'new' when you open Kitchen Board isn't "new"), and
       // not on every status change (advancing a ticket yourself
       // shouldn't ring the new-order bell).
+      buildRegularsIndex(docs);
       const freshlyNew = docs.filter(o => o.status === 'new' && !kitchenSeenOrderIds.has(o.id));
       docs.forEach(o => kitchenSeenOrderIds.add(o.id));
       if (!kitchenFirstSnapshot && freshlyNew.length){
@@ -1910,7 +1942,7 @@ function renderTicket(o){
     <div class="age">${ageMin} min old</div>
     <ul>${(o.items||[]).map(it => `<li><b>${it.qty}&times;</b> ${escapeHtml(lineLabel(it))}${it.notes ? ` &mdash; <i>${escapeHtml(it.notes)}</i>` : ''}</li>`).join('')}</ul>
     ${o.notes ? `<div class="who">Note: ${escapeHtml(o.notes)}</div>` : ''}
-    <div class="who">${escapeHtml(o.customerName||'')}${o.address ? ', ' + escapeHtml(o.address) : ''}</div>
+    <div class="who">${escapeHtml(o.customerName||'')}${regularBadgeHtml(o.phone)}${o.address ? ', ' + escapeHtml(o.address) : ''}</div>
     ${o.tip ? `<div class="tip-note">+${money(o.tip)} tip</div>` : ''}
     ${next ? `<button class="advance" id="ticket-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>` : waitingBlock}
   </div>`;
@@ -1978,6 +2010,21 @@ function renderAnalytics(allOrders, root){
   const todayTips = todayOrders.reduce((s,o) => s + (o.tip||0), 0);
   const avgTicket = todayOrders.length ? todayRevenue / todayOrders.length : 0;
 
+  // Last 7 days (including today), oldest first, for the stat card
+  // sparklines below -- same 1000-row-select caveat noted at the top of
+  // this file applies once lifetime history passes that, same as
+  // everything else computed here.
+  const dayMs = 86400000;
+  const last7Starts = Array.from({length:7}, (_,i) => today0 - (6-i)*dayMs);
+  const ordersPerDay = last7Starts.map(start => live.filter(o => (o.createdAt||0) >= start && (o.createdAt||0) < start+dayMs).length);
+  const revenuePerDay = last7Starts.map(start => live.reduce((s,o) => ((o.createdAt||0) >= start && (o.createdAt||0) < start+dayMs) ? s+(o.total||0) : s, 0));
+
+  // Today's order timeline: every order placed today, including
+  // cancellations (the only place on this screen that shows cancelled
+  // orders at all -- everywhere else is deliberately "live" business,
+  // not history, but a cancellation is still a real event of the day).
+  const todayAllOrders = allOrders.filter(o => (o.createdAt||0) >= today0);
+
   // Top items, by name+size, across whatever history this fetch covers.
   const itemStats = new Map();
   live.forEach(o => (o.items||[]).forEach(it => {
@@ -2010,10 +2057,16 @@ function renderAnalytics(allOrders, root){
 
   root.innerHTML = `
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:26px;">
-      ${statCard('Orders Today', todayOrders.length)}
-      ${statCard('Revenue Today', money(todayRevenue))}
+      ${statCard('Orders Today', todayOrders.length, ordersPerDay)}
+      ${statCard('Revenue Today', money(todayRevenue), revenuePerDay)}
       ${statCard('Avg Ticket', money(avgTicket))}
       ${statCard('Tips Today', money(todayTips))}
+    </div>
+
+    <h3 style="font-size:17px; margin-bottom:4px;">Today's Order Timeline</h3>
+    <div style="font-size:12px; color:var(--paper-dim); margin-bottom:10px;">Every order placed today, including cancellations. Hover a dot for details.</div>
+    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:26px;">
+      ${timelineHtml(todayAllOrders, today0)}
     </div>
 
     <h3 style="font-size:17px; margin-bottom:10px;">Top Sellers</h3>
@@ -2036,11 +2089,56 @@ function renderAnalytics(allOrders, root){
     </div>`;
 }
 
-function statCard(label, value){
+function statCard(label, value, sparkline){
   return `<div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:14px 16px;">
     <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper-dim);">${escapeHtml(label)}</div>
     <div style="font-size:24px; font-weight:700; margin-top:4px;" class="mono">${value}</div>
+    ${sparkline && sparkline.length > 1 ? sparklineSvg(sparkline) : ''}
   </div>`;
+}
+
+// A trend line, not a precise chart -- no axis, no numbers, just shape.
+// Last 7 days including today, oldest to newest, left to right.
+function sparklineSvg(values){
+  const w = 100, h = 26, pad = 3;
+  const max = Math.max(...values, 0);
+  const min = Math.min(...values, 0);
+  const range = (max - min) || 1;
+  const stepX = values.length > 1 ? (w - pad*2) / (values.length - 1) : 0;
+  const points = values.map((v,i) => {
+    const x = pad + i*stepX;
+    const y = pad + (h - pad*2) * (1 - (v - min)/range);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" style="display:block; margin-top:8px; overflow:visible;">
+    <polyline points="${points}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// A horizontal dot-per-order timeline across the current day, colored by
+// how that order ended up (still in progress / completed / cancelled).
+function timelineHtml(todayAllOrders, dayStart){
+  if (!todayAllOrders.length) return '<div class="cart-empty">No orders yet today.</div>';
+  const dayLen = 86400000;
+  const pctOfDay = (ts) => Math.max(0, Math.min(100, ((ts||dayStart) - dayStart) / dayLen * 100));
+  const nowPct = pctOfDay(Date.now());
+  const dots = todayAllOrders.map(o => {
+    const color = o.status === 'cancelled' ? 'var(--bad)' : (o.status === 'completed' ? 'var(--ok)' : 'var(--gold)');
+    const time = new Date(o.createdAt||dayStart).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+    const label = `${o.ticket||''} — ${time} — ${statusName(o.status)} — ${money(o.total||0)}`;
+    return `<div class="timeline-dot" style="left:${pctOfDay(o.createdAt).toFixed(2)}%; background:${color};" title="${escapeHtml(label)}"></div>`;
+  }).join('');
+  return `
+    <div class="timeline-track">
+      <div class="timeline-now" style="left:${nowPct.toFixed(2)}%;" title="Now"></div>
+      ${dots}
+    </div>
+    <div class="timeline-labels"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>12am</span></div>
+    <div style="display:flex; gap:16px; margin-top:10px; font-size:11.5px; color:var(--paper-dim);">
+      <span><span class="timeline-legend-dot" style="background:var(--gold);"></span>In progress</span>
+      <span><span class="timeline-legend-dot" style="background:var(--ok);"></span>Completed</span>
+      <span><span class="timeline-legend-dot" style="background:var(--bad);"></span>Cancelled</span>
+    </div>`;
 }
 </script>
 
