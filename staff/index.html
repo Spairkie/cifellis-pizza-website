@@ -90,6 +90,23 @@
   }
   .pill[aria-pressed="true"]{ background:var(--sauce); border-color:var(--sauce); color:var(--paper); }
   .status-chip{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:999px; }
+
+  /* ---- generic confirm modal ---- */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(13,9,6,.72); z-index:200;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-card{
+    background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:12px;
+    max-width:380px; width:100%; padding:22px; box-shadow:0 24px 60px rgba(0,0,0,.5);
+  }
+  .modal-card h3{ font-size:18px; margin:0 0 8px; color:var(--paper); }
+  .modal-card p{ font-size:13.5px; color:var(--paper-dim); line-height:1.5; margin:0 0 14px; }
+  .modal-card textarea, .modal-card input{
+    width:100%; background:var(--ink); border:1.5px solid var(--line-on-ink); border-radius:8px;
+    color:var(--paper); padding:10px 12px; font-size:13.5px; font-family:inherit; margin-bottom:14px;
+  }
+  .modal-actions{ display:flex; gap:10px; justify-content:flex-end; }
   .status-new{ background:rgba(220,159,52,.18); color:var(--gold); }
   .status-preparing{ background:rgba(220,159,52,.28); color:var(--gold); }
   .status-ready{ background:rgba(76,140,90,.25); color:#7fc98f; }
@@ -191,15 +208,20 @@
     box-shadow:0 8px 20px -10px rgba(0,0,0,.5); border-left:5px solid var(--ok);
   }
   .ticket.age-warn{ border-left-color:var(--warn); }
-  .ticket.age-bad{ border-left-color:var(--bad); }
+  .ticket.age-bad{ border-left-color:var(--bad); animation:ticketPulse 2s ease-in-out infinite; }
+  @keyframes ticketPulse{ 0%,100%{ box-shadow:0 0 0 rgba(198,42,47,0); } 50%{ box-shadow:0 0 0 3px rgba(198,42,47,.18); } }
   .ticket .top{ display:flex; justify-content:space-between; align-items:baseline; }
   .ticket .num{ font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:15px; }
   .ticket .type{ font-size:10px; font-family:"IBM Plex Mono",monospace; text-transform:uppercase; padding:2px 7px; border-radius:999px; background:rgba(28,23,18,.1); }
+  .ticket .type.type-delivery{ background:rgba(198,42,47,.15); color:var(--sauce-deep); }
+  .ticket .type.type-pickup{ background:rgba(60,120,60,.15); color:#2d5a2d; }
   .ticket .age{ font-size:11px; color:var(--sauce-deep); font-weight:700; margin-top:2px; }
   .ticket ul{ list-style:none; margin:8px 0; padding:0; font-size:12.5px; }
   .ticket li{ padding:2px 0; }
+  .ticket li b{ font-family:"IBM Plex Mono",monospace; }
   .ticket .who{ font-size:11.5px; color:rgba(28,23,18,.65); margin-top:4px; }
-  .ticket .advance{ width:100%; margin-top:10px; background:var(--ink); color:var(--paper); border:none; border-radius:6px; padding:9px; font-weight:700; font-size:12px; }
+  .ticket .tip-note{ font-size:11px; color:var(--sauce-deep); font-weight:700; margin-top:4px; }
+  .ticket .advance{ width:100%; margin-top:10px; background:var(--ink); color:var(--paper); border:none; border-radius:6px; padding:12px; font-weight:700; font-size:13px; }
   .ticket .advance:hover{ background:var(--sauce); }
   .kanban-empty{ font-size:12px; color:var(--paper-dim); padding:10px 6px; }
 
@@ -278,6 +300,11 @@
       <div class="t">Driver App</div>
       <div class="d">Claim deliveries, get the address, mark them out the door and delivered.</div>
     </button>
+    <button class="role-card" data-role="analytics">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+      <div class="t">Analytics</div>
+      <div class="d">Today's numbers, top sellers, and which customers keep coming back.</div>
+    </button>
   </div>
   <button class="btn-ghost" id="installBtn" type="button" hidden style="margin-top:6px; font-size:13px;">Install this app on this device &darr;</button>
 </div>
@@ -298,6 +325,7 @@
     <div class="view" id="view-pos" hidden></div>
     <div class="view" id="view-kitchen" hidden></div>
     <div class="view" id="view-driver" hidden></div>
+    <div class="view" id="view-analytics" hidden></div>
   </main>
 </div>
 
@@ -306,6 +334,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="../order/supabase-config.js"></script>
 <script src="../order/db-supabase.js"></script>
+<script src="../order/geo.js"></script>
 
 <script>
 /* =========================================================================
@@ -446,10 +475,42 @@ function showToast(msg){
   clearTimeout(showToast._h);
   showToast._h = setTimeout(()=>t.classList.remove('show'), 2200);
 }
-function computeTotals(items){
+
+/* Generic confirm modal. opts: { title, body, confirmLabel, cancelLabel,
+   danger (bool, styles confirm button red), withReason (bool, shows a
+   text field and passes its value to onConfirm), onConfirm(reason) }. */
+function showConfirmModal(opts){
+  const existing = document.getElementById('confirmModalBackdrop');
+  if (existing) existing.remove();
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.id = 'confirmModalBackdrop';
+  backdrop.innerHTML = `
+    <div class="modal-card">
+      <h3>${escapeHtml(opts.title || 'Are you sure?')}</h3>
+      ${opts.body ? `<p>${escapeHtml(opts.body)}</p>` : ''}
+      ${opts.withReason ? `<textarea id="confirmModalReason" rows="2" placeholder="${escapeHtml(opts.reasonPlaceholder || 'Reason (optional)')}"></textarea>` : ''}
+      <div class="modal-actions">
+        <button class="btn-ghost" id="confirmModalCancel" type="button">${escapeHtml(opts.cancelLabel || 'Never mind')}</button>
+        <button class="btn ${opts.danger ? 'btn-sauce' : 'btn-outline'}" id="confirmModalOk" type="button">${escapeHtml(opts.confirmLabel || 'Confirm')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  document.getElementById('confirmModalCancel').addEventListener('click', close);
+  document.getElementById('confirmModalOk').addEventListener('click', () => {
+    const reason = opts.withReason ? document.getElementById('confirmModalReason').value.trim() : undefined;
+    close();
+    if (opts.onConfirm) opts.onConfirm(reason);
+  });
+}
+
+function computeTotals(items, tip){
   const subtotal = items.reduce((s,it)=> s + it.unitPrice*it.qty, 0);
   const tax = subtotal * TAX_RATE;
-  return { subtotal, tax, total: subtotal+tax };
+  const tipAmt = tip || 0;
+  return { subtotal, tax, tip: tipAmt, total: subtotal+tax+tipAmt };
 }
 function lineLabel(it){
   return it.name + (it.size ? ' (' + it.size + ')' : '');
@@ -543,7 +604,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -575,6 +636,7 @@ function goToRole(role){
   if (role === 'pos'){ document.getElementById('view-pos').hidden = false; initPosView(); }
   if (role === 'kitchen'){ document.getElementById('view-kitchen').hidden = false; initKitchenView(); }
   if (role === 'driver'){ document.getElementById('view-driver').hidden = false; initDriverView(); }
+  if (role === 'analytics'){ document.getElementById('view-analytics').hidden = false; initAnalyticsView(); }
 }
 
 document.querySelectorAll('.role-card').forEach(btn => {
@@ -665,10 +727,10 @@ window.addEventListener('appinstalled', () => {
 /* =========================================================================
    ORDERING (shared by Customer Kiosk and Staff POS)
    ========================================================================= */
-let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash' };
+let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null, editingOrderId:null };
 
 function resetOrderCtx(mode){
-  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash' };
+  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null, editingOrderId:null };
 }
 
 function addLine(line){
@@ -744,7 +806,9 @@ function buildCartPaneHTML(mode){
         </div>
         <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Your name"></div>
         <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
-        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ"></div>
+        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address">
+          <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
+        </div>
         <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Allergies, extra sauce, etc."></div>
         <div class="field-group"><label>Payment</label>
           <div class="seg" id="paymethod-${mode}">
@@ -775,7 +839,9 @@ function buildCartPaneHTML(mode){
       </div>
       <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Customer name"></div>
       <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
-      <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ"></div>
+      <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address">
+          <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
+        </div>
       <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Order notes"></div>
       <div class="field-group"><label>Tender</label>
         <div class="seg" id="paymethod-${mode}">
@@ -784,8 +850,19 @@ function buildCartPaneHTML(mode){
         </div>
       </div>
       <div class="field-group" id="cashgroup-${mode}"><label>Cash Tendered</label><input id="tendered-${mode}" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="field-group" id="tipgroup-${mode}"><label id="tiplabel-${mode}">Add a Tip</label>
+        <div class="seg" id="tipseg-${mode}">
+          <button type="button" data-v="0" aria-pressed="true">No Tip</button>
+          <button type="button" data-v="0.15">15%</button>
+          <button type="button" data-v="0.18">18%</button>
+          <button type="button" data-v="0.20">20%</button>
+          <button type="button" data-v="custom">Custom</button>
+        </div>
+        <input id="tipcustom-${mode}" type="number" step="0.01" min="0" placeholder="Custom tip amount" hidden style="margin-top:8px;">
+      </div>
       <div class="row-between" style="margin-top:10px;"><span>Subtotal</span><span class="mono" id="subtotal-${mode}"></span></div>
       <div class="row-between"><span>Tax</span><span class="mono" id="tax-${mode}"></span></div>
+      <div class="row-between" id="tiprow-${mode}" hidden><span>Tip</span><span class="mono" id="tipamount-${mode}"></span></div>
       <div class="row-between total"><span>Total</span><span id="total-${mode}"></span></div>
       <div class="row-between" id="changerow-${mode}" style="color:var(--gold); font-weight:700;"></div>
       <button class="btn btn-sauce" id="submit-${mode}" type="button" style="width:100%; justify-content:center; margin-top:14px; padding:14px;">Ring Up Order</button>
@@ -917,9 +994,19 @@ function renderCart(mode){
       btn.addEventListener('click', ()=> changeQty(btn.getAttribute('data-key'), +btn.getAttribute('data-d')));
     });
   }
-  const totals = computeTotals(orderCtx.cart);
+  if (orderCtx.tipPct != null){
+    const rawSubtotal = orderCtx.cart.reduce((s,it)=> s + it.unitPrice*it.qty, 0);
+    orderCtx.tip = Math.round(rawSubtotal * orderCtx.tipPct * 100) / 100;
+  }
+  const totals = computeTotals(orderCtx.cart, orderCtx.tip);
   document.getElementById(`subtotal-${mode}`).textContent = money(totals.subtotal);
   document.getElementById(`tax-${mode}`).textContent = money(totals.tax);
+  const tipRow = document.getElementById(`tiprow-${mode}`);
+  const tipAmountEl = document.getElementById(`tipamount-${mode}`);
+  if (tipRow && tipAmountEl){
+    tipRow.hidden = totals.tip <= 0;
+    tipAmountEl.textContent = money(totals.tip);
+  }
   document.getElementById(`total-${mode}`).textContent = money(totals.total);
   if (mode==='pos') updateChangeDue(mode, totals.total);
   const submitBtn = document.getElementById(`submit-${mode}`);
@@ -948,7 +1035,46 @@ function renderOrderLayout(mode){
   wireSeg(`ordertype-${mode}`, 'orderType', (v) => {
     const addrGroup = document.getElementById(`addrgroup-${mode}`);
     if (addrGroup) addrGroup.hidden = (v !== 'delivery');
+    const tipLabel = document.getElementById(`tiplabel-${mode}`);
+    if (tipLabel) tipLabel.textContent = v === 'delivery' ? 'Add a Tip for Your Driver' : 'Add a Tip for the Counter';
   });
+  const addrInput = document.getElementById(`custaddr-${mode}`);
+  const addrInfo = document.getElementById(`addrinfo-${mode}`);
+  if (addrInput && addrInfo && typeof wireDeliveryLookup === 'function'){
+    wireDeliveryLookup(addrInput, addrInfo, (result) => {
+      orderCtx.deliveryInfo = result;
+    });
+  }
+  const tipSeg = document.getElementById(`tipseg-${mode}`);
+  const tipCustom = document.getElementById(`tipcustom-${mode}`);
+  if (tipSeg){
+    tipSeg.querySelectorAll('button').forEach(btn=>{
+      btn.addEventListener('click', () => {
+        tipSeg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));
+        btn.setAttribute('aria-pressed','true');
+        const v = btn.getAttribute('data-v');
+        const subtotal = computeTotals(orderCtx.cart, 0).subtotal;
+        if (v === 'custom'){
+          tipCustom.hidden = false;
+          tipCustom.focus();
+          orderCtx.tip = Number(tipCustom.value) || 0;
+          orderCtx.tipPct = null;
+        } else {
+          tipCustom.hidden = true;
+          orderCtx.tipPct = Number(v);
+          orderCtx.tip = Math.round(subtotal * Number(v) * 100) / 100;
+        }
+        renderCart(mode);
+      });
+    });
+  }
+  if (tipCustom){
+    tipCustom.addEventListener('input', () => {
+      orderCtx.tip = Number(tipCustom.value) || 0;
+      orderCtx.tipPct = null;
+      renderCart(mode);
+    });
+  }
   wireSeg(`paymethod-${mode}`, 'payMethod', () => {
     if (mode === 'pos'){
       const cashGroup = document.getElementById(`cashgroup-${mode}`);
@@ -1044,15 +1170,16 @@ async function submitPosOrder(){
   const notes = document.getElementById('custnotes-pos').value.trim();
   if (!orderCtx.cart.length){ showToast('Add items to the order first'); return; }
   if (orderCtx.orderType === 'delivery' && !addr){ showToast('Delivery address is required'); return; }
-  const totals = computeTotals(orderCtx.cart);
-  if (orderCtx.payMethod === 'cash'){
+  const totals = computeTotals(orderCtx.cart, orderCtx.tip);
+  if (orderCtx.payMethod === 'cash' && !orderCtx.editingOrderId){
     const tenderedField = document.getElementById('tendered-pos');
     const tendered = parseFloat((tenderedField && tenderedField.value) || '0');
     if (!tendered || tendered < totals.total){ showToast('Cash tendered must cover the total'); return; }
   }
   const submitBtn = document.getElementById('submit-pos');
   submitBtn.disabled = true;
-  const ticket = await submitOrder({
+  const di = orderCtx.deliveryInfo;
+  const payload = {
     source: 'pos',
     customerName: name || 'Walk-in',
     phone,
@@ -1061,9 +1188,20 @@ async function submitPosOrder(){
     orderType: orderCtx.orderType,
     payMethod: orderCtx.payMethod,
     items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', unitPrice:l.unitPrice, qty:l.qty, notes:l.notes||'' })),
-    subtotal: totals.subtotal, tax: totals.tax, total: totals.total,
-  });
-  if (!ticket) return;
+    subtotal: totals.subtotal, tax: totals.tax, tip: totals.tip, total: totals.total,
+    deliveryMiles: (orderCtx.orderType === 'delivery' && di && di.miles != null) ? di.miles : null,
+    deliveryEtaMins: (orderCtx.orderType === 'delivery' && di && di.minutes != null) ? di.minutes : null,
+  };
+  if (orderCtx.editingOrderId){
+    await updateOrder(orderCtx.editingOrderId, payload);
+    showToast('Order updated');
+    resetOrderCtx('pos');
+    orderCtx.orderType = 'phone';
+    renderPosQueue();
+    return;
+  }
+  const ticket = await submitOrder(payload);
+  if (!ticket){ submitBtn.disabled = false; return; }
   showToast('Order rung up, ticket ' + ticket);
   resetOrderCtx('pos');
   orderCtx.orderType = 'phone';
@@ -1076,13 +1214,17 @@ function renderPosQueue(){
   const view = document.getElementById('view-pos');
   view.innerHTML = `
     <div style="padding:18px 20px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-        <h3 style="font-size:22px;">Current Orders</h3>
-        <button class="btn btn-outline" id="newOrderFromQueue" type="button">New Order</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button class="btn-ghost" id="backToPosBtn" type="button">&larr; Back to POS</button>
+          <h3 style="font-size:22px; margin:0;">Current Orders</h3>
+        </div>
+        <button class="btn btn-outline" id="newOrderFromQueue" type="button">+ New Order</button>
       </div>
       <div id="pos-queue-list" style="display:flex; flex-direction:column; gap:10px;"></div>
     </div>`;
   document.getElementById('newOrderFromQueue').addEventListener('click', initPosView);
+  document.getElementById('backToPosBtn').addEventListener('click', backToPosView);
   const list = document.getElementById('pos-queue-list');
   if (!App.db){
     list.innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>';
@@ -1099,14 +1241,68 @@ function renderPosQueue(){
           const next = nextStatus(o);
           if (next) updateOrder(o.id, { status: next });
         });
+        const editBtn = document.getElementById(`queue-edit-${o.id}`);
+        if (editBtn) editBtn.addEventListener('click', () => editOrderInPos(o));
         const cancelBtn = document.getElementById(`queue-cancel-${o.id}`);
-        if (cancelBtn) cancelBtn.addEventListener('click', () => updateOrder(o.id, { status:'cancelled' }));
+        if (cancelBtn) cancelBtn.addEventListener('click', () => {
+          showConfirmModal({
+            title: `Cancel order ${o.ticket || ''}?`,
+            body: `This marks the order cancelled for ${o.customerName || 'this customer'} (${money(o.total||0)}). This can't be undone from here.`,
+            confirmLabel: 'Cancel Order',
+            danger: true,
+            withReason: true,
+            reasonPlaceholder: 'Why is this being cancelled? (optional, shown in order history)',
+            onConfirm: (reason) => {
+              updateOrder(o.id, { status:'cancelled', cancelReason: reason || null });
+              showToast(`Order ${o.ticket || ''} cancelled`);
+            },
+          });
+        });
       });
     }, () => { list.innerHTML = '<div class="cart-empty">Could not load live orders.</div>'; });
     App.unsub.push(unsub);
   }catch(e){
     list.innerHTML = '<div class="cart-empty">Could not load live orders.</div>';
   }
+}
+
+/* Returns to the POS entry screen without discarding whatever order the
+   staff member was already building — only initPosView() (the "+ New
+   Order" button) resets the cart. This is what "Back to POS" is for:
+   peek at the live queue, then pick right back up. */
+function backToPosView(){
+  stopAllSubscriptions();
+  if (!orderCtx || orderCtx.mode !== 'pos'){
+    initPosView();
+    return;
+  }
+  renderOrderLayout('pos');
+}
+
+/* Loads an existing order's items back into the POS cart so staff can
+   change it, then saves over the same order instead of creating a new
+   one. Only offered for orders still in 'new' status — once the
+   kitchen has started on it, changing the ticket without them knowing
+   causes more problems than it solves; cancel and re-ring it instead. */
+function editOrderInPos(o){
+  stopAllSubscriptions();
+  resetOrderCtx('pos');
+  orderCtx.editingOrderId = o.id;
+  orderCtx.cart = (o.items || []).map(it => ({
+    _key: Math.random().toString(36).slice(2),
+    name: it.name, size: it.size || '', unitPrice: it.unitPrice, qty: it.qty, notes: it.notes || '',
+  }));
+  orderCtx.orderType = o.orderType || 'phone';
+  orderCtx.payMethod = o.payMethod || 'cash';
+  orderCtx.tip = o.tip || 0;
+  renderOrderLayout('pos');
+  const nameEl = document.getElementById('custname-pos'); if (nameEl) nameEl.value = o.customerName || '';
+  const phoneEl = document.getElementById('custphone-pos'); if (phoneEl) phoneEl.value = o.phone || '';
+  const addrEl = document.getElementById('custaddr-pos'); if (addrEl) addrEl.value = o.address || '';
+  const notesEl = document.getElementById('custnotes-pos'); if (notesEl) notesEl.value = o.notes || '';
+  const submitBtn = document.getElementById('submit-pos');
+  if (submitBtn) submitBtn.textContent = `Save Changes to ${o.ticket || 'Order'}`;
+  showToast(`Editing order ${o.ticket || ''} — changes save to this ticket`);
 }
 
 function renderQueueRow(o){
@@ -1116,8 +1312,9 @@ function renderQueueRow(o){
     <span class="status-chip status-${o.status}">${escapeHtml(statusName(o.status))}</span>
     <span style="font-size:12.5px; color:var(--paper-dim); text-transform:capitalize;">${escapeHtml(o.orderType||'')}</span>
     <span style="flex:1; min-width:120px; font-size:13px;">${escapeHtml(o.customerName||'')}</span>
-    <span class="mono" style="font-weight:600;">${money(o.total||0)}</span>
+    <span class="mono" style="font-weight:600;">${money(o.total||0)}${o.tip ? `<span style="color:var(--gold); font-weight:400;"> (+${money(o.tip)} tip)</span>` : ''}</span>
     <span style="font-size:11.5px; color:var(--paper-dim);">${timeAgo(o.createdAt)}</span>
+    ${(o.status==='new') ? `<button class="btn-ghost" id="queue-edit-${o.id}" type="button">Edit</button>` : ''}
     ${next ? `<button class="btn btn-outline" style="padding:6px 12px; font-size:12px;" id="queue-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>` : ''}
     ${(o.status!=='out_for_delivery') ? `<button class="btn-ghost" id="queue-cancel-${o.id}" type="button">Cancel</button>` : ''}
   </div>`;
@@ -1207,14 +1404,142 @@ function renderTicket(o){
   return `<div class="ticket ${ageClass}">
     <div class="top">
       <span class="num">${escapeHtml(o.ticket||'')}</span>
-      <span class="type">${escapeHtml(o.orderType||'')}</span>
+      <span class="type type-${o.orderType==='delivery'?'delivery':'pickup'}">${escapeHtml(o.orderType||'')}</span>
     </div>
     <div class="age">${ageMin} min old</div>
-    <ul>${(o.items||[]).map(it => `<li>${it.qty} &times; ${escapeHtml(lineLabel(it))}</li>`).join('')}</ul>
+    <ul>${(o.items||[]).map(it => `<li><b>${it.qty}&times;</b> ${escapeHtml(lineLabel(it))}${it.notes ? ` &mdash; <i>${escapeHtml(it.notes)}</i>` : ''}</li>`).join('')}</ul>
     ${o.notes ? `<div class="who">Note: ${escapeHtml(o.notes)}</div>` : ''}
     <div class="who">${escapeHtml(o.customerName||'')}${o.address ? ', ' + escapeHtml(o.address) : ''}</div>
+    ${o.tip ? `<div class="tip-note">+${money(o.tip)} tip</div>` : ''}
     ${next ? `<button class="advance" id="ticket-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>`
       : (o.status === 'ready' && o.orderType === 'delivery' ? '<div class="age">Waiting for a driver to claim it</div>' : '')}
+  </div>`;
+}
+</script>
+
+<script>
+/* =========================================================================
+   ANALYTICS (today's numbers, top items, regular customers)
+   ========================================================================= */
+/* Everything here is computed client-side from the same live orders feed
+   the other screens use — no separate reporting backend. That's fine at
+   the order volumes a single pizza shop generates, but two limits are
+   worth knowing:
+     1. Supabase caps a plain select() at 1000 rows by default, so once
+        lifetime order history passes that, the oldest orders silently
+        drop out of these numbers. Today's stats are unaffected (there
+        won't be 1000 orders in one day); "top items" and "regulars"
+        will start under-counting history at that point.
+     2. This recomputes from scratch on every order change, which is
+        fine for hundreds of orders but would need a real SQL aggregate
+        (a Postgres view, or a scheduled rollup table) if this ever
+        needs to report over thousands of orders quickly.
+   The fix for both, when it's needed: a Postgres function that does the
+   aggregation in the database and returns just the summary numbers,
+   called via Supabase's .rpc(). Worth doing once there's real volume;
+   not worth the complexity before then. */
+
+function startOfTodayMs(){
+  const d = new Date();
+  d.setHours(0,0,0,0);
+  return d.getTime();
+}
+
+function initAnalyticsView(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-analytics');
+  view.innerHTML = `
+    <div style="padding:18px 20px; max-width:1000px; margin:0 auto;">
+      <h2 style="font-size:26px; margin-bottom:4px;">Analytics</h2>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--paper-dim); margin-bottom:18px;">Updates live &middot; based on the most recent orders</div>
+      <div id="analytics-root">Loading...</div>
+    </div>`;
+  const root = document.getElementById('analytics-root');
+  if (!App.db){
+    root.innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>';
+    return;
+  }
+  try{
+    const unsub = App.db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
+      renderAnalytics(docs, root);
+    }, () => { root.innerHTML = '<div class="cart-empty">Could not load order history.</div>'; });
+    App.unsub.push(unsub);
+  }catch(e){
+    root.innerHTML = '<div class="cart-empty">Could not load order history.</div>';
+  }
+}
+
+function renderAnalytics(allOrders, root){
+  const live = allOrders.filter(o => o.status !== 'cancelled');
+  const today0 = startOfTodayMs();
+  const todayOrders = live.filter(o => (o.createdAt||0) >= today0);
+  const todayRevenue = todayOrders.reduce((s,o) => s + (o.total||0), 0);
+  const todayTips = todayOrders.reduce((s,o) => s + (o.tip||0), 0);
+  const avgTicket = todayOrders.length ? todayRevenue / todayOrders.length : 0;
+
+  // Top items, by name+size, across whatever history this fetch covers.
+  const itemStats = new Map();
+  live.forEach(o => (o.items||[]).forEach(it => {
+    const key = it.name + (it.size ? ` (${it.size})` : '');
+    const cur = itemStats.get(key) || { qty:0, revenue:0 };
+    cur.qty += it.qty || 0;
+    cur.revenue += (it.unitPrice||0) * (it.qty||0);
+    itemStats.set(key, cur);
+  }));
+  const topItems = [...itemStats.entries()].sort((a,b) => b[1].qty - a[1].qty).slice(0, 8);
+
+  // Regulars: group by phone number, the standard low-friction way small
+  // restaurants identify repeat customers (no loyalty signup needed —
+  // everyone already gives a phone number to order).
+  const byPhone = new Map();
+  live.forEach(o => {
+    const phone = (o.phone||'').trim();
+    if (!phone) return;
+    const cur = byPhone.get(phone) || { name:o.customerName||'', visits:0, spent:0, lastOrder:0 };
+    cur.visits += 1;
+    cur.spent += o.total || 0;
+    cur.lastOrder = Math.max(cur.lastOrder, o.createdAt || 0);
+    if (o.customerName) cur.name = o.customerName; // keep the most recent name on file
+    byPhone.set(phone, cur);
+  });
+  const regulars = [...byPhone.entries()]
+    .filter(([, v]) => v.visits >= 2)
+    .sort((a,b) => b[1].visits - a[1].visits)
+    .slice(0, 15);
+
+  root.innerHTML = `
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:26px;">
+      ${statCard('Orders Today', todayOrders.length)}
+      ${statCard('Revenue Today', money(todayRevenue))}
+      ${statCard('Avg Ticket', money(avgTicket))}
+      ${statCard('Tips Today', money(todayTips))}
+    </div>
+
+    <h3 style="font-size:17px; margin-bottom:10px;">Top Sellers</h3>
+    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:6px 16px; margin-bottom:26px;">
+      ${topItems.length ? topItems.map(([name, s], i) => `
+        <div class="row-between" style="padding:9px 0; ${i<topItems.length-1?'border-bottom:1px solid var(--line-on-ink);':''}">
+          <span>${escapeHtml(name)}</span>
+          <span class="mono" style="color:var(--paper-dim);">${s.qty} sold &middot; ${money(s.revenue)}</span>
+        </div>`).join('') : '<div class="cart-empty">No order history yet.</div>'}
+    </div>
+
+    <h3 style="font-size:17px; margin-bottom:4px;">Regulars</h3>
+    <div style="font-size:12px; color:var(--paper-dim); margin-bottom:10px;">Customers with 2 or more orders, matched by phone number.</div>
+    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:6px 16px;">
+      ${regulars.length ? regulars.map(([phone, r], i) => `
+        <div class="row-between" style="padding:9px 0; flex-wrap:wrap; gap:6px; ${i<regulars.length-1?'border-bottom:1px solid var(--line-on-ink);':''}">
+          <span>${escapeHtml(r.name || 'Unnamed')} <span class="mono" style="color:var(--paper-dim); font-size:12px;">${escapeHtml(phone)}</span></span>
+          <span class="mono" style="color:var(--paper-dim);">${r.visits} orders &middot; ${money(r.spent)} lifetime &middot; last ${timeAgo(r.lastOrder)}</span>
+        </div>`).join('') : '<div class="cart-empty">Not enough repeat orders yet to spot regulars.</div>'}
+    </div>`;
+}
+
+function statCard(label, value){
+  return `<div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:14px 16px;">
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper-dim);">${escapeHtml(label)}</div>
+    <div style="font-size:24px; font-weight:700; margin-top:4px;" class="mono">${value}</div>
   </div>`;
 }
 </script>

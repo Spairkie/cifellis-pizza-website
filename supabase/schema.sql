@@ -40,6 +40,12 @@ create table if not exists public.orders (
   -- sent once that function is implemented.
   "phoneOptIn"  boolean not null default false,
   "smsStatus"   text not null default 'not_sent' check ("smsStatus" in ('not_sent','sent','failed')),
+  -- Delivery distance/ETA, computed client-side from a free geocoder
+  -- when the customer enters a delivery address (see order/geo.js).
+  -- Null for pickup orders, or if the lookup failed/was never run.
+  "deliveryMiles"   numeric(6,2),
+  "deliveryEtaMins" integer,
+  "cancelReason"    text,
   "createdAt"   bigint not null default (extract(epoch from now()) * 1000)::bigint,
   "updatedAt"   bigint not null default (extract(epoch from now()) * 1000)::bigint
 );
@@ -55,6 +61,9 @@ alter table public.orders add column if not exists "paymentProvider" text;
 alter table public.orders add column if not exists "paymentIntentId" text;
 alter table public.orders add column if not exists "phoneOptIn" boolean not null default false;
 alter table public.orders add column if not exists "smsStatus" text not null default 'not_sent';
+alter table public.orders add column if not exists "deliveryMiles" numeric(6,2);
+alter table public.orders add column if not exists "deliveryEtaMins" integer;
+alter table public.orders add column if not exists "cancelReason" text;
 
 do $$ begin
   alter table public.orders add constraint orders_paymentstatus_check

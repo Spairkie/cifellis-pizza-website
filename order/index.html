@@ -298,6 +298,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="supabase-config.js"></script>
 <script src="db-supabase.js"></script>
+<script src="geo.js"></script>
 
 <script>
 /* =========================================================================
@@ -575,10 +576,10 @@ window.addEventListener('appinstalled', () => {
 /* =========================================================================
    ORDERING (shared by Customer Kiosk and Staff POS)
    ========================================================================= */
-let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null };
+let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null };
 
 function resetOrderCtx(mode){
-  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null };
+  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null };
 }
 
 function addLine(line){
@@ -678,7 +679,9 @@ function buildCartPaneHTML(mode){
           <input type="checkbox" id="smsoptin-${mode}" style="width:auto;">
           <label for="smsoptin-${mode}" style="margin:0; text-transform:none; font-size:13px; letter-spacing:normal; color:var(--paper-dim); font-family:inherit;">Text me when my order's ready (standard rates may apply)</label>
         </div>
-        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ"></div>
+        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address">
+          <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
+        </div>
         <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Allergies, extra sauce, etc."></div>
         <div class="field-group"><label>Payment</label>
           <div class="seg" id="paymethod-${mode}">
@@ -687,7 +690,7 @@ function buildCartPaneHTML(mode){
           </div>
           <div style="font-size:11px; color:var(--paper-dim); margin-top:6px;">Paid in person at pickup or delivery. Card processing isn't connected here.</div>
         </div>
-        <div class="field-group" id="tipgroup-${mode}" hidden><label>Add a Tip for Your Driver</label>
+        <div class="field-group" id="tipgroup-${mode}"><label id="tiplabel-${mode}">Add a Tip</label>
           <div class="seg" id="tipseg-${mode}">
             <button type="button" data-v="0" aria-pressed="true">No Tip</button>
             <button type="button" data-v="0.15">15%</button>
@@ -720,7 +723,9 @@ function buildCartPaneHTML(mode){
       </div>
       <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Customer name"></div>
       <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
-      <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ"></div>
+      <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address">
+          <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
+        </div>
       <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Order notes"></div>
       <div class="field-group"><label>Tender</label>
         <div class="seg" id="paymethod-${mode}">
@@ -940,16 +945,16 @@ function renderOrderLayout(mode){
   wireSeg(`ordertype-${mode}`, 'orderType', (v) => {
     const addrGroup = document.getElementById(`addrgroup-${mode}`);
     if (addrGroup) addrGroup.hidden = (v !== 'delivery');
-    const tipGroup = document.getElementById(`tipgroup-${mode}`);
-    if (tipGroup){
-      tipGroup.hidden = (v !== 'delivery');
-      if (v !== 'delivery'){
-        orderCtx.tip = 0;
-        orderCtx.tipPct = null;
-        renderCart(mode);
-      }
-    }
+    const tipLabel = document.getElementById(`tiplabel-${mode}`);
+    if (tipLabel) tipLabel.textContent = v === 'delivery' ? 'Add a Tip for Your Driver' : 'Add a Tip for the Counter';
   });
+  const addrInput = document.getElementById(`custaddr-${mode}`);
+  const addrInfo = document.getElementById(`addrinfo-${mode}`);
+  if (addrInput && addrInfo && typeof wireDeliveryLookup === 'function'){
+    wireDeliveryLookup(addrInput, addrInfo, (result) => {
+      orderCtx.deliveryInfo = result;
+    });
+  }
   if (mode === 'customer'){
     const tipSeg = document.getElementById(`tipseg-${mode}`);
     const tipCustom = document.getElementById(`tipcustom-${mode}`);
@@ -1031,7 +1036,8 @@ async function submitCustomerOrder(){
   const submitBtn = document.getElementById('submit-customer');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Placing order...';
-  const ticket = await submitOrder({
+  const di = orderCtx.deliveryInfo;
+  const orderPayload = {
     source: 'customer',
     customerName: name,
     phone,
@@ -1041,29 +1047,112 @@ async function submitCustomerOrder(){
     payMethod: orderCtx.payMethod,
     items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', unitPrice:l.unitPrice, qty:l.qty, notes:l.notes||'' })),
     subtotal: totals.subtotal, tax: totals.tax, tip: totals.tip, total: totals.total,
+    deliveryMiles: (orderCtx.orderType === 'delivery' && di && di.miles != null) ? di.miles : null,
+    deliveryEtaMins: (orderCtx.orderType === 'delivery' && di && di.minutes != null) ? di.minutes : null,
     phoneOptIn,
-  });
+  };
+  const ticket = await submitOrder(orderPayload);
   if (!ticket){
     submitBtn.disabled = false;
     submitBtn.textContent = 'Place Order';
     return;
   }
-  showOrderConfirmation(ticket, totals.total);
+  showOrderConfirmation(ticket, orderPayload);
 }
 
-function showOrderConfirmation(ticket, total){
+function buildReceiptHTML(ticket, order){
+  const itemRows = (order.items || []).map(it => `
+    <tr>
+      <td>${it.qty}&times; ${escapeHtml(it.name)}${it.size ? ' (' + escapeHtml(it.size) + ')' : ''}${it.notes ? `<div class="note">${escapeHtml(it.notes)}</div>` : ''}</td>
+      <td class="amt">${money(it.unitPrice * it.qty)}</td>
+    </tr>`).join('');
+  const deliveryLine = (order.orderType === 'delivery' && order.deliveryMiles != null)
+    ? `<div class="meta">~${order.deliveryMiles} mi &middot; about ${order.deliveryEtaMins} min drive</div>` : '';
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>Receipt ${escapeHtml(ticket)}</title>
+<style>
+  * { box-sizing:border-box; }
+  body{ font-family:"Courier New", monospace; max-width:340px; margin:24px auto; color:#111; font-size:13px; }
+  h1{ font-size:16px; text-align:center; margin:0 0 2px; }
+  .center{ text-align:center; }
+  .meta{ font-size:11.5px; color:#555; }
+  hr{ border:none; border-top:1px dashed #999; margin:10px 0; }
+  table{ width:100%; border-collapse:collapse; }
+  td{ padding:3px 0; vertical-align:top; }
+  td.amt{ text-align:right; white-space:nowrap; }
+  .note{ font-size:11px; color:#555; }
+  .totals td{ padding:2px 0; }
+  .grand td{ font-weight:bold; font-size:14px; padding-top:6px; border-top:1px solid #111; }
+  .foot{ text-align:center; margin-top:16px; font-size:11.5px; color:#555; }
+  .printbtn{ display:block; width:100%; margin:18px 0 0; padding:10px; font-size:14px; cursor:pointer; }
+  @media print{ .printbtn{ display:none; } body{ margin:0 auto; } }
+</style></head>
+<body>
+  <h1>Cifelli's Pizza</h1>
+  <div class="center meta">700 Chews Landing Rd, Lindenwold, NJ 08021<br>(856) 435-8799</div>
+  <hr>
+  <div><strong>Ticket:</strong> ${escapeHtml(ticket)}</div>
+  <div class="meta">${new Date(order.createdAt || Date.now()).toLocaleString()}</div>
+  <div class="meta">${escapeHtml(order.orderType || '')}${order.orderType === 'delivery' ? ' &middot; ' + escapeHtml(order.address || '') : ''}</div>
+  ${deliveryLine}
+  <div class="meta">${escapeHtml(order.customerName || '')}${order.phone ? ' &middot; ' + escapeHtml(order.phone) : ''}</div>
+  <hr>
+  <table>${itemRows}</table>
+  <hr>
+  <table class="totals">
+    <tr><td>Subtotal</td><td class="amt">${money(order.subtotal)}</td></tr>
+    <tr><td>Tax</td><td class="amt">${money(order.tax)}</td></tr>
+    ${order.tip ? `<tr><td>Tip</td><td class="amt">${money(order.tip)}</td></tr>` : ''}
+    <tr class="grand"><td>Total</td><td class="amt">${money(order.total)}</td></tr>
+  </table>
+  ${order.notes ? `<hr><div class="meta">Notes: ${escapeHtml(order.notes)}</div>` : ''}
+  <div class="foot">Thank you for your order!<br>Pay in person at pickup or delivery.</div>
+  <button class="printbtn" onclick="window.print()">Print / Save as PDF</button>
+</body></html>`;
+}
+
+function openReceipt(ticket, order){
+  const win = window.open('', '_blank', 'width=420,height=640');
+  if (!win){ showToast('Please allow pop-ups to view the receipt'); return; }
+  win.document.write(buildReceiptHTML(ticket, order));
+  win.document.close();
+}
+
+function showOrderConfirmation(ticket, order){
   const view = document.getElementById('view-customer');
+  const itemsHtml = (order.items || []).map(it => `
+    <div class="row-between" style="font-size:13.5px;">
+      <span>${it.qty}&times; ${escapeHtml(it.name)}${it.size ? ` (${escapeHtml(it.size)})` : ''}</span>
+      <span class="mono">${money(it.unitPrice * it.qty)}</span>
+    </div>`).join('');
+  const deliveryHtml = (order.orderType === 'delivery')
+    ? `<div style="margin-top:14px; padding:12px; background:var(--ink-soft); border-radius:8px; font-size:13px;">
+         <div style="color:var(--paper-dim); font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; margin-bottom:4px;">Delivering to</div>
+         <div>${escapeHtml(order.address || '')}</div>
+         ${order.deliveryMiles != null ? `<div style="color:var(--paper-dim); margin-top:4px;">~${order.deliveryMiles} mi &middot; about ${order.deliveryEtaMins} min drive once it's out</div>` : ''}
+       </div>`
+    : '';
   view.innerHTML = `
     <div class="confirm-wrap">
       <div class="confirm-card">
         <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);">Order Placed</div>
         <div class="confirm-ticket">${escapeHtml(ticket)}</div>
-        <div style="font-size:15px; color:var(--paper-dim); margin-top:6px;">Total due: <span class="mono" style="color:var(--paper); font-weight:700;">${money(total)}</span></div>
+        <div style="font-size:15px; color:var(--paper-dim); margin-top:6px;">Total due: <span class="mono" style="color:var(--paper); font-weight:700;">${money(order.total)}</span></div>
+        ${deliveryHtml}
+        <div style="text-align:left; margin-top:18px; border-top:1px solid var(--line-on-ink); padding-top:14px;">
+          ${itemsHtml}
+          <div class="row-between" style="margin-top:10px; font-size:13px; color:var(--paper-dim);"><span>Subtotal</span><span class="mono">${money(order.subtotal)}</span></div>
+          <div class="row-between" style="font-size:13px; color:var(--paper-dim);"><span>Tax</span><span class="mono">${money(order.tax)}</span></div>
+          ${order.tip ? `<div class="row-between" style="font-size:13px; color:var(--paper-dim);"><span>Tip</span><span class="mono">${money(order.tip)}</span></div>` : ''}
+          <div class="row-between total" style="margin-top:6px;"><span>Total</span><span>${money(order.total)}</span></div>
+        </div>
         <div style="font-size:13px; color:var(--paper-dim); margin-top:16px; line-height:1.5;">Thank you. Your ticket number is on the screen above. Pay in person when your order is ready or delivered.</div>
-        <button class="btn btn-sauce" style="margin-top:24px;" id="newOrderBtn" type="button">Start a New Order</button>
+        <button class="btn btn-outline" style="margin-top:18px; width:100%; justify-content:center;" id="receiptBtn" type="button">View / Print Receipt</button>
+        <button class="btn btn-sauce" style="margin-top:10px; width:100%; justify-content:center;" id="newOrderBtn" type="button">Start a New Order</button>
       </div>
     </div>`;
   document.getElementById('newOrderBtn').addEventListener('click', initCustomerView);
+  document.getElementById('receiptBtn').addEventListener('click', () => openReceipt(ticket, order));
 }
 
 </script>
