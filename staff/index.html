@@ -155,6 +155,9 @@
   .item-card .s{ font-size:11px; color:var(--paper-dim); display:block; margin-top:2px; }
   .item-card .p{ font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); white-space:nowrap; }
   .item-card .plus{ width:26px; height:26px; border-radius:50%; background:var(--sauce); color:var(--paper); display:flex; align-items:center; justify-content:center; font-size:16px; flex:none; }
+  .item-card--soldout{ opacity:.55; cursor:not-allowed; }
+  .item-card--soldout:hover{ border-color:var(--line-on-ink); }
+  .soldout-badge{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--paper-dim); border:1px solid var(--line-on-ink); border-radius:999px; padding:4px 10px; white-space:nowrap; }
 
   /* pizza builder */
   .builder{ background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:18px; }
@@ -268,6 +271,7 @@
   .me-chip button{ background:none; border:none; color:var(--paper-dim); font-size:16px; line-height:1; cursor:pointer; padding:0 4px; }
   .me-chip button:hover{ color:var(--sauce); }
   .me-row{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+  .me-row-soldout{ opacity:.5; }
 </style>
 </head>
 <body>
@@ -961,9 +965,10 @@ function buildMenuPaneHTML(mode){
       <h3>${escapeHtml(cat.label)}${cat.note ? ` <span class="note">${escapeHtml(cat.note)}</span>` : ''}</h3>
       <div class="item-grid">`;
     cat.items.forEach((it, idx) => {
-      html += `<button type="button" class="item-card" data-add-cat="${cat.key}" data-add-idx="${idx}">
+      const soldOut = !!it.soldOut;
+      html += `<button type="button" class="item-card${soldOut ? ' item-card--soldout' : ''}" data-add-cat="${cat.key}" data-add-idx="${idx}" ${soldOut ? 'aria-disabled="true"' : ''}>
         <span><span class="n">${escapeHtml(it.name)}</span>${it.size?`<span class="s">${escapeHtml(it.size)}</span>`:''}${it.desc?`<span class="s">${escapeHtml(it.desc)}</span>`:''}</span>
-        <span style="display:flex; align-items:center; gap:8px;"><span class="p">${money(it.price)}</span><span class="plus">+</span></span>
+        <span style="display:flex; align-items:center; gap:8px;">${soldOut ? `<span class="soldout-badge">Sold Out</span>` : `<span class="p">${money(it.price)}</span><span class="plus">+</span>`}</span>
       </button>`;
     });
     html += `</div></div>`;
@@ -1066,6 +1071,7 @@ function wireItemButtons(mode){
     btn.addEventListener('click', ()=>{
       const cat = CATEGORIES.find(c=>c.key===btn.getAttribute('data-add-cat'));
       const it = cat.items[+btn.getAttribute('data-add-idx')];
+      if (it.soldOut){ showToast(it.name+' is marked sold out — clear it in Menu Editor to sell it'); return; }
       addLine({ name: it.name, size: it.size||'', unitPrice: it.price, qty:1, notes:'' });
       showToast(it.name+' added');
     });
@@ -2255,13 +2261,14 @@ function renderMenuEditor(migrated){
       </summary>
       <div style="margin-top:10px;">
         <input data-me-cat="${ci}" data-field="note" value="${escapeHtml(cat.note||'')}" placeholder="Optional note shown under the category heading" ${readOnly?'disabled':''} style="width:100%; margin-bottom:10px;">
-        <table class="me-table"><thead><tr><th>Item name</th><th>Size / variant</th><th>Price</th><th>Description</th><th></th></tr></thead><tbody>`;
+        <table class="me-table"><thead><tr><th>Item name</th><th>Size / variant</th><th>Price</th><th>Description</th><th>Sold Out</th><th></th></tr></thead><tbody>`;
     cat.items.forEach((it, ii) => {
-      html += `<tr>
+      html += `<tr${it.soldOut ? ' class="me-row-soldout"' : ''}>
         <td><input data-me-item="${ci}.${ii}" data-field="name" value="${escapeHtml(it.name)}" ${readOnly?'disabled':''}></td>
         <td><input data-me-item="${ci}.${ii}" data-field="size" value="${escapeHtml(it.size||'')}" ${readOnly?'disabled':''} style="width:110px;"></td>
         <td><input type="number" step="0.01" min="0" data-me-item="${ci}.${ii}" data-field="price" value="${it.price}" ${readOnly?'disabled':''} style="width:90px;"></td>
         <td><input data-me-item="${ci}.${ii}" data-field="desc" value="${escapeHtml(it.desc||'')}" ${readOnly?'disabled':''}></td>
+        <td style="text-align:center;"><input type="checkbox" data-me-item="${ci}.${ii}" data-field="soldOut" ${it.soldOut ? 'checked' : ''} ${readOnly?'disabled':''} title="Hide this item on the kiosk and POS until unchecked"></td>
         <td>${readOnly?'':`<button class="btn-ghost me-del-item" data-ci="${ci}" data-ii="${ii}" type="button">Remove</button>`}</td>
       </tr>`;
     });
@@ -2338,7 +2345,9 @@ function wireMenuEditorEvents(migrated){
     if (t.hasAttribute('data-me-item')){
       const [ci, ii] = t.getAttribute('data-me-item').split('.').map(Number);
       const f = t.getAttribute('data-field');
-      s.CATEGORIES[ci].items[ii][f] = (f === 'price') ? (Number(t.value) || 0) : t.value;
+      if (f === 'price') s.CATEGORIES[ci].items[ii][f] = Number(t.value) || 0;
+      else if (f === 'soldOut') s.CATEGORIES[ci].items[ii][f] = t.checked;
+      else s.CATEGORIES[ci].items[ii][f] = t.value;
       return;
     }
     if (t.hasAttribute('data-me-special')){

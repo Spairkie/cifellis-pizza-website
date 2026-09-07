@@ -208,6 +208,9 @@
   .item-card .s{ font-size:11px; color:var(--paper-dim); display:block; margin-top:2px; }
   .item-card .p{ font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); white-space:nowrap; }
   .item-card .plus{ width:26px; height:26px; border-radius:50%; background:var(--sauce); color:var(--paper); display:flex; align-items:center; justify-content:center; font-size:16px; flex:none; }
+  .item-card--soldout{ opacity:.55; cursor:not-allowed; }
+  .item-card--soldout:hover{ border-color:var(--line-on-ink); }
+  .soldout-badge{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--paper-dim); border:1px solid var(--line-on-ink); border-radius:999px; padding:4px 10px; white-space:nowrap; }
 
   /* pizza builder */
   .builder{ background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:18px; }
@@ -760,9 +763,10 @@ function buildMenuPaneHTML(mode){
       <h3>${escapeHtml(cat.label)}${cat.note ? ` <span class="note">${escapeHtml(cat.note)}</span>` : ''}</h3>
       <div class="item-grid">`;
     cat.items.forEach((it, idx) => {
-      html += `<button type="button" class="item-card" data-add-cat="${cat.key}" data-add-idx="${idx}">
+      const soldOut = !!it.soldOut;
+      html += `<button type="button" class="item-card${soldOut ? ' item-card--soldout' : ''}" data-add-cat="${cat.key}" data-add-idx="${idx}" ${soldOut ? 'aria-disabled="true"' : ''}>
         <span><span class="n">${escapeHtml(it.name)}</span>${it.size?`<span class="s">${escapeHtml(it.size)}</span>`:''}${it.desc?`<span class="s">${escapeHtml(it.desc)}</span>`:''}</span>
-        <span style="display:flex; align-items:center; gap:8px;"><span class="p">${money(it.price)}</span><span class="plus">+</span></span>
+        <span style="display:flex; align-items:center; gap:8px;">${soldOut ? `<span class="soldout-badge">Sold Out</span>` : `<span class="p">${money(it.price)}</span><span class="plus">+</span>`}</span>
       </button>`;
     });
     html += `</div></div>`;
@@ -875,6 +879,7 @@ function wireItemButtons(mode){
     btn.addEventListener('click', ()=>{
       const cat = CATEGORIES.find(c=>c.key===btn.getAttribute('data-add-cat'));
       const it = cat.items[+btn.getAttribute('data-add-idx')];
+      if (it.soldOut){ showToast(it.name+' is sold out right now'); return; }
       addLine({ name: it.name, size: it.size||'', unitPrice: it.price, qty:1, notes:'' });
       showToast(it.name+' added');
     });

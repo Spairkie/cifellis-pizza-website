@@ -2,6 +2,131 @@
 
 Where the project stands, and what's left. Last reviewed 2026-09-07.
 
+## Feature backlog, added 2026-09-07
+
+A large batch of feature requests came in at once. Organized here by
+priority so nothing gets lost, with the reasoning for each tier —
+not just a flat list. "Effort" is relative to this project, not
+absolute. Checked off items link to where they ended up.
+
+### Tier 1 — operationally important, build first
+Things that directly protect the kitchen or the money, for a shop
+actually taking live orders.
+
+- [ ] **Temporary "out of stock" toggle** (Menu Editor). Ran out of
+  wings mid-shift — hide/disable an item on the kiosk in one tap
+  without deleting it or touching pricing. Small addition to the
+  Menu Editor already built.
+- [ ] **Pause/throttle online orders**. The one every pizza-shop-with-
+  online-ordering story eventually needs: a kitchen slammed on a
+  Friday night with no way to stop new online orders piling on top
+  of a 45-minute backlog. Needs a store-status flag the kiosk checks
+  before showing the order form, plus a one-tap control somewhere
+  staff-facing (Kitchen Board header is the natural spot).
+- [ ] **Store Settings screen** (admin-only, new Staff Hub role):
+  holiday/special hours override (the hours shown on the homepage and
+  used for "today's special" are currently hardcoded), receipt
+  message customization, and the pause-orders toggle above all live
+  here as one settings surface rather than scattered controls.
+- [ ] **Till / End-of-day management**. Needs research into what this
+  actually means for a single-register pizza shop before building
+  anything — see the research note further down. Likely: a cash-drawer
+  starting/ending count, a shift-close report (cash vs. card totals,
+  tips, order count) staff can run at close, not a full accounting
+  system.
+- [ ] **Kitchen notification sound + badge** for new orders. A counter
+  person who isn't staring at the screen needs to *hear* a new order
+  land. Needs an actual audio asset (see note on sourcing below) and a
+  badge count on the Kitchen Board / browser tab title.
+
+### Tier 2 — real value, moderate effort
+- [ ] **System clock** in the Staff Hub header — trivial on its own,
+  bundling with Store Settings since both live in the same header
+  area.
+- [ ] **Active-user indicators** — who else is signed into the Staff
+  Hub right now (useful for a small team coordinating who's on
+  register vs. kitchen). Needs a lightweight presence mechanism
+  (Supabase Realtime Presence is built for exactly this).
+- [ ] **CRM/analytics improvements**: repeat-customer flagging beyond
+  what Analytics already shows, small inline sparkline-style charts
+  instead of just numbers, a horizontal timeline of today's order
+  events.
+- [ ] **High-contrast / day mode toggle**. The whole site is currently
+  one dark theme by design (matches the brand), so this is a real
+  toggle to build (a second color scheme), not just respecting a
+  system preference.
+- [ ] **Micro-interactions / hover states** — polish pass across
+  buttons, cards, transitions. Ongoing/incremental rather than a single
+  task.
+
+### Tier 3 — bigger scope or lower ROI for a shop this size
+Not because they're bad ideas — because each is either a meaningfully
+larger build, or brings ongoing costs/risks worth being deliberate
+about before starting.
+
+- [ ] **Live driver map**. Needs a driver's phone to continuously
+  report location while a delivery's out — real battery/privacy/data-
+  usage cost to the driver, and meaningfully more infrastructure
+  (frequent location writes, a map view, handling a driver who closes
+  the tab mid-delivery). Worth it if delivery volume grows; probably
+  not the next thing to build for a single shop's current volume.
+- [ ] **Promo code engine**. New schema (codes, redemption limits,
+  expiry, stacking rules), and a decision needed on fraud/abuse
+  handling (one code per phone number? per order?) before writing any
+  code.
+- [ ] **Driver leaderboards / gamification**. Fun, and drivers already
+  have miles/tips/ratings tracked (Analytics, Driver App history) that
+  a leaderboard could be built from relatively cheaply once wanted —
+  low urgency until there are enough drivers for a leaderboard to mean
+  anything.
+- [ ] **External numeric keypad shortcuts**. Real hardware-integration
+  question: is this a USB keypad the browser sees as keyboard input
+  (works today with zero code, standard keycodes), or something needing
+  actual driver-level integration? Needs to know the actual hardware
+  before scoping.
+- [ ] **Live bug reporting** (a way for staff to flag something broken
+  from inside the app, mid-shift). Useful long-term, not urgent while
+  a person can review the codebase directly the way this session has
+  been doing.
+- [ ] **UI audio asset library** beyond the one kitchen notification
+  sound — sourcing/licensing real audio files is a different kind of
+  work than writing code (can't fabricate copyright-clear audio the
+  way text/code gets written), scope this down to what's actually
+  needed rather than building a "library" speculatively.
+
+### Research notes
+
+**Till / End-of-day management, for a shop this size.** The standard
+shape at small independent restaurants (not enterprise POS) is:
+1. **Start of day**: whoever opens registers a starting cash amount
+   ("opened the drawer with $150").
+2. **During the day**: nothing changes about how orders work — this
+   is a reporting layer on top of existing order data, not a new
+   payment system.
+3. **End of day / shift close**: a report pulling from `orders` for
+   that shift/day — total cash orders, total card orders, total tips,
+   order count, average ticket — compared against an actual counted
+   cash amount the closer enters, surfacing the difference (over/short)
+   rather than trying to prevent it.
+4. Optionally, a **shift concept** tying this to who was on register
+   (ties in with the active-user-indicator idea above and the existing
+   driver shift-clock pattern already built for drivers — the same
+   `driver_shifts` table shape, generalized, could work for register
+   shifts too).
+This is a report + a light "shift" record, not a redesign of how
+orders or payments work — payment is still cash-in-hand or card-in-
+person, this just adds reconciliation on top. Worth confirming this
+matches what's actually wanted before building the schema.
+
+**UI audio assets.** Can't source copyrighted sound-effect libraries
+(same reasoning as not reproducing song lyrics — a sound effect pack
+is someone else's licensed work). Options: (a) generate a simple tone/
+chime programmatically with the Web Audio API — no licensing question
+at all since it's synthesized, not sourced, and is genuinely enough
+for a "new order" alert; (b) the shop provides its own royalty-free
+or purchased sound file to drop in. (a) is the pragmatic default
+unless a specific sound is wanted.
+
 ## Least-privilege Staff Hub access + manager driver assignment, 2026-09-07
 
 Staff Hub role cards now only show what the signed-in person actually has
