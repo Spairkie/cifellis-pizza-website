@@ -2,6 +2,83 @@
 
 Where the project stands, and what's left. Last reviewed 2026-09-07.
 
+## Least-privilege Staff Hub access + manager driver assignment, 2026-09-07
+
+Staff Hub role cards now only show what the signed-in person actually has
+access to, computed from the `isAdmin`/`isDriver` flags already on the
+`staff` table (no schema change needed):
+- Admin: everything (POS, Kitchen, Driver App, Analytics, Driver Roster,
+  Menu Editor).
+- General staff (neither admin nor driver): POS, Kitchen, Analytics.
+- Driver-only staff: Driver App only.
+
+This is also the fix for a reported bug: `admin@cifellis.com` seeing
+"No driver profile found" on Driver App. That screen used to be shown to
+every signed-in staff member regardless of whether they had a linked
+`drivers` row at all; an admin who isn't a driver would see the card,
+click it, and hit that error. Now the card simply isn't shown to anyone
+without `isDriver` set, so the error only surfaces in the one case it's
+actually meant for (an `isDriver` flag set without a matching drivers
+row, which shouldn't normally happen but is still handled gracefully).
+Enforced here for the UI/UX; the real security boundary was and remains
+the RLS policies in `schema.sql` — hiding a button never was what
+protected the data, this just stops people from being shown screens
+that don't apply to them.
+
+Also added: an admin can now assign an unclaimed "ready" delivery
+straight to a specific driver from Kitchen Board, instead of only being
+able to wait for a driver to self-claim it from the Driver App. Uses the
+exact same `driver`/`driverId` fields self-claim already writes, so
+Analytics, delivery history, and everything else treats an assigned
+delivery identically to a claimed one. Verified live end-to-end (a
+manually-inserted "ready" order, assigned via the real UI, confirmed
+`out_for_delivery` with the right driver in the database) and cleaned
+up. Building this surfaced a small missing piece in the Supabase
+adapter — `order/db-supabase.js`'s `collection()` had `.doc(id).get()`
+for a single row and `.onSnapshot()` for a live query, but nothing for
+a one-shot "give me every row once" fetch, which the drivers dropdown
+needed. Added `collection().get()` to match (same doc shape as
+`onSnapshot`'s callback, just one fetch instead of a subscription) —
+general-purpose, available for anything else that needs the same thing
+later.
+
+**Test credentials for each role** (all `@cifellispizza.local`, password
+`claudeTestPw2026`, all temporary — see the existing removal note
+below, which now covers all three):
+- `claude-test@cifellispizza.local` — admin + driver (sees everything)
+- `claude-test-staff@cifellispizza.local` — general staff (POS/Kitchen/
+  Analytics)
+- `claude-test-driver@cifellispizza.local` — driver-only (Driver App
+  only)
+
+## Mobile ordering fixes + cart persistence + login UX, 2026-09-07
+
+**Fixed: Place Order button unreachable on mobile.** Root cause: the
+mobile cart drawer (`order/index.html`) had `overflow-y: visible` with a
+capped `max-height: 82vh`. Once cart contents (items + tip selector +
+delivery form + the button itself) exceeded that height, the button was
+pushed below the visible drawer with no way to scroll to it — not
+literally invisible, just permanently out of reach. Confirmed with a
+real mobile-viewport test (Pixel 7 emulation) before and after; fixed
+with `overflow-y: auto` on the drawer.
+
+**Cart now survives a page reload.** Saved to `localStorage` on every
+change, restored on load, expires after 6 hours (long enough to survive
+an accidental reload, short enough that nobody reorders a stale cart
+from a previous visit without noticing), and clears itself once an
+order is actually placed.
+
+**Friendlier login errors** (Staff Hub). Used to be one generic
+"Incorrect email or password" for every failure. Now distinguishes
+wrong credentials, an unconfirmed account, rate limiting, and network
+failures, clears the password field, and adds a brief shake animation
+so the message actually gets noticed.
+
+**Clickable logo**, both apps: in the kiosk it returns to the menu
+(closing the mobile cart drawer or account view if open); in the Staff
+Hub it returns to the role picker, same as the existing "Switch screen"
+button.
+
 ## Menu Editor + a serious RLS bug found along the way, 2026-09-07
 
 Built, at the owner's request, a way for an admin to edit menu items,
@@ -82,10 +159,14 @@ rows, plus the Supabase Auth user), and one *momentarily*-created
 second driver account used only to verify the approval flow end-to-end
 (created, approved, then fully deleted from `drivers`, `staff`, and
 Auth in the same test — nothing from that one should remain, but worth
-a quick look in Authentication > Users to confirm). Delete the
-persistent `claude-test@` account (rows + Auth user) before this site
-takes real customer orders. See git log around this date for exact
-timestamps if anything needs auditing.
+a quick look in Authentication > Users to confirm). Two more persistent
+test accounts were added later the same day for role-visibility testing
+— see "Test credentials for each role" above
+(`claude-test-staff@cifellispizza.local`,
+`claude-test-driver@cifellispizza.local`). Delete all three persistent
+`claude-test*@cifellispizza.local` accounts (rows + Auth users) before
+this site takes real customer orders. See git log around this date for
+exact timestamps if anything needs auditing.
 
 ## Review pass, 2026-09-07
 

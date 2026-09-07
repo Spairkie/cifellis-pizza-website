@@ -66,6 +66,20 @@
           return { id: data.id || null };
         },
 
+        async get() {
+          // One-shot fetch of the whole (RLS-filtered) table -- for
+          // screens that just need a snapshot once (e.g. populating a
+          // dropdown) rather than a live subscription. Same doc shape
+          // as onSnapshot's callback gets, minus the ongoing realtime
+          // channel.
+          let q = client.from(name).select('*');
+          if (orderField) q = q.order(orderField, { ascending: orderDir === 'asc' });
+          const { data, error } = await q;
+          if (error) throw error;
+          const docs = (data || []).map((row) => ({ id: row.id, exists: true, data: () => row }));
+          return { docs };
+        },
+
         onSnapshot(next, error) {
           let closed = false;
 

@@ -313,32 +313,32 @@
     <div class="sub">One live order queue &middot; three screens</div>
   </div>
   <div class="role-grid">
-    <button class="role-card" data-role="pos">
+    <button class="role-card" data-role="pos" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><path d="M2 13h20"/></svg>
       <div class="t">Staff POS</div>
       <div class="d">Ring up phone and walk-in orders, take cash, manage what's in progress.</div>
     </button>
-    <button class="role-card" data-role="kitchen">
+    <button class="role-card" data-role="kitchen" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg>
       <div class="t">Kitchen Board</div>
       <div class="d">The live current-orders screen: new, in progress, ready, out the door.</div>
     </button>
-    <button class="role-card" data-role="driver">
+    <button class="role-card" data-role="driver" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 13l2-6h9l3 6M3 13h16M3 13v4h2m14-4v4h-2"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg>
       <div class="t">Driver App</div>
       <div class="d">Claim deliveries, get the address, mark them out the door and delivered.</div>
     </button>
-    <button class="role-card" data-role="analytics">
+    <button class="role-card" data-role="analytics" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
       <div class="t">Analytics</div>
       <div class="d">Today's numbers, top sellers, and which customers keep coming back.</div>
     </button>
-    <button class="role-card" data-role="driverroster">
+    <button class="role-card" data-role="driverroster" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
       <div class="t">Driver Roster</div>
       <div class="d">Add drivers, their car info, and manage who's active — for managers.</div>
     </button>
-    <button class="role-card" data-role="menu">
+    <button class="role-card" data-role="menu" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 8h8M9 12h8"/></svg>
       <div class="t">Menu Editor</div>
       <div class="d">Prices, items, and daily specials — changes go live on the kiosk right away. For managers.</div>
@@ -597,6 +597,9 @@ const App = {
   driverName: null,
   driver: null,
   isAdmin: false,
+  isDriverStaff: false, // from the staff table (isDriver flag) -- distinct from
+    // App.driver, which is the drivers-table profile loaded separately by the
+    // Driver App screen itself.
 };
 
 function showDbBanner(msg){
@@ -682,7 +685,53 @@ function stopAllSubscriptions(){
   App.unsub = [];
 }
 
+/* Which role screens a signed-in staff member can reach, from the two
+   flags already on their staff row (no new schema needed). Kept
+   deliberately simple for a shop this size:
+     - isAdmin sees everything, always.
+     - isDriver-only staff (a delivery driver who isn't also an admin)
+       only sees Driver App -- no register, no kitchen board, no
+       customer/analytics data they don't need for the job. This is
+       also what was producing "No driver profile found" confusion
+       for admin accounts that aren't drivers: Driver App used to be
+       shown to every signed-in staff member regardless of whether
+       they had a linked drivers row at all.
+     - Everyone else (regular counter/kitchen staff -- neither admin
+       nor driver) gets POS, Kitchen, and Analytics, not Driver App,
+       Driver Roster, or Menu Editor.
+   Enforced here for the UI (so people aren't shown screens that will
+   just error or confuse them); the actual security boundary is still
+   the RLS policies in schema.sql, same as before -- hiding a button
+   was never what protected the data. */
+function computeRolePermissions(){
+  const isAdmin = App.isAdmin;
+  const isDriver = App.isDriverStaff;
+  return {
+    pos: isAdmin || !isDriver,
+    kitchen: isAdmin || !isDriver,
+    analytics: isAdmin || !isDriver,
+    driver: isAdmin || isDriver,
+    driverroster: isAdmin,
+    menu: isAdmin,
+  };
+}
+
+function applyRoleVisibility(){
+  const perms = computeRolePermissions();
+  document.querySelectorAll('.role-card[data-role]').forEach(card => {
+    card.hidden = !perms[card.getAttribute('data-role')];
+  });
+}
+
 function goToRole(role){
+  const perms = computeRolePermissions();
+  if (!perms[role]){
+    showToast("You don't have access to that screen. Ask a manager if that's wrong.");
+    localStorage.removeItem('cifellis_role');
+    document.getElementById('app-shell').hidden = true;
+    document.getElementById('screen-role').hidden = false;
+    return;
+  }
   App.role = role;
   localStorage.setItem('cifellis_role', role);
   document.getElementById('screen-role').hidden = true;
@@ -757,7 +806,9 @@ async function initAuthGate(){
     try{
       const row = await db.collection('staff').doc(uid).get();
       App.isAdmin = !!(row.data() && row.data().isAdmin);
-    }catch(e){ App.isAdmin = false; }
+      App.isDriverStaff = !!(row.data() && row.data().isDriver);
+    }catch(e){ App.isAdmin = false; App.isDriverStaff = false; }
+    applyRoleVisibility();
   }
 
   if (!auth){
@@ -1467,6 +1518,8 @@ function nextStatus(o){
   return null;
 }
 
+let kitchenActiveDrivers = [];
+
 function initKitchenView(){
   stopAllSubscriptions();
   const view = document.getElementById('view-kitchen');
@@ -1479,6 +1532,22 @@ function initKitchenView(){
   if (!App.db){
     document.getElementById('kanban-root').innerHTML = '<div class="kanban-empty">Not connected to the live order database.</div>';
     return;
+  }
+  kitchenActiveDrivers = [];
+  if (App.isAdmin){
+    // For the "Assign driver" dropdown below -- lets a manager hand a
+    // delivery straight to a driver instead of waiting for someone to
+    // self-claim it from the Driver App. Fetched once per visit to this
+    // screen, not live-subscribed: the roster doesn't change minute to
+    // minute, and re-opening Kitchen Board picks up any changes.
+    App.db.collection('drivers').get().then(snap => {
+      kitchenActiveDrivers = (snap.docs || [])
+        .map(d => Object.assign({ id: d.id }, d.data() || {}))
+        .filter(d => d.approved && d.active)
+        .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      renderKanban(latestOrders); // the orders snapshot may have already
+        // rendered once with an empty driver list if this fetch was slower
+    }).catch(() => { kitchenActiveDrivers = []; });
   }
   let latestOrders = [];
   try{
@@ -1514,6 +1583,17 @@ function renderKanban(orders){
       const next = nextStatus(o);
       if (next) updateOrder(o.id, { status: next });
     });
+    const assignBtn = document.getElementById(`assign-driver-btn-${o.id}`);
+    if (assignBtn) assignBtn.addEventListener('click', () => {
+      const select = document.getElementById(`assign-driver-${o.id}`);
+      const driverId = select && select.value;
+      const driver = kitchenActiveDrivers.find(d => d.id === driverId);
+      if (!driver) return;
+      assignBtn.disabled = true;
+      updateOrder(o.id, { status: 'out_for_delivery', driver: driver.name, driverId: driver.id })
+        .then(() => showToast(`Assigned to ${driver.name}`))
+        .catch(() => { assignBtn.disabled = false; showToast('Could not assign — try again'); });
+    });
   });
 }
 
@@ -1522,6 +1602,23 @@ function renderTicket(o){
   let ageClass = '';
   if (ageMin >= 25) ageClass = 'age-bad'; else if (ageMin >= 15) ageClass = 'age-warn';
   const next = nextStatus(o);
+  const needsDriver = o.status === 'ready' && o.orderType === 'delivery' && !o.driverId;
+  let waitingBlock = '';
+  if (!next && needsDriver){
+    if (App.isAdmin && kitchenActiveDrivers.length){
+      waitingBlock = `<div class="age">Waiting for a driver &mdash; or assign one:</div>
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <select id="assign-driver-${o.id}" style="flex:1; font-size:12.5px; padding:6px;">
+            ${kitchenActiveDrivers.map(d => `<option value="${d.id}">${escapeHtml(d.name||'Unnamed')}</option>`).join('')}
+          </select>
+          <button class="advance" id="assign-driver-btn-${o.id}" type="button" style="padding:6px 10px;">Assign</button>
+        </div>`;
+    } else if (App.isAdmin){
+      waitingBlock = '<div class="age">Waiting for a driver to claim it (no active drivers on the roster to assign)</div>';
+    } else {
+      waitingBlock = '<div class="age">Waiting for a driver to claim it</div>';
+    }
+  }
   return `<div class="ticket ${ageClass}">
     <div class="top">
       <span class="num">${escapeHtml(o.ticket||'')}</span>
@@ -1532,8 +1629,7 @@ function renderTicket(o){
     ${o.notes ? `<div class="who">Note: ${escapeHtml(o.notes)}</div>` : ''}
     <div class="who">${escapeHtml(o.customerName||'')}${o.address ? ', ' + escapeHtml(o.address) : ''}</div>
     ${o.tip ? `<div class="tip-note">+${money(o.tip)} tip</div>` : ''}
-    ${next ? `<button class="advance" id="ticket-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>`
-      : (o.status === 'ready' && o.orderType === 'delivery' ? '<div class="age">Waiting for a driver to claim it</div>' : '')}
+    ${next ? `<button class="advance" id="ticket-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>` : waitingBlock}
   </div>`;
 }
 </script>
