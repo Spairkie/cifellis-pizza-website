@@ -1640,8 +1640,18 @@ function renderDriverLists(){
     <div class="section-label">Available Deliveries</div>
     <div id="driver-available"></div>
     <div class="section-label">My Deliveries</div>
-    <div id="driver-mine"></div>`;
+    <div id="driver-mine"></div>
+    <div class="section-label" style="display:flex; justify-content:space-between; align-items:center;">
+      <span>Delivery History</span>
+      <button class="btn-ghost" id="driver-history-toggle" type="button" style="font-size:11.5px;">Show</button>
+    </div>
+    <div id="driver-history" hidden></div>`;
   const shiftBtn = document.getElementById('driver-shift-btn');
+  document.getElementById('driver-history-toggle').addEventListener('click', (e) => {
+    const el = document.getElementById('driver-history');
+    el.hidden = !el.hidden;
+    e.target.textContent = el.hidden ? 'Show' : 'Hide';
+  });
   getOpenShift(driver.id).then(open => {
     shiftBtn.textContent = open ? 'End Shift' : 'Start Shift';
     shiftBtn.className = open ? 'btn btn-sauce' : 'btn btn-outline';
@@ -1661,6 +1671,7 @@ function renderDriverLists(){
       const mine = deliveries.filter(o => o.status === 'out_for_delivery' && o.driverId === driver.id);
       const myCompleted = deliveries.filter(o => o.status === 'completed' && o.driverId === driver.id);
       renderDriverStats(myCompleted);
+      renderDriverHistory(myCompleted);
       document.getElementById('driver-available').innerHTML = available.length ? available.map(o => renderDriverCard(o,false)).join('') : '<div class="cart-empty">No deliveries ready right now.</div>';
       document.getElementById('driver-mine').innerHTML = mine.length ? mine.map(o => renderDriverCard(o,true)).join('') : '<div class="cart-empty">You have no deliveries out.</div>';
       available.forEach(o => {
@@ -1698,6 +1709,26 @@ function renderDriverStats(completed){
     <div style="font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--paper-dim); font-family:'IBM Plex Mono',monospace;">${label}</div>
     <div style="font-size:16px; font-weight:700; margin-top:2px;" class="mono">${val}</div>
   </div>`).join('');
+}
+
+function renderDriverHistory(completed){
+  const el = document.getElementById('driver-history');
+  if (!el) return;
+  const sorted = [...completed].sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0, 30);
+  el.innerHTML = sorted.length ? sorted.map(o => `
+    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:10px 12px; margin-bottom:6px; font-size:12.5px;">
+      <div class="row-between">
+        <span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span>
+        <span style="color:var(--paper-dim);">${new Date(o.createdAt||0).toLocaleDateString()}</span>
+      </div>
+      <div style="color:var(--paper-dim); margin-top:2px;">${escapeHtml(o.address||'')}</div>
+      <div style="margin-top:4px; display:flex; gap:12px; flex-wrap:wrap;">
+        ${o.deliveryMiles != null ? `<span>${o.deliveryMiles} mi</span>` : ''}
+        ${o.tip ? `<span style="color:var(--gold);">+${money(o.tip)} tip</span>` : ''}
+        ${o.driverRating != null ? `<span>${'\u2605'.repeat(o.driverRating)}${'\u2606'.repeat(5-o.driverRating)}</span>` : '<span style="color:var(--paper-dim);">Not rated</span>'}
+      </div>
+      ${o.driverRatingComment ? `<div style="color:var(--paper-dim); font-style:italic; margin-top:4px;">"${escapeHtml(o.driverRatingComment)}"</div>` : ''}
+    </div>`).join('') : '<div class="cart-empty">No completed deliveries yet.</div>';
 }
 
 function renderDriverCard(o, mine){

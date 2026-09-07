@@ -973,6 +973,14 @@ function renderOrderLayout(mode){
     if (addrGroup) addrGroup.hidden = (v !== 'delivery');
     const tipLabel = document.getElementById(`tiplabel-${mode}`);
     if (tipLabel) tipLabel.textContent = v === 'delivery' ? 'Add a Tip for Your Driver' : 'Add a Tip for the Counter';
+    if (v === 'delivery' && mode === 'customer'){
+      const addrInputEl = document.getElementById(`custaddr-${mode}`);
+      const saved = CustomerAccount.profile && CustomerAccount.profile.preferences && CustomerAccount.profile.preferences.savedAddress;
+      if (addrInputEl && saved && !addrInputEl.value){
+        addrInputEl.value = saved;
+        addrInputEl.dispatchEvent(new Event('input'));
+      }
+    }
   });
   const addrInput = document.getElementById(`custaddr-${mode}`);
   const addrInfo = document.getElementById(`addrinfo-${mode}`);
@@ -1306,10 +1314,23 @@ async function showAccountPanel(){
   const customerView = document.getElementById('view-customer');
   customerView.hidden = true;
   view.hidden = false;
+  const prefs = (CustomerAccount.profile && CustomerAccount.profile.preferences) || {};
   view.innerHTML = `<div style="max-width:560px; margin:0 auto; padding:24px 20px;">
     <button class="btn-ghost" id="acc-back" type="button">&larr; Back to Menu</button>
     <h2 style="font-size:26px; margin:14px 0 4px;">${escapeHtml((CustomerAccount.profile && CustomerAccount.profile.name) || 'Your Account')}</h2>
     <div style="color:var(--paper-dim); font-size:13px; margin-bottom:20px;">${escapeHtml((CustomerAccount.profile && CustomerAccount.profile.phone) || '')}</div>
+
+    <h3 style="font-size:16px; margin-bottom:10px;">Preferences</h3>
+    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:14px; margin-bottom:22px;">
+      <div class="field-group"><label>Default Delivery Address</label><input id="pref-address" placeholder="Street, Lindenwold NJ" value="${escapeHtml(prefs.savedAddress||'')}"></div>
+      <div class="field-group"><label>Allergies / Notes</label><input id="pref-notes" placeholder="e.g. no nuts, extra sauce" value="${escapeHtml(prefs.notes||'')}"></div>
+      <div class="field-group" style="display:flex; align-items:center; gap:8px; margin-bottom:0;">
+        <input type="checkbox" id="pref-smsopt" style="width:auto;" ${prefs.smsOptIn ? 'checked' : ''}>
+        <label for="pref-smsopt" style="margin:0; text-transform:none; font-size:13px; letter-spacing:normal;">Text me order updates by default</label>
+      </div>
+      <button class="btn btn-outline" id="pref-save" style="margin-top:12px;" type="button">Save Preferences</button>
+    </div>
+
     <h3 style="font-size:16px; margin-bottom:10px;">Order History</h3>
     <div id="acc-orders">Loading...</div>
     <button class="btn-ghost" id="acc-signout" style="margin-top:24px;" type="button">Sign Out</button>
@@ -1322,6 +1343,17 @@ async function showAccountPanel(){
     await refreshAccountState();
     showToast('Signed out');
   });
+  document.getElementById('pref-save').addEventListener('click', async () => {
+    if (!db || !CustomerAccount.user) return;
+    const newPrefs = {
+      savedAddress: document.getElementById('pref-address').value.trim(),
+      notes: document.getElementById('pref-notes').value.trim(),
+      smsOptIn: document.getElementById('pref-smsopt').checked,
+    };
+    await db.collection('customers').doc(CustomerAccount.user.id).update({ preferences: newPrefs });
+    if (CustomerAccount.profile) CustomerAccount.profile.preferences = newPrefs;
+    showToast('Preferences saved');
+  });
   const ordersEl = document.getElementById('acc-orders');
   if (!db){ ordersEl.textContent = 'Not connected to the database.'; return; }
   try{
@@ -1331,7 +1363,19 @@ async function showAccountPanel(){
         <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; margin-bottom:8px;">
           <div class="row-between"><span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span><span class="mono">${money(o.total||0)}</span></div>
           <div style="font-size:12px; color:var(--paper-dim); margin-top:4px;">${new Date(o.createdAt||0).toLocaleDateString()} &middot; ${escapeHtml(o.orderType||'')} &middot; ${escapeHtml(o.status||'')}</div>
+          ${(o.items||[]).length ? `<div style="font-size:11.5px; color:var(--paper-dim); margin-top:4px;">${o.items.map(it=>`${it.qty}&times; ${escapeHtml(it.name)}`).join(', ')}</div>` : ''}
+          <button class="btn-ghost" style="padding:4px 0; font-size:12px;" data-reorder='${JSON.stringify(o.items||[]).replace(/'/g,'&#39;')}'>Reorder these items</button>
         </div>`).join('') : '<div class="cart-empty">No past orders on file for this account yet.</div>';
+      ordersEl.querySelectorAll('[data-reorder]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          let items = [];
+          try{ items = JSON.parse(btn.getAttribute('data-reorder')); }catch(e){}
+          items.forEach(it => addLine({ name:it.name, size:it.size||'', unitPrice:it.unitPrice, qty:it.qty||1, notes:it.notes||'' }));
+          view.hidden = true;
+          customerView.hidden = false;
+          showToast(items.length + ' item(s) added to your cart');
+        });
+      });
     }, () => { ordersEl.textContent = 'Could not load order history.'; });
     // One-shot: this is a summary view, not a live queue — release the
     // subscription once rendered instead of leaving it running.
