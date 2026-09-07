@@ -80,6 +80,43 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="../order/supabase-config.js"></script>
 <script>
+  /*
+   * This project's Supabase Auth requires email confirmation before a
+   * signUp() call returns an active session (confirmed by checking the
+   * project's own /auth/v1/settings — mailer_autoconfirm is off). That
+   * means signUp() here creates the login but hands back no session,
+   * so the drivers-table insert right after it can't run yet (it needs
+   * an authenticated request). The flow below stashes the application
+   * fields in localStorage, points the confirmation email's link back
+   * at this same page (emailRedirectTo), and finishes the insert on
+   * page load once that link is clicked and a session actually exists
+   * — see checkPendingApplication() below. If a project ever turns
+   * confirmation off, the "session already present" branch below
+   * still handles that in one step, no code change needed.
+   */
+  const PENDING_KEY = 'cifellisPendingDriverApp';
+  const msg = document.getElementById('msg');
+  const formStep = document.getElementById('formStep');
+
+  function client(){
+    return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  }
+
+  async function finishApplication(sbClient, authUserId, fields){
+    const { error: insertError } = await sbClient.from('drivers').insert(Object.assign(
+      { authUserId, approved: false }, fields
+    ));
+    if (insertError){
+      msg.textContent = 'Your login was created, but we could not save your application: ' + insertError.message + '. Please contact the shop directly.';
+      msg.className = 'msg error';
+      return false;
+    }
+    formStep.style.display = 'none';
+    msg.textContent = "Application submitted! We'll review it and let you know. Once approved, sign in at the Staff Hub with the email and password you just set.";
+    msg.className = 'msg ok';
+    return true;
+  }
+
   document.getElementById('submitBtn').addEventListener('click', async () => {
     const name = document.getElementById('apl-name').value.trim();
     const phone = document.getElementById('apl-phone').value.trim();
@@ -90,7 +127,6 @@
     const carColor = document.getElementById('apl-carColor').value.trim();
     const carPlate = document.getElementById('apl-carPlate').value.trim();
     const notes = document.getElementById('apl-notes').value.trim();
-    const msg = document.getElementById('msg');
     const btn = document.getElementById('submitBtn');
     msg.textContent = ''; msg.className = 'msg';
 
@@ -106,36 +142,57 @@
     }
     btn.disabled = true;
     btn.textContent = 'Submitting...';
-    const client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    const sbClient = client();
+    const fields = { name, phone, email, carMake, carModel, carColor, carPlate, notes };
 
-    const { data: signUpData, error: signUpError } = await client.auth.signUp({ email, password });
+    const { data: signUpData, error: signUpError } = await sbClient.auth.signUp({
+      email, password,
+      options: { emailRedirectTo: location.href.split('?')[0].split('#')[0] },
+    });
     if (signUpError){
       msg.textContent = signUpError.message;
       msg.className = 'msg error';
       btn.disabled = false; btn.textContent = 'Submit Application';
       return;
     }
+    const session = signUpData && signUpData.session;
     const user = signUpData && signUpData.user;
-    if (!user){
-      msg.textContent = 'Check your email to confirm your address, then come back and apply again.';
+    if (!session){
+      // No session yet — email confirmation is required on this
+      // project. Save the application locally and finish it
+      // automatically once they click the confirmation link and land
+      // back here signed in (see checkPendingApplication below).
+      try{ localStorage.setItem(PENDING_KEY, JSON.stringify(fields)); }catch(e){}
+      msg.textContent = "Check your email to confirm your address, then come back to this page — your application finishes submitting automatically once you're signed in. (If nothing happens when you click the link, come back here and sign in isn't needed — just reopen this page in the same browser.)";
       msg.className = 'msg ok';
-      document.getElementById('formStep').style.display = 'none';
+      formStep.style.display = 'none';
       return;
     }
-    const { error: insertError } = await client.from('drivers').insert({
-      name, phone, email, carMake, carModel, carColor, carPlate, notes,
-      authUserId: user.id, approved: false,
-    });
-    if (insertError){
-      msg.textContent = 'Your login was created, but we could not save your application: ' + insertError.message + '. Please contact the shop directly.';
-      msg.className = 'msg error';
-      btn.disabled = false; btn.textContent = 'Submit Application';
-      return;
-    }
-    document.getElementById('formStep').style.display = 'none';
-    msg.textContent = "Application submitted! We'll review it and let you know. Once approved, sign in at the Staff Hub with the email and password you just set.";
-    msg.className = 'msg ok';
+    // Confirmations are off on this project (or already confirmed) —
+    // there's a session immediately, finish right away.
+    const ok = await finishApplication(sbClient, user.id, fields);
+    if (!ok){ btn.disabled = false; btn.textContent = 'Submit Application'; }
   });
+
+  /* Runs on every load of this page. If there's a pending application
+     saved locally AND we're now signed in (the visitor just clicked
+     their confirmation email link and got redirected back here),
+     finish the insert that couldn't run at signUp time. */
+  (async function checkPendingApplication(){
+    if (typeof window.supabase === 'undefined' || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) return;
+    let pending = null;
+    try{ pending = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null'); }catch(e){}
+    if (!pending) return;
+    const sbClient = client();
+    const { data } = await sbClient.auth.getSession();
+    const session = data && data.session;
+    if (!session || !session.user || session.user.email !== pending.email) return;
+    formStep.style.display = 'none';
+    msg.textContent = 'Finishing your application...';
+    msg.className = 'msg';
+    const ok = await finishApplication(sbClient, session.user.id, pending);
+    if (ok){ try{ localStorage.removeItem(PENDING_KEY); }catch(e){} }
+  })();
 </script>
 </body>
 </html>

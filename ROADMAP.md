@@ -1,6 +1,84 @@
 # Roadmap
 
-Where the project stands, and what's left. Last reviewed 2026-09-06.
+Where the project stands, and what's left. Last reviewed 2026-09-07.
+
+## Review pass, 2026-09-07
+
+Did the full review the previous entry asked for: read every file fresh,
+tested live against the real GitHub Pages site and the real Supabase
+backend (both were actually reachable this session, unlike earlier ones —
+worth re-checking that's still true next time, since it's what made live
+testing possible instead of only reading code). Found and fixed two real,
+live bugs; checked everything else and it matched what this file already
+claimed.
+
+**Fixed — customer account creation and driver self-application were both
+silently broken.** Root cause: this Supabase project requires email
+confirmation (`mailer_autoconfirm: false`, checked via the project's own
+`/auth/v1/settings`), but both `order/index.html`'s "Create Account" flow
+and `staff/apply.html`'s driver signup assumed `signUp()` hands back an
+active session immediately. It doesn't when confirmation is required — it
+creates the login but returns no session, so the very next line (writing
+the customer profile / driver application row) failed with a permissions
+error, in the customer case with no error shown to the visitor at all
+(confirmed live: the signup button did nothing, no toast, modal just sat
+there). The apply.html version had a related bug on top: its check for
+"does this need confirmation" tested `!user`, but Supabase returns a user
+object either way — only `session` tells you whether confirmation is
+pending — so that check never actually caught the case it was written for.
+
+Fixed both: they now check for a session, not just a user; when there
+isn't one, they save the form fields to `localStorage` and set
+`emailRedirectTo` so clicking the confirmation email brings the visitor
+back to the same page; and the customer-account and driver-application
+writes finish automatically on that return visit once a real session
+exists. If you ever turn off email confirmation for this project (Supabase
+dashboard > Authentication > Sign In / Providers), the "session already
+present" branch in both files still handles that in one step — no code
+change needed either way.
+
+Verified with Playwright: reproduced the original bug live (signup button
+silently doing nothing), then confirmed both branches of the fix —
+immediate-session and confirmation-required-then-return — against mocked
+Supabase responses shaped exactly like the real project's, since the real
+signup endpoint rate-limits repeat sign-ups from the same IP within a
+short window (hit that limit partway through testing; expected Supabase
+behavior, not a bug).
+
+**Fixed — a smaller admin-only bug.** In `staff/index.html`, whether the
+current user is an admin (`App.isAdmin`) was fetched without being
+awaited before auto-resuming a saved role screen. An admin whose last
+screen was Driver Roster and who reloads the page would land back on
+Driver Roster with `isAdmin` still at its default `false`, so the Approve
+buttons wouldn't render — nothing re-checks once the real value comes
+back. Now awaited in the right place, so this can't happen.
+
+**Checked and NOT a bug, in case a future session re-discovers this and
+wonders:** the hero video (`videos/hero-pizza.mp4`) shows `networkState 3`
+/ never loads in this sandbox's headless Chromium. Traced it all the way
+down — file is valid, correctly-structured H.264/AAC MP4 with the moov
+atom already at the front (faststart, good for streaming), server serves
+range requests correctly, markup is correct. The actual cause:
+`video.canPlayType('video/mp4; codecs="avc1...aac..."')` returns `''` in
+this specific Chromium build, while a generic `video/mp4` returns
+`'maybe'` — this sandbox's Playwright-bundled Chromium is an open-source
+build without the licensed H.264 decoder, which real Chrome/Safari/Edge/
+Firefox builds all ship. Don't "fix" this without re-confirming it's
+actually broken somewhere real users' browsers would show it.
+
+Everything else — kitchen board, POS queue and cancel/edit flow,
+analytics, the driver app's claim/complete/shift-clock flow, `rate.html`'s
+`rate_delivery()` RPC, the geo/distance lookup (Nominatim + OSRM, both
+confirmed reachable and CORS-fine from a browser), and the RLS policies
+in `supabase/schema.sql` — read through and, where testable without staff
+login credentials, exercised live, and matched what this file already
+said. `staff/index.html` also still contains a full, harmless-but-dead
+second copy of the customer ordering flow (`initCustomerView`,
+`submitCustomerOrder`, etc. — leftover from before the customer/staff
+split in an earlier commit, never called from anywhere in that file).
+Left it alone rather than risk a cosmetic edit to a 1900-line live file
+that didn't need one; worth deleting next time someone's already in there
+for an unrelated change.
 
 ## Start here if you're a new chat picking this up
 

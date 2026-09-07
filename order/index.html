@@ -1260,14 +1260,36 @@ function renderAccountTab(tab){
       }
       const db = await getDb();
       if (!db || !db.auth){ showToast('Accounts are not connected right now'); return; }
-      const { data, error } = await db.auth.signUp({ email, password });
+      const { data, error } = await db.auth.signUp({
+        email, password,
+        options: { emailRedirectTo: location.href.split('?')[0].split('#')[0] },
+      });
       if (error){ showToast(error.message); return; }
-      if (data && data.user){
-        await db.collection('customers').doc(data.user.id).set({ phone, name, email });
+      if (data && data.session){
+        // Confirmations are off on this project (or already confirmed) —
+        // there's a session immediately, so the profile write below can
+        // run right now.
+        if (data.user){
+          try{ await db.collection('customers').doc(data.user.id).set({ phone, name, email }); }
+          catch(e){ console.error('Could not save profile:', e); }
+        }
+        showToast('Account created — you\'re signed in');
+        closeAccountModal();
+        await refreshAccountState();
+      } else {
+        // No session yet: this Supabase project requires email
+        // confirmation, so signUp() only creates the login — it can't
+        // write to the customers table yet (that needs an
+        // authenticated request). Stash the profile fields and finish
+        // the write automatically once the confirmation link is
+        // clicked and refreshAccountState() sees a real session (see
+        // its pending-profile check below).
+        try{ localStorage.setItem('cifellisPendingSignup', JSON.stringify({ email, name, phone })); }catch(e){}
+        const body = document.getElementById('accountTabBody');
+        if (body){
+          body.innerHTML = `<p style="font-size:13.5px; line-height:1.5;">Almost there — check <strong>${escapeHtml(email)}</strong> for a confirmation email, then come back and sign in.</p>`;
+        }
       }
-      showToast('Account created — you\'re signed in');
-      closeAccountModal();
-      await refreshAccountState();
     });
   } else {
     body.innerHTML = `
@@ -1300,7 +1322,25 @@ async function refreshAccountState(){
     if (btn){ btn.hidden = false; btn.textContent = 'Sign In'; btn.onclick = showAccountModal; }
     return;
   }
-  const profileDoc = await db.collection('customers').doc(user.id).get();
+  let profileDoc = await db.collection('customers').doc(user.id).get();
+  if (!profileDoc.data()){
+    // First time we've seen this account with a session: if this is
+    // right after confirming a signup, the customers row never got
+    // created back in the signup handler (no session existed yet at
+    // that point). Create it now, using whatever we stashed at signup
+    // time if it's still there and matches this account, otherwise a
+    // minimal profile the customer can fill in from Account > Preferences.
+    let pending = null;
+    try{ pending = JSON.parse(localStorage.getItem('cifellisPendingSignup') || 'null'); }catch(e){}
+    const profileData = (pending && pending.email === user.email)
+      ? { phone: pending.phone || '', name: pending.name || '', email: user.email || '' }
+      : { phone: '', name: '', email: user.email || '' };
+    try{
+      await db.collection('customers').doc(user.id).set(profileData);
+      try{ localStorage.removeItem('cifellisPendingSignup'); }catch(e){}
+      profileDoc = await db.collection('customers').doc(user.id).get();
+    }catch(e){ console.error('Could not create profile:', e); }
+  }
   CustomerAccount.profile = profileDoc.data() || null;
   if (btn){
     btn.hidden = false;

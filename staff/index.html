@@ -671,10 +671,17 @@ async function initAuthGate(){
     loginScreen.hidden = false;
     if (msg){ loginError.hidden = false; loginError.textContent = msg; }
   }
-  function showRolePicker(){
+  async function showRolePicker(){
     loginScreen.hidden = true;
     roleScreen.hidden = false;
-    loadMyStaffRow();
+    // Must resolve before auto-resuming a saved role below: Driver
+    // Roster's Approve buttons only render for App.isAdmin, so if an
+    // admin's saved role is 'driverroster' and this hasn't finished
+    // yet, goToRole() would render that screen with isAdmin still at
+    // its default false and never re-render once the real value comes
+    // back — they'd see no Approve buttons until manually switching
+    // screens and back.
+    await loadMyStaffRow();
     const saved = localStorage.getItem('cifellis_role');
     if (saved && ROLE_LABELS[saved]) goToRole(saved);
   }
