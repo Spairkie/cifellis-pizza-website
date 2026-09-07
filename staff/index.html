@@ -67,7 +67,9 @@
     padding:12px 18px; background:var(--ink-soft); border-bottom:1px solid var(--line-on-ink);
     position:sticky; top:0; z-index:40;
   }
-  #app-header .brand{ display:flex; align-items:center; gap:10px; }
+  #app-header .brand{ display:flex; align-items:center; gap:10px; background:none; border:none; padding:0; font:inherit; color:inherit; text-align:left; cursor:pointer; border-radius:8px; }
+  #app-header .brand:hover{ opacity:.85; }
+  #app-header .brand:focus-visible{ outline:2px solid var(--gold); outline-offset:3px; }
   #app-header .brand svg{ width:30px; height:30px; }
   #app-header .brand .name{ font-family:"Rye",serif; font-size:18px; }
   #app-header .role-tag{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); }
@@ -241,6 +243,14 @@
   .db-banner{ position:relative; background:var(--sauce); color:var(--paper); font-size:12.5px; font-weight:700; text-align:center; padding:8px 14px; z-index:200; }
   .db-banner a{ color:var(--paper); text-decoration:underline; }
 
+  @keyframes shake{
+    10%,90%{ transform:translateX(-1px); }
+    20%,80%{ transform:translateX(2px); }
+    30%,50%,70%{ transform:translateX(-4px); }
+    40%,60%{ transform:translateX(4px); }
+  }
+  #loginForm.shake{ animation:shake .4s ease; }
+
   /* ================= MENU EDITOR ================= */
   #view-menu{ max-width:920px; margin:0 auto; padding:18px 20px 60px; }
   #view-menu .view-header{ margin-bottom:16px; }
@@ -340,13 +350,13 @@
 <!-- ============== APP SHELL ============== -->
 <div id="app-shell" hidden>
   <div id="app-header">
-    <div class="brand">
+    <button class="brand" id="brandHomeBtn" type="button" aria-label="Back to screen picker" title="Back to screen picker">
       <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="#f4ead6"/><circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="6"/><path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/></svg>
       <div>
         <div class="name">Cifelli's</div>
         <div class="role-tag" id="role-label">&hellip;</div>
       </div>
-    </div>
+    </button>
     <div class="right" id="header-right"></div>
   </div>
   <main>
@@ -767,16 +777,46 @@ async function initAuthGate(){
     e.preventDefault();
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
+    const passwordEl = document.getElementById('loginPassword');
     const btn = document.getElementById('loginSubmitBtn');
+    const formEl = document.getElementById('loginForm');
     loginError.hidden = true;
+    formEl.classList.remove('shake');
     btn.disabled = true;
     btn.textContent = 'Signing in...';
-    const { error } = await auth.signInWithPassword({ email, password });
+    let error;
+    try{
+      ({ error } = await auth.signInWithPassword({ email, password }));
+    }catch(networkErr){
+      error = networkErr;
+    }
     btn.disabled = false;
     btn.textContent = 'Sign In';
     if (error){
       loginError.hidden = false;
-      loginError.textContent = 'Incorrect email or password.';
+      // Supabase's own wording varies by cause -- translate the ones a
+      // staff member will actually hit into something that tells them
+      // what to do next, not just that something went wrong.
+      const raw = (error.message || '').toLowerCase();
+      if (raw.includes('invalid login credentials')){
+        loginError.textContent = "That email or password isn't right. Double-check for typos, or ask an admin to reset your password.";
+      } else if (raw.includes('email not confirmed')){
+        loginError.textContent = 'This account still needs email confirmation before it can sign in — check that inbox, or ask an admin to confirm it from the Supabase dashboard.';
+      } else if (raw.includes('rate limit') || raw.includes('too many')){
+        loginError.textContent = "Too many attempts too quickly — wait a minute before trying again.";
+      } else if (error.name === 'TypeError' || raw.includes('fetch') || raw.includes('network')){
+        loginError.textContent = "Couldn't reach the server — check the internet connection and try again.";
+      } else {
+        loginError.textContent = "Couldn't sign in: " + (error.message || 'unknown error') + '.';
+      }
+      // A brief shake draws the eye to the message instead of leaving
+      // it to blend into the rest of the form, and clearing (not
+      // hiding) the password field means a mistyped password doesn't
+      // linger looking like it should have worked.
+      passwordEl.value = '';
+      passwordEl.focus();
+      formEl.classList.add('shake');
+      setTimeout(() => formEl.classList.remove('shake'), 400);
     }
   });
 }
@@ -2299,6 +2339,13 @@ async function saveMenuEditor(){
 (async function boot(){
   await loadMenuConfig(await getDb());
   await initAuthGate();
+  document.getElementById('brandHomeBtn').addEventListener('click', () => {
+    if (document.getElementById('app-shell').hidden) return; // not signed in yet -- nothing to go back to
+    localStorage.removeItem('cifellis_role');
+    stopAllSubscriptions();
+    document.getElementById('app-shell').hidden = true;
+    document.getElementById('screen-role').hidden = false;
+  });
 })();
 </script>
 

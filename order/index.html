@@ -73,7 +73,9 @@
     padding:12px 18px; background:var(--ink-soft); border-bottom:1px solid var(--line-on-ink);
     position:sticky; top:0; z-index:40;
   }
-  #app-header .brand{ display:flex; align-items:center; gap:10px; }
+  #app-header .brand{ display:flex; align-items:center; gap:10px; background:none; border:none; padding:0; font:inherit; color:inherit; text-align:left; cursor:pointer; border-radius:8px; }
+  #app-header .brand:hover{ opacity:.85; }
+  #app-header .brand:focus-visible{ outline:2px solid var(--gold); outline-offset:3px; }
   #app-header .brand svg{ width:30px; height:30px; }
   #app-header .brand .name{ font-family:"Rye",serif; font-size:18px; }
   #app-header .role-tag{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); }
@@ -120,6 +122,7 @@
       border-left:none; border-top:none; position:fixed; left:0; right:0; bottom:0; top:auto;
       max-height:82vh; border-radius:16px 16px 0 0; box-shadow:0 -16px 40px -12px rgba(0,0,0,.65);
       transform:translateY(110%); transition:transform .3s ease; z-index:55;
+      overflow-y:auto; -webkit-overflow-scrolling:touch;
     }
     #view-customer .order-cart-pane.is-open{ transform:translateY(0); }
     #view-customer .cart-drag-handle{
@@ -304,13 +307,13 @@
 
 <div id="app-shell">
   <div id="app-header">
-    <div class="brand">
+    <button class="brand" id="brandHomeBtn" type="button" aria-label="Back to the menu" title="Back to the menu">
       <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="#f4ead6"/><circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="6"/><path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/></svg>
       <div>
         <div class="name">Cifelli's</div>
         <div class="role-tag">Order Online</div>
       </div>
-    </div>
+    </button>
     <div class="right" id="header-right">
       <button class="btn-ghost" id="accountBtn" type="button">Sign In</button>
       <button class="cart-btn" id="cartBtn" type="button" aria-label="View your order">
@@ -645,6 +648,47 @@ function resetOrderCtx(mode){
   orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null };
 }
 
+const CART_STORAGE_KEY = 'cifellisCart';
+const CART_STORAGE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours -- long enough
+  // to survive an accidental reload or a closed tab, short enough that a
+  // customer doesn't come back tomorrow and reorder yesterday's cart
+  // without realizing it's stale (prices/menu may have changed too).
+
+function saveCartToStorage(){
+  if (orderCtx.mode !== 'customer') return;
+  try{
+    if (!orderCtx.cart.length){ localStorage.removeItem(CART_STORAGE_KEY); return; }
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({
+      cart: orderCtx.cart, orderType: orderCtx.orderType, tip: orderCtx.tip, tipPct: orderCtx.tipPct,
+      payMethod: orderCtx.payMethod, deliveryInfo: orderCtx.deliveryInfo,
+      pizzaSize: orderCtx.pizzaSize, pizzaToppings: Array.from(orderCtx.pizzaToppings || []),
+      savedAt: Date.now(),
+    }));
+  }catch(e){ /* storage full/unavailable -- cart just won't survive a reload, not fatal */ }
+}
+
+function restoreCartFromStorage(){
+  try{
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved.savedAt || Date.now() - saved.savedAt > CART_STORAGE_MAX_AGE_MS){
+      localStorage.removeItem(CART_STORAGE_KEY);
+      return;
+    }
+    if (Array.isArray(saved.cart) && saved.cart.length){
+      orderCtx.cart = saved.cart;
+      if (saved.orderType) orderCtx.orderType = saved.orderType;
+      orderCtx.tip = saved.tip || 0;
+      orderCtx.tipPct = saved.tipPct != null ? saved.tipPct : null;
+      orderCtx.payMethod = saved.payMethod || 'cash';
+      orderCtx.deliveryInfo = saved.deliveryInfo || null;
+      orderCtx.pizzaSize = saved.pizzaSize || 'medium';
+      orderCtx.pizzaToppings = new Set(saved.pizzaToppings || []);
+    }
+  }catch(e){ /* corrupt/unreadable saved cart -- just start fresh */ }
+}
+
 function addLine(line){
   const key = line.name+'|'+(line.size||'')+'|'+(line.notes||'');
   const existing = orderCtx.cart.find(l => l._key===key);
@@ -909,6 +953,7 @@ function updateChangeDue(mode, total){
 
 function renderCart(mode){
   if (!mode) return;
+  saveCartToStorage();
   const wrap = document.getElementById(`cartitems-${mode}`);
   if (!wrap) return;
   if (!orderCtx.cart.length){
@@ -1089,6 +1134,7 @@ function initCustomerView(){
   stopAllSubscriptions();
   resetOrderCtx('customer');
   orderCtx.orderType = 'pickup';
+  restoreCartFromStorage();
   renderOrderLayout('customer');
 }
 
@@ -1128,6 +1174,7 @@ async function submitCustomerOrder(){
     submitBtn.textContent = 'Place Order';
     return;
   }
+  try{ localStorage.removeItem(CART_STORAGE_KEY); }catch(e){}
   showOrderConfirmation(ticket, orderPayload);
 }
 
@@ -1469,6 +1516,15 @@ async function showAccountPanel(){
   await loadMenuConfig(db);
   initCustomerView();
   await refreshAccountState();
+  document.getElementById('brandHomeBtn').addEventListener('click', () => {
+    const accountView = document.getElementById('view-account');
+    const customerView = document.getElementById('view-customer');
+    if (accountView && !accountView.hidden){ accountView.hidden = true; customerView.hidden = false; }
+    const menuPane = document.getElementById('menupane-customer');
+    if (menuPane) menuPane.scrollTo({ top: 0, behavior: 'smooth' });
+    closeMobileCart();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
 })();
 </script>
 
