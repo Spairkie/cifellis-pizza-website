@@ -475,8 +475,13 @@ let CATEGORIES = [
     { name:'Sausage, Egg and Cheese', price:11.00 }, { name:'Pork Roll, Egg and Cheese', price:11.00 },
   ]},
   { key:'knots', label:'Garlic Knots', items:[ { name:'Garlic Knots', size:'6 pc', price:4.75 } ]},
-  { key:'drinks', label:'Drinks', note:'We carry Pepsi products', items:[
-    { name:'Bottled Soda', size:'20 oz', price:2.75 }, { name:'Bottled Soda', size:'2 Liter', price:4.50 },
+  { key:'drinks', label:'Drinks', note:'We carry Pepsi products -- names/prices are a starting point, adjust in Staff Hub > Menu Editor to match what you actually stock', items:[
+    { name:'Pepsi', size:'20 oz', price:2.75 }, { name:'Diet Pepsi', size:'20 oz', price:2.75 },
+    { name:'Pepsi Zero Sugar', size:'20 oz', price:2.75 }, { name:'Mountain Dew', size:'20 oz', price:2.75 },
+    { name:'Starry', size:'20 oz', price:2.75 }, { name:'Mug Root Beer', size:'20 oz', price:2.75 },
+    { name:'Brisk Iced Tea', size:'20 oz', price:2.75 }, { name:'Aquafina Water', size:'20 oz', price:2.00 },
+    { name:'Pepsi', size:'2 Liter', price:4.50 }, { name:'Diet Pepsi', size:'2 Liter', price:4.50 },
+    { name:'Mountain Dew', size:'2 Liter', price:4.50 }, { name:'Starry', size:'2 Liter', price:4.50 },
   ]},
 ];
 
@@ -513,7 +518,9 @@ async function loadMenuConfig(db){
   if (!db) return false;
   try{
     const doc = await db.collection('menu_config').doc(1).get();
-    return applyMenuConfig(doc.data());
+    const row = doc.data(); // the whole menu_config row: {id, data, version, updatedAt, updatedBy}
+    return applyMenuConfig(row && row.data); // .data is the actual menu JSON -- applyMenuConfig
+      // expects {TAX_RATE, CATEGORIES, ...} directly, not the wrapping row.
   }catch(e){
     console.error('Could not load live menu config, using built-in defaults:', e);
     return false;
