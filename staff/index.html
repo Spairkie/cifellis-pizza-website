@@ -240,6 +240,24 @@
   .section-label{ font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); margin:22px 0 10px; }
   .db-banner{ position:relative; background:var(--sauce); color:var(--paper); font-size:12.5px; font-weight:700; text-align:center; padding:8px 14px; z-index:200; }
   .db-banner a{ color:var(--paper); text-decoration:underline; }
+
+  /* ================= MENU EDITOR ================= */
+  #view-menu{ max-width:920px; margin:0 auto; padding:18px 20px 60px; }
+  #view-menu .view-header{ margin-bottom:16px; }
+  #view-menu .view-header h2{ font-size:24px; margin:0; }
+  .me-card{ background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; }
+  .me-card-title{ font-weight:700; font-size:15px; }
+  .me-section-title{ font-family:"Rye",serif; font-size:19px; color:var(--paper); }
+  .me-table{ width:100%; border-collapse:collapse; }
+  .me-table th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--paper-dim); padding:4px 6px; }
+  .me-table td{ padding:4px 6px; }
+  .me-table input{ width:100%; box-sizing:border-box; }
+  .me-category summary{ list-style:none; }
+  .me-category summary::-webkit-details-marker{ display:none; }
+  .me-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--ink); border:1px solid var(--line-on-ink); border-radius:999px; padding:4px 6px 4px 12px; font-size:12.5px; }
+  .me-chip button{ background:none; border:none; color:var(--paper-dim); font-size:16px; line-height:1; cursor:pointer; padding:0 4px; }
+  .me-chip button:hover{ color:var(--sauce); }
+  .me-row{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
 </style>
 </head>
 <body>
@@ -310,6 +328,11 @@
       <div class="t">Driver Roster</div>
       <div class="d">Add drivers, their car info, and manage who's active — for managers.</div>
     </button>
+    <button class="role-card" data-role="menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 8h8M9 12h8"/></svg>
+      <div class="t">Menu Editor</div>
+      <div class="d">Prices, items, and daily specials — changes go live on the kiosk right away. For managers.</div>
+    </button>
   </div>
   <button class="btn-ghost" id="installBtn" type="button" hidden style="margin-top:6px; font-size:13px;">Install this app on this device &darr;</button>
 </div>
@@ -332,6 +355,7 @@
     <div class="view" id="view-driver" hidden></div>
     <div class="view" id="view-analytics" hidden></div>
     <div class="view" id="view-driverroster" hidden></div>
+    <div class="view" id="view-menu" hidden></div>
   </main>
 </div>
 
@@ -346,16 +370,16 @@
 /* =========================================================================
    MENU DATA: mirrors the real Cifelli's menu
    ========================================================================= */
-const TAX_RATE = 0.06625;
+let TAX_RATE = 0.06625;
 
-const PIZZA_SIZES = [
+let PIZZA_SIZES = [
   { key:'personal', label:'Personal Pan (9")', base:8.00, perTopping:1.00 },
   { key:'medium',   label:'Medium (14")',      base:14.50, perTopping:3.00 },
   { key:'large',    label:'Large (16")',       base:15.99, perTopping:3.50 },
   { key:'sicilian', label:'Sicilian (16x16")', base:17.99, perTopping:4.00 },
 ];
-const TOPPINGS = ['Pepperoni','Sausage','Bacon','Meatball','Ham','Extra Cheese','Green Pepper','Onion','Black Olive','Mushroom','Anchovy','Pineapple','Spinach','Broccoli'];
-const SPECIALTY_PIZZAS = [
+let TOPPINGS = ['Pepperoni','Sausage','Bacon','Meatball','Ham','Extra Cheese','Green Pepper','Onion','Black Olive','Mushroom','Anchovy','Pineapple','Spinach','Broccoli'];
+let SPECIALTY_PIZZAS = [
   { name:'Bacon BBQ Chicken Ranch', sizes:[{label:'Medium',price:24.00},{label:'Large',price:26.00}] },
   { name:'Buffalo Chicken',         sizes:[{label:'Medium',price:24.00},{label:'Large',price:26.00}] },
   { name:'Hawaiian',                sizes:[{label:'Medium',price:20.50},{label:'Large',price:22.99},{label:'Sicilian',price:24.99}] },
@@ -363,7 +387,7 @@ const SPECIALTY_PIZZAS = [
   { name:'The Works',               sizes:[{label:'Medium',price:24.00},{label:'Large',price:25.99},{label:'Sicilian',price:29.99}] },
 ];
 
-const CATEGORIES = [
+let CATEGORIES = [
   { key:'panzarotti', label:'Panzarotti', note:'Deep fried and golden brown', items:[
     { name:'Panzarotti', price:8.25, desc:'Add $0.75 per extra ingredient' },
   ]},
@@ -446,7 +470,7 @@ const CATEGORIES = [
   ]},
 ];
 
-const SPECIALS_BY_DAY = {
+let SPECIALS_BY_DAY = {
   0:{ name:'4 Original Panzarotti', price:25.99 },
   1:{ name:'2 Cheese Steaks', price:20.99 },
   2:{ name:'Large Pizza', price:13.99 },
@@ -456,6 +480,35 @@ const SPECIALS_BY_DAY = {
   6:{ name:'Cheese Steak Platter', price:13.99 },
 };
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+/* Everything above this line (TAX_RATE .. SPECIALS_BY_DAY) is the
+   hardcoded fallback menu -- it's what the app uses if menu_config
+   can't be loaded (offline, table not migrated yet, RLS hiccup, etc.),
+   so ordering/pricing keeps working even when the database doesn't.
+   loadMenuConfig() below overwrites these `let`-declared globals with
+   the live values from Supabase when it can. See
+   supabase/menu-config-migration.sql and Staff Hub > Menu Editor. */
+function applyMenuConfig(cfg){
+  if (!cfg || typeof cfg !== 'object') return false;
+  if (typeof cfg.TAX_RATE === 'number') TAX_RATE = cfg.TAX_RATE;
+  if (Array.isArray(cfg.PIZZA_SIZES) && cfg.PIZZA_SIZES.length) PIZZA_SIZES = cfg.PIZZA_SIZES;
+  if (Array.isArray(cfg.TOPPINGS) && cfg.TOPPINGS.length) TOPPINGS = cfg.TOPPINGS;
+  if (Array.isArray(cfg.SPECIALTY_PIZZAS)) SPECIALTY_PIZZAS = cfg.SPECIALTY_PIZZAS;
+  if (Array.isArray(cfg.CATEGORIES) && cfg.CATEGORIES.length) CATEGORIES = cfg.CATEGORIES;
+  if (cfg.SPECIALS_BY_DAY && typeof cfg.SPECIALS_BY_DAY === 'object') SPECIALS_BY_DAY = cfg.SPECIALS_BY_DAY;
+  return true;
+}
+
+async function loadMenuConfig(db){
+  if (!db) return false;
+  try{
+    const doc = await db.collection('menu_config').doc(1).get();
+    return applyMenuConfig(doc.data());
+  }catch(e){
+    console.error('Could not load live menu config, using built-in defaults:', e);
+    return false;
+  }
+}
 </script>
 
 <script>
@@ -612,7 +665,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -646,6 +699,7 @@ function goToRole(role){
   if (role === 'driver'){ document.getElementById('view-driver').hidden = false; initDriverView(); }
   if (role === 'analytics'){ document.getElementById('view-analytics').hidden = false; initAnalyticsView(); }
   if (role === 'driverroster'){ document.getElementById('view-driverroster').hidden = false; initDriverRosterView(); }
+  if (role === 'menu'){ document.getElementById('view-menu').hidden = false; initMenuEditorView(); }
 }
 
 document.querySelectorAll('.role-card').forEach(btn => {
@@ -1919,10 +1973,331 @@ function showDriverEditor(driver){
 </script>
 
 <script>
+/* =========================================================================
+   MENU EDITOR (admin-only edits; visible to all staff, same pattern as
+   Driver Roster — App.isAdmin gates the Save button and add/remove
+   controls, RLS enforces the same rule server-side either way).
+
+   Working copy lives in MenuEditorState, loaded once from menu_config on
+   entry and re-rendered from scratch on every edit (same "rebuild the
+   HTML from state" approach as the rest of this file). Nothing is sent
+   to Supabase until "Save Menu" is clicked; a version mismatch at save
+   time (someone else saved in the meantime) is caught and surfaced
+   instead of silently overwriting their change.
+   ========================================================================= */
+let MenuEditorState = null; // { TAX_RATE, PIZZA_SIZES, TOPPINGS, SPECIALTY_PIZZAS, CATEGORIES, SPECIALS_BY_DAY, version }
+const SPECIALTY_SIZE_SLOTS = ['Medium', 'Large', 'Sicilian'];
+
+function menuEditorSnapshotFromLive(){
+  // Used when menu_config hasn't been migrated/seeded yet: let the admin
+  // start editing from whatever the page is currently using (the live
+  // DB values if loadMenuConfig() already applied them, otherwise the
+  // hardcoded fallback), rather than showing a dead end.
+  return {
+    TAX_RATE, PIZZA_SIZES: PIZZA_SIZES.slice(), TOPPINGS: TOPPINGS.slice(),
+    SPECIALTY_PIZZAS: JSON.parse(JSON.stringify(SPECIALTY_PIZZAS)),
+    CATEGORIES: JSON.parse(JSON.stringify(CATEGORIES)),
+    SPECIALS_BY_DAY: JSON.parse(JSON.stringify(SPECIALS_BY_DAY)),
+    version: null,
+  };
+}
+
+async function initMenuEditorView(){
+  const view = document.getElementById('view-menu');
+  view.innerHTML = '<p style="color:var(--paper-dim);">Loading menu...</p>';
+  const db = App.db || await getDb();
+  if (!db){ view.innerHTML = '<p style="color:var(--bad);">Not connected to the database.</p>'; return; }
+
+  let migrated = true;
+  try{
+    const doc = await db.collection('menu_config').doc(1).get();
+    if (doc.data()){
+      const d = doc.data();
+      MenuEditorState = {
+        TAX_RATE: d.data.TAX_RATE, PIZZA_SIZES: d.data.PIZZA_SIZES, TOPPINGS: d.data.TOPPINGS,
+        SPECIALTY_PIZZAS: d.data.SPECIALTY_PIZZAS, CATEGORIES: d.data.CATEGORIES,
+        SPECIALS_BY_DAY: d.data.SPECIALS_BY_DAY, version: d.version,
+      };
+    } else {
+      migrated = false;
+      MenuEditorState = menuEditorSnapshotFromLive();
+    }
+  }catch(e){
+    migrated = false;
+    MenuEditorState = menuEditorSnapshotFromLive();
+  }
+
+  renderMenuEditor(migrated);
+}
+
+function renderMenuEditor(migrated){
+  const view = document.getElementById('view-menu');
+  const s = MenuEditorState;
+  const readOnly = !App.isAdmin;
+
+  let html = `<div class="view-header"><h2>Menu Editor</h2></div>`;
+
+  if (!migrated){
+    html += `<div style="background:var(--ink-soft); border:1px solid var(--gold); border-radius:10px; padding:14px 16px; margin-bottom:20px; font-size:13.5px; line-height:1.5;">
+      The live menu database hasn't been set up yet (see <code>supabase/menu-config-migration.sql</code>).
+      Editing works below, but <strong>Save Menu will not work until that migration has been run once</strong> —
+      ask whoever manages the site. Showing today's menu so you can preview changes in the meantime.
+    </div>`;
+  }
+  if (readOnly){
+    html += `<div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:14px 16px; margin-bottom:20px; font-size:13.5px; color:var(--paper-dim);">
+      You can look around, but saving menu changes requires an admin account.
+    </div>`;
+  }
+
+  // --- Tax rate ---
+  html += `<div class="me-card" style="margin-bottom:20px;">
+    <div class="me-card-title">Sales Tax</div>
+    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px;">Tax rate (e.g. 0.06625 for 6.625%)
+      <input type="number" step="0.00001" min="0" max="1" id="me-taxrate" value="${s.TAX_RATE}" ${readOnly?'disabled':''} style="width:120px;">
+    </label>
+  </div>`;
+
+  // --- Pizza sizes ---
+  html += `<div class="me-card" style="margin-bottom:20px;">
+    <div class="me-card-title">Pizza Sizes &amp; Topping Price</div>
+    <table class="me-table"><thead><tr><th>Size label</th><th>Base price</th><th>Per topping</th><th></th></tr></thead><tbody>`;
+  s.PIZZA_SIZES.forEach((sz, i) => {
+    html += `<tr>
+      <td><input data-me-pizzasize="${i}" data-field="label" value="${escapeHtml(sz.label)}" ${readOnly?'disabled':''}></td>
+      <td><input type="number" step="0.01" min="0" data-me-pizzasize="${i}" data-field="base" value="${sz.base}" ${readOnly?'disabled':''}></td>
+      <td><input type="number" step="0.01" min="0" data-me-pizzasize="${i}" data-field="perTopping" value="${sz.perTopping}" ${readOnly?'disabled':''}></td>
+      <td>${readOnly?'':`<button class="btn-ghost me-del-pizzasize" data-i="${i}" type="button">Remove</button>`}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>
+    ${readOnly?'':'<button class="btn-ghost" id="me-add-pizzasize" type="button" style="margin-top:8px;">+ Add size</button>'}
+  </div>`;
+
+  // --- Toppings ---
+  html += `<div class="me-card" style="margin-bottom:20px;">
+    <div class="me-card-title">Available Toppings</div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px;">`;
+  s.TOPPINGS.forEach((t, i) => {
+    html += `<span class="me-chip">${escapeHtml(t)} ${readOnly?'':`<button class="me-del-topping" data-i="${i}" type="button" aria-label="Remove ${escapeHtml(t)}">&times;</button>`}</span>`;
+  });
+  html += `</div>
+    ${readOnly?'':`<div style="display:flex; gap:8px; margin-top:10px;"><input id="me-new-topping" placeholder="New topping name" style="max-width:220px;"><button class="btn-ghost" id="me-add-topping" type="button">+ Add</button></div>`}
+  </div>`;
+
+  // --- Specialty pizzas ---
+  html += `<div class="me-card" style="margin-bottom:20px;">
+    <div class="me-card-title">Specialty Pizzas</div>`;
+  s.SPECIALTY_PIZZAS.forEach((sp, i) => {
+    const priceFor = (label) => { const m = (sp.sizes||[]).find(x => x.label === label); return m ? m.price : ''; };
+    html += `<div class="me-row" style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px dotted var(--line-on-ink);">
+      <input data-me-specialty="${i}" data-field="name" value="${escapeHtml(sp.name)}" placeholder="Name" ${readOnly?'disabled':''} style="min-width:220px;">
+      ${SPECIALTY_SIZE_SLOTS.map(label => `
+        <label style="font-size:12px; color:var(--paper-dim); display:flex; align-items:center; gap:4px;">${label}
+          <input type="number" step="0.01" min="0" data-me-specialty="${i}" data-size-label="${label}" value="${priceFor(label)}" placeholder="off" ${readOnly?'disabled':''} style="width:80px;">
+        </label>`).join('')}
+      ${readOnly?'':`<button class="btn-ghost me-del-specialty" data-i="${i}" type="button">Remove</button>`}
+    </div>`;
+  });
+  html += `${readOnly?'':'<button class="btn-ghost" id="me-add-specialty" type="button">+ Add specialty pizza</button>'}</div>`;
+
+  // --- Categories & items ---
+  html += `<div class="me-section-title">Menu Categories</div>`;
+  s.CATEGORIES.forEach((cat, ci) => {
+    html += `<details class="card me-category" style="margin-bottom:14px;" open>
+      <summary style="cursor:pointer; display:flex; align-items:center; gap:10px;">
+        <input data-me-cat="${ci}" data-field="label" value="${escapeHtml(cat.label)}" ${readOnly?'disabled':''} style="font-weight:700; flex:1; min-width:140px;" onclick="event.stopPropagation()">
+        <span style="font-size:12px; color:var(--paper-dim);">${cat.items.length} item${cat.items.length===1?'':'s'}</span>
+        ${readOnly?'':`<button class="btn-ghost me-del-cat" data-ci="${ci}" type="button" onclick="event.stopPropagation()">Remove category</button>`}
+      </summary>
+      <div style="margin-top:10px;">
+        <input data-me-cat="${ci}" data-field="note" value="${escapeHtml(cat.note||'')}" placeholder="Optional note shown under the category heading" ${readOnly?'disabled':''} style="width:100%; margin-bottom:10px;">
+        <table class="me-table"><thead><tr><th>Item name</th><th>Size / variant</th><th>Price</th><th>Description</th><th></th></tr></thead><tbody>`;
+    cat.items.forEach((it, ii) => {
+      html += `<tr>
+        <td><input data-me-item="${ci}.${ii}" data-field="name" value="${escapeHtml(it.name)}" ${readOnly?'disabled':''}></td>
+        <td><input data-me-item="${ci}.${ii}" data-field="size" value="${escapeHtml(it.size||'')}" ${readOnly?'disabled':''} style="width:110px;"></td>
+        <td><input type="number" step="0.01" min="0" data-me-item="${ci}.${ii}" data-field="price" value="${it.price}" ${readOnly?'disabled':''} style="width:90px;"></td>
+        <td><input data-me-item="${ci}.${ii}" data-field="desc" value="${escapeHtml(it.desc||'')}" ${readOnly?'disabled':''}></td>
+        <td>${readOnly?'':`<button class="btn-ghost me-del-item" data-ci="${ci}" data-ii="${ii}" type="button">Remove</button>`}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>
+        ${readOnly?'':`<button class="btn-ghost me-add-item" data-ci="${ci}" type="button" style="margin-top:8px;">+ Add item to ${escapeHtml(cat.label)}</button>`}
+      </div>
+    </details>`;
+  });
+  html += readOnly ? '' : `<div style="display:flex; gap:8px; align-items:flex-end; margin:14px 0 24px;">
+    <label style="font-size:13px;">New category key<br><input id="me-new-cat-key" placeholder="e.g. desserts" style="width:160px;"></label>
+    <label style="font-size:13px;">Label<br><input id="me-new-cat-label" placeholder="e.g. Desserts" style="width:200px;"></label>
+    <button class="btn-ghost" id="me-add-cat" type="button">+ Add category</button>
+  </div>`;
+
+  // --- Daily specials ---
+  html += `<div class="me-card" style="margin-bottom:24px;">
+    <div class="me-card-title">Daily Specials</div>
+    <table class="me-table"><thead><tr><th>Day</th><th>Special</th><th>Price</th></tr></thead><tbody>`;
+  DAY_NAMES.forEach((dayName, di) => {
+    const sp = s.SPECIALS_BY_DAY[di] || { name: '', price: 0 };
+    html += `<tr>
+      <td>${dayName}</td>
+      <td><input data-me-special="${di}" data-field="name" value="${escapeHtml(sp.name||'')}" ${readOnly?'disabled':''}></td>
+      <td><input type="number" step="0.01" min="0" data-me-special="${di}" data-field="price" value="${sp.price||0}" ${readOnly?'disabled':''} style="width:90px;"></td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  if (!readOnly){
+    html += `<div style="display:flex; align-items:center; gap:14px; margin-bottom:40px;">
+      <button class="btn btn-sauce" id="me-save" type="button">Save Menu</button>
+      <span id="me-save-status" style="font-size:13px; color:var(--paper-dim);"></span>
+    </div>`;
+  }
+
+  view.innerHTML = html;
+  wireMenuEditorEvents(migrated);
+}
+
+function wireMenuEditorEvents(migrated){
+  const view = document.getElementById('view-menu');
+  const s = MenuEditorState;
+
+  // Simple field edits: update state in place, no full re-render needed
+  // (re-rendering on every keystroke would fight the user's cursor).
+  view.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.id === 'me-taxrate'){ s.TAX_RATE = Number(t.value) || 0; return; }
+    if (t.hasAttribute('data-me-pizzasize')){
+      const i = Number(t.getAttribute('data-me-pizzasize')), f = t.getAttribute('data-field');
+      s.PIZZA_SIZES[i][f] = (f === 'label') ? t.value : (Number(t.value) || 0);
+      return;
+    }
+    if (t.hasAttribute('data-me-specialty')){
+      const i = Number(t.getAttribute('data-me-specialty'));
+      const sizeLabel = t.getAttribute('data-size-label');
+      if (sizeLabel){
+        const sizes = s.SPECIALTY_PIZZAS[i].sizes = s.SPECIALTY_PIZZAS[i].sizes || [];
+        const existing = sizes.find(x => x.label === sizeLabel);
+        const val = t.value === '' ? null : (Number(t.value) || 0);
+        if (val === null){ s.SPECIALTY_PIZZAS[i].sizes = sizes.filter(x => x.label !== sizeLabel); }
+        else if (existing){ existing.price = val; }
+        else { sizes.push({ label: sizeLabel, price: val }); }
+      } else {
+        s.SPECIALTY_PIZZAS[i].name = t.value;
+      }
+      return;
+    }
+    if (t.hasAttribute('data-me-cat')){
+      const ci = Number(t.getAttribute('data-me-cat')), f = t.getAttribute('data-field');
+      s.CATEGORIES[ci][f] = t.value;
+      return;
+    }
+    if (t.hasAttribute('data-me-item')){
+      const [ci, ii] = t.getAttribute('data-me-item').split('.').map(Number);
+      const f = t.getAttribute('data-field');
+      s.CATEGORIES[ci].items[ii][f] = (f === 'price') ? (Number(t.value) || 0) : t.value;
+      return;
+    }
+    if (t.hasAttribute('data-me-special')){
+      const di = Number(t.getAttribute('data-me-special')), f = t.getAttribute('data-field');
+      if (!s.SPECIALS_BY_DAY[di]) s.SPECIALS_BY_DAY[di] = { name:'', price:0 };
+      s.SPECIALS_BY_DAY[di][f] = (f === 'price') ? (Number(t.value) || 0) : t.value;
+      return;
+    }
+  });
+
+  // Structural edits (add/remove rows) need a full re-render.
+  view.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+
+    if (btn.id === 'me-add-pizzasize'){ s.PIZZA_SIZES.push({ key:'size'+Date.now(), label:'New Size', base:0, perTopping:0 }); renderMenuEditor(migrated); }
+    else if (btn.classList.contains('me-del-pizzasize')){ s.PIZZA_SIZES.splice(Number(btn.dataset.i), 1); renderMenuEditor(migrated); }
+    else if (btn.id === 'me-add-topping'){
+      const input = document.getElementById('me-new-topping');
+      const v = input.value.trim();
+      if (v){ s.TOPPINGS.push(v); renderMenuEditor(migrated); }
+    }
+    else if (btn.classList.contains('me-del-topping')){ s.TOPPINGS.splice(Number(btn.dataset.i), 1); renderMenuEditor(migrated); }
+    else if (btn.id === 'me-add-specialty'){ s.SPECIALTY_PIZZAS.push({ name:'New Specialty Pizza', sizes:[{label:'Large', price:0}] }); renderMenuEditor(migrated); }
+    else if (btn.classList.contains('me-del-specialty')){ s.SPECIALTY_PIZZAS.splice(Number(btn.dataset.i), 1); renderMenuEditor(migrated); }
+    else if (btn.classList.contains('me-add-item')){
+      const ci = Number(btn.dataset.ci);
+      s.CATEGORIES[ci].items.push({ name:'New Item', price:0 });
+      renderMenuEditor(migrated);
+    }
+    else if (btn.classList.contains('me-del-item')){
+      const ci = Number(btn.dataset.ci), ii = Number(btn.dataset.ii);
+      s.CATEGORIES[ci].items.splice(ii, 1);
+      renderMenuEditor(migrated);
+    }
+    else if (btn.classList.contains('me-del-cat')){
+      const ci = Number(btn.dataset.ci);
+      showConfirmModal({
+        title: 'Remove this category?',
+        body: `This removes "${s.CATEGORIES[ci].label}" and all ${s.CATEGORIES[ci].items.length} of its items. This only takes effect once you hit Save Menu.`,
+        danger: true,
+        confirmLabel: 'Remove category',
+        onConfirm: () => { s.CATEGORIES.splice(ci, 1); renderMenuEditor(migrated); },
+      });
+    }
+    else if (btn.id === 'me-add-cat'){
+      const key = document.getElementById('me-new-cat-key').value.trim();
+      const label = document.getElementById('me-new-cat-label').value.trim();
+      if (!key || !label){ showToast('Category key and label are both required'); return; }
+      if (s.CATEGORIES.some(c => c.key === key)){ showToast('That category key is already used'); return; }
+      s.CATEGORIES.push({ key, label, items: [] });
+      renderMenuEditor(migrated);
+    }
+    else if (btn.id === 'me-save'){
+      await saveMenuEditor();
+    }
+  });
+}
+
+async function saveMenuEditor(){
+  const statusEl = document.getElementById('me-save-status');
+  const btn = document.getElementById('me-save');
+  const db = App.db || await getDb();
+  if (!db){ statusEl.textContent = 'Not connected to the database.'; return; }
+  btn.disabled = true;
+  statusEl.textContent = 'Saving...';
+  try{
+    // Optimistic concurrency: refuse to blindly overwrite if someone
+    // else saved since this admin loaded the page.
+    const current = await db.collection('menu_config').doc(1).get();
+    if (!current.data()){
+      statusEl.textContent = 'Could not save: the menu database has not been set up yet (see supabase/menu-config-migration.sql).';
+      btn.disabled = false;
+      return;
+    }
+    if (MenuEditorState.version !== null && current.data().version !== MenuEditorState.version){
+      statusEl.textContent = 'Someone else saved menu changes since you opened this page. Reload the Menu Editor to see their changes, then re-apply yours.';
+      btn.disabled = false;
+      return;
+    }
+    const s = MenuEditorState;
+    await db.collection('menu_config').doc(1).update({
+      data: {
+        TAX_RATE: s.TAX_RATE, PIZZA_SIZES: s.PIZZA_SIZES, TOPPINGS: s.TOPPINGS,
+        SPECIALTY_PIZZAS: s.SPECIALTY_PIZZAS, CATEGORIES: s.CATEGORIES, SPECIALS_BY_DAY: s.SPECIALS_BY_DAY,
+      },
+    });
+    applyMenuConfig(s); // reflect immediately in this tab's own POS view too
+    statusEl.textContent = 'Saved — live on the kiosk now.';
+  }catch(e){
+    statusEl.textContent = 'Could not save: ' + (e && e.message ? e.message : 'unknown error');
+  }
+  btn.disabled = false;
+}
+</script>
+
+<script>
 /* Runs last, after every view's init function above is defined, so an
    auto-resumed saved role (from a previous visit) never calls a
    not-yet-defined initXView function. */
 (async function boot(){
+  await loadMenuConfig(await getDb());
   await initAuthGate();
 })();
 </script>

@@ -338,16 +338,16 @@
 /* =========================================================================
    MENU DATA: mirrors the real Cifelli's menu
    ========================================================================= */
-const TAX_RATE = 0.06625;
+let TAX_RATE = 0.06625;
 
-const PIZZA_SIZES = [
+let PIZZA_SIZES = [
   { key:'personal', label:'Personal Pan (9")', base:8.00, perTopping:1.00 },
   { key:'medium',   label:'Medium (14")',      base:14.50, perTopping:3.00 },
   { key:'large',    label:'Large (16")',       base:15.99, perTopping:3.50 },
   { key:'sicilian', label:'Sicilian (16x16")', base:17.99, perTopping:4.00 },
 ];
-const TOPPINGS = ['Pepperoni','Sausage','Bacon','Meatball','Ham','Extra Cheese','Green Pepper','Onion','Black Olive','Mushroom','Anchovy','Pineapple','Spinach','Broccoli'];
-const SPECIALTY_PIZZAS = [
+let TOPPINGS = ['Pepperoni','Sausage','Bacon','Meatball','Ham','Extra Cheese','Green Pepper','Onion','Black Olive','Mushroom','Anchovy','Pineapple','Spinach','Broccoli'];
+let SPECIALTY_PIZZAS = [
   { name:'Bacon BBQ Chicken Ranch', sizes:[{label:'Medium',price:24.00},{label:'Large',price:26.00}] },
   { name:'Buffalo Chicken',         sizes:[{label:'Medium',price:24.00},{label:'Large',price:26.00}] },
   { name:'Hawaiian',                sizes:[{label:'Medium',price:20.50},{label:'Large',price:22.99},{label:'Sicilian',price:24.99}] },
@@ -355,7 +355,7 @@ const SPECIALTY_PIZZAS = [
   { name:'The Works',               sizes:[{label:'Medium',price:24.00},{label:'Large',price:25.99},{label:'Sicilian',price:29.99}] },
 ];
 
-const CATEGORIES = [
+let CATEGORIES = [
   { key:'panzarotti', label:'Panzarotti', note:'Deep fried and golden brown', items:[
     { name:'Panzarotti', price:8.25, desc:'Add $0.75 per extra ingredient' },
   ]},
@@ -438,7 +438,7 @@ const CATEGORIES = [
   ]},
 ];
 
-const SPECIALS_BY_DAY = {
+let SPECIALS_BY_DAY = {
   0:{ name:'4 Original Panzarotti', price:25.99 },
   1:{ name:'2 Cheese Steaks', price:20.99 },
   2:{ name:'Large Pizza', price:13.99 },
@@ -448,6 +448,35 @@ const SPECIALS_BY_DAY = {
   6:{ name:'Cheese Steak Platter', price:13.99 },
 };
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+/* Everything above this line (TAX_RATE .. SPECIALS_BY_DAY) is the
+   hardcoded fallback menu -- it's what the app uses if menu_config
+   can't be loaded (offline, table not migrated yet, RLS hiccup, etc.),
+   so ordering/pricing keeps working even when the database doesn't.
+   loadMenuConfig() below overwrites these `let`-declared globals with
+   the live values from Supabase when it can. See
+   supabase/menu-config-migration.sql and Staff Hub > Menu Editor. */
+function applyMenuConfig(cfg){
+  if (!cfg || typeof cfg !== 'object') return false;
+  if (typeof cfg.TAX_RATE === 'number') TAX_RATE = cfg.TAX_RATE;
+  if (Array.isArray(cfg.PIZZA_SIZES) && cfg.PIZZA_SIZES.length) PIZZA_SIZES = cfg.PIZZA_SIZES;
+  if (Array.isArray(cfg.TOPPINGS) && cfg.TOPPINGS.length) TOPPINGS = cfg.TOPPINGS;
+  if (Array.isArray(cfg.SPECIALTY_PIZZAS)) SPECIALTY_PIZZAS = cfg.SPECIALTY_PIZZAS;
+  if (Array.isArray(cfg.CATEGORIES) && cfg.CATEGORIES.length) CATEGORIES = cfg.CATEGORIES;
+  if (cfg.SPECIALS_BY_DAY && typeof cfg.SPECIALS_BY_DAY === 'object') SPECIALS_BY_DAY = cfg.SPECIALS_BY_DAY;
+  return true;
+}
+
+async function loadMenuConfig(db){
+  if (!db) return false;
+  try{
+    const doc = await db.collection('menu_config').doc(1).get();
+    return applyMenuConfig(doc.data());
+  }catch(e){
+    console.error('Could not load live menu config, using built-in defaults:', e);
+    return false;
+  }
+}
 </script>
 
 <script>
@@ -1436,7 +1465,8 @@ async function showAccountPanel(){
 
 <script>
 (async function boot(){
-  await getDb();
+  const db = await getDb();
+  await loadMenuConfig(db);
   initCustomerView();
   await refreshAccountState();
 })();

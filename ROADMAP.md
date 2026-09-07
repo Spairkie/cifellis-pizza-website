@@ -2,6 +2,80 @@
 
 Where the project stands, and what's left. Last reviewed 2026-09-07.
 
+## Menu Editor + a serious RLS bug found along the way, 2026-09-07
+
+Built, at the owner's request, a way for an admin to edit menu items,
+prices, and daily specials from the Staff Hub instead of needing a code
+change + deploy for every price update.
+
+**New: `menu_config` table** (`supabase/menu-config-migration.sql`, not
+yet run — see below). A single admin-editable JSON row holding
+everything that used to be hardcoded JS constants in `order/index.html`
+and `staff/index.html` (`TAX_RATE`, `PIZZA_SIZES`, `TOPPINGS`,
+`SPECIALTY_PIZZAS`, `CATEGORIES`, `SPECIALS_BY_DAY`), seeded with the
+exact values that were live at migration time (generated programmatically
+from the actual JS, not retyped, to rule out transcription mistakes).
+Publicly readable (the kiosk needs it), admin-only writable, with a
+version/updatedAt/updatedBy trigger so the editor can warn on a
+conflicting concurrent save.
+
+**Both order/index.html and staff/index.html now load the menu from
+Supabase at boot**, with the old hardcoded values kept in place as a
+fallback — if `menu_config` doesn't exist yet, or the fetch fails for
+any reason, the site behaves exactly as it did before this change.
+Nothing about ordering or pricing changes until the migration is run.
+
+**New Staff Hub screen: Menu Editor** (`staff/index.html`, role card
+`menu`). Visible to all staff, same pattern as Driver Roster — anyone
+can look, only an admin's edits actually save (client-side gate backed
+by the same server-side RLS check). Covers tax rate, pizza sizes/topping
+pricing, the topping list, specialty pizzas (fixed Medium/Large/Sicilian
+price slots, blank = not offered in that size), every category and its
+items (add/edit/remove item, add/remove whole category), and the seven
+daily specials. Edits are local until "Save Menu" writes the whole
+`menu_config.data` blob back in one update.
+
+**Found in the process: a real, previously-invisible RLS bug.** Testing
+the admin gate turned up that every query against `public.staff` --
+select, insert, or update, for any signed-in staff member -- has always
+failed with "infinite recursion detected in policy for relation staff",
+confirmed directly via the REST API. The three policies on `staff`
+checked admin/active status by selecting from `staff` inside their own
+policy, which re-triggers itself forever. `is_staff()`/`is_admin()`
+already existed in schema.sql as `security definer` functions built
+specifically to avoid exactly this, but the `staff` table's own three
+policies were never wired up to use them (every other table's policies
+correctly call them). Practical effect: `App.isAdmin` has silently
+evaluated to false for every staff member, always -- the error was
+caught and swallowed in `loadMyStaffRow()`'s try/catch, so nothing
+visibly crashed, but it means **Driver Roster's Approve button has never
+worked for anyone**, ever, since this schema was first deployed. Went
+unnoticed because no one had tested the approve flow with a real admin
+account before now.
+
+Fixed in two places: `schema.sql` itself (function definitions moved
+before the policies that use them, all three staff policies rewired to
+call `is_staff()`/`is_admin()` — correct for anyone deploying fresh from
+scratch), and a standalone `supabase/staff-rls-recursion-fix.sql` to
+patch the already-running production database (idempotent, safe to
+re-run).
+
+**⚠️ Two migrations need to be run in the Supabase SQL Editor before
+this is fully live** (couldn't be run directly — no DDL access via the
+service_role key, and this sandbox's network only permits outbound
+HTTPS, so a direct Postgres connection wasn't possible either):
+1. `supabase/staff-rls-recursion-fix.sql` — run this first, it's the
+   one actually breaking things right now.
+2. `supabase/menu-config-migration.sql` — turns on the Menu Editor and
+   moves the live menu into the database.
+
+**⚠️ Remove before real production use:** a temporary staff/admin/driver
+test account was bootstrapped for AI-assisted testing on 2026-09-07
+(email `claude-test@cifellispizza.local`, see git log around this date).
+Delete its rows from `staff` and `drivers`, and remove the Supabase Auth
+user, before this site is actually taking real customer orders for the
+business.
+
 ## Review pass, 2026-09-07
 
 Did the full review the previous entry asked for: read every file fresh,

@@ -159,31 +159,16 @@ alter table public.staff add column if not exists "isAdmin" boolean not null def
 alter table public.staff add column if not exists active boolean not null default true;
 alter table public.staff enable row level security;
 grant select, insert, update on public.staff to authenticated;
-drop policy if exists "staff_select_staff" on public.staff;
-create policy "staff_select_staff" on public.staff
-  for select to authenticated
-  using (exists (select 1 from public.staff s where s.id = auth.uid() and s.active));
 
--- Only an admin can add or edit staff rows through the app (this is
--- what lets Driver Roster's "Approve" button work without anyone
--- needing the Supabase dashboard for routine approvals). Adding the
--- very first admin still has to happen by hand in the SQL Editor —
--- see "Bootstrap your first admin" below — there's no safe way for
--- the app to grant the very first admin permission to itself.
-drop policy if exists "staff_admin_insert" on public.staff;
-create policy "staff_admin_insert" on public.staff
-  for insert to authenticated
-  with check (exists (select 1 from public.staff s where s.id = auth.uid() and s.active and s."isAdmin"));
-
-drop policy if exists "staff_admin_update" on public.staff;
-create policy "staff_admin_update" on public.staff
-  for update to authenticated
-  using (exists (select 1 from public.staff s where s.id = auth.uid() and s.active and s."isAdmin"))
-  with check (exists (select 1 from public.staff s where s.id = auth.uid() and s.active and s."isAdmin"));
--- No delete policy: to remove someone's access, an admin sets
--- active = false via update (above) rather than deleting the row —
--- keeps a record of who used to have access instead of erasing it.
-
+-- is_staff()/is_admin() are defined here, before the policies below, and
+-- used BY them (rather than each policy re-querying public.staff inline)
+-- specifically to avoid infinite recursion: a policy on public.staff
+-- whose own USING clause selects from public.staff re-triggers that same
+-- policy on every row check, and Postgres errors with "infinite
+-- recursion detected in policy for relation staff" the moment anyone
+-- queries it. security definer is what breaks the loop -- the function
+-- runs with its owner's privileges, bypassing RLS for its own internal
+-- lookup, so the outer policy's call to it doesn't recurse.
 create or replace function public.is_staff()
 returns boolean
 language sql stable security definer
@@ -199,6 +184,31 @@ set search_path = public
 as $$
   select exists (select 1 from public.staff where id = auth.uid() and active and "isAdmin");
 $$;
+
+drop policy if exists "staff_select_staff" on public.staff;
+create policy "staff_select_staff" on public.staff
+  for select to authenticated
+  using (public.is_staff());
+
+-- Only an admin can add or edit staff rows through the app (this is
+-- what lets Driver Roster's "Approve" button work without anyone
+-- needing the Supabase dashboard for routine approvals). Adding the
+-- very first admin still has to happen by hand in the SQL Editor —
+-- see "Bootstrap your first admin" below — there's no safe way for
+-- the app to grant the very first admin permission to itself.
+drop policy if exists "staff_admin_insert" on public.staff;
+create policy "staff_admin_insert" on public.staff
+  for insert to authenticated
+  with check (public.is_admin());
+
+drop policy if exists "staff_admin_update" on public.staff;
+create policy "staff_admin_update" on public.staff
+  for update to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+-- No delete policy: to remove someone's access, an admin sets
+-- active = false via update (above) rather than deleting the row —
+-- keeps a record of who used to have access instead of erasing it.
 
 -- MIGRATION: if you already had staff signing in before this table
 -- existed, run this once so your existing staff don't get locked out
