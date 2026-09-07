@@ -455,7 +455,7 @@ const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','
    so ordering/pricing keeps working even when the database doesn't.
    loadMenuConfig() below overwrites these `let`-declared globals with
    the live values from Supabase when it can. See
-   supabase/menu-config-migration.sql and Staff Hub > Menu Editor. */
+   supabase/schema.sql and Staff Hub > Menu Editor. */
 function applyMenuConfig(cfg){
   if (!cfg || typeof cfg !== 'object') return false;
   if (typeof cfg.TAX_RATE === 'number') TAX_RATE = cfg.TAX_RATE;

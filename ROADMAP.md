@@ -8,8 +8,8 @@ Built, at the owner's request, a way for an admin to edit menu items,
 prices, and daily specials from the Staff Hub instead of needing a code
 change + deploy for every price update.
 
-**New: `menu_config` table** (`supabase/menu-config-migration.sql`, not
-yet run — see below). A single admin-editable JSON row holding
+**New: `menu_config` table** (now part of `supabase/schema.sql` — see
+"One file, not several" below). A single admin-editable JSON row holding
 everything that used to be hardcoded JS constants in `order/index.html`
 and `staff/index.html` (`TAX_RATE`, `PIZZA_SIZES`, `TOPPINGS`,
 `SPECIALTY_PIZZAS`, `CATEGORIES`, `SPECIALS_BY_DAY`), seeded with the
@@ -53,28 +53,39 @@ worked for anyone**, ever, since this schema was first deployed. Went
 unnoticed because no one had tested the approve flow with a real admin
 account before now.
 
-Fixed in two places: `schema.sql` itself (function definitions moved
-before the policies that use them, all three staff policies rewired to
-call `is_staff()`/`is_admin()` — correct for anyone deploying fresh from
-scratch), and a standalone `supabase/staff-rls-recursion-fix.sql` to
-patch the already-running production database (idempotent, safe to
-re-run).
+Fixed in `schema.sql` itself: function definitions moved before the
+policies that use them, all three `staff` policies rewired to call
+`is_staff()`/`is_admin()`. **Confirmed fixed live** — re-tested directly
+against the production database after the owner ran the updated schema:
+`staff` queries that used to error now succeed, `App.isAdmin` correctly
+reads `true` for an admin account, and a full Driver Roster approval
+(pending self-application → click Approve → `drivers.approved` flips to
+`true` and a matching `staff` row is created) was exercised end-to-end
+through the real Staff Hub UI and verified in the database afterward.
 
-**⚠️ Two migrations need to be run in the Supabase SQL Editor before
-this is fully live** (couldn't be run directly — no DDL access via the
-service_role key, and this sandbox's network only permits outbound
-HTTPS, so a direct Postgres connection wasn't possible either):
-1. `supabase/staff-rls-recursion-fix.sql` — run this first, it's the
-   one actually breaking things right now.
-2. `supabase/menu-config-migration.sql` — turns on the Menu Editor and
-   moves the live menu into the database.
+**One file, not several.** The RLS fix and the `menu_config` table both
+started as separate one-off patch files (`staff-rls-recursion-fix.sql`,
+`menu-config-migration.sql`) so they could be run individually while
+sorting out sandbox network limits. Once both were confirmed working
+live, they were folded into `schema.sql` itself and the standalone files
+deleted — `schema.sql` is the single file for a from-scratch rebuild,
+every statement in it safe to re-run (every table is `if not exists`,
+every policy is dropped-then-recreated, the menu seed is
+`on conflict do nothing`), so catching an existing project up on a
+future schema change is always just: copy the whole current file,
+paste into the SQL Editor, Run.
 
-**⚠️ Remove before real production use:** a temporary staff/admin/driver
-test account was bootstrapped for AI-assisted testing on 2026-09-07
-(email `claude-test@cifellispizza.local`, see git log around this date).
-Delete its rows from `staff` and `drivers`, and remove the Supabase Auth
-user, before this site is actually taking real customer orders for the
-business.
+**⚠️ Remove before real production use:** temporary test accounts were
+created for AI-assisted testing on 2026-09-07 — the persistent admin/
+driver account `claude-test@cifellispizza.local` (`staff` + `drivers`
+rows, plus the Supabase Auth user), and one *momentarily*-created
+second driver account used only to verify the approval flow end-to-end
+(created, approved, then fully deleted from `drivers`, `staff`, and
+Auth in the same test — nothing from that one should remain, but worth
+a quick look in Authentication > Users to confirm). Delete the
+persistent `claude-test@` account (rows + Auth user) before this site
+takes real customer orders. See git log around this date for exact
+timestamps if anything needs auditing.
 
 ## Review pass, 2026-09-07
 

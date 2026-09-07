@@ -19,8 +19,17 @@ about five minutes and costs nothing.
 2. Open `supabase/schema.sql` from this repo, copy its entire contents, and
    paste it into the SQL Editor.
 3. Click **Run**. You should see "Success. No rows returned." This creates
-   the `orders` table, turns on live updates for it, and sets up the access
-   rules (row level security policies).
+   every table (orders, staff, customers, drivers, driver shifts, menu
+   config), turns on live updates, and sets up the access rules (row
+   level security policies).
+
+`schema.sql` is the single file for the whole database — every table
+and policy in it, start to finish. It's also safe to re-run in full any
+time (every `create table` uses `if not exists`, every policy is dropped
+and recreated, the menu seed only inserts if the row isn't already
+there), so catching an existing project up on a schema update is always
+just: copy the current file, paste, Run — no separate patch files to
+track down and apply in order.
 
 ## 3. Get your project URL and anon key
 
@@ -146,6 +155,26 @@ Creating an account links to whatever phone number they give at
 signup, so any past orders placed anonymously with that same phone
 number show up in their order history right away — nothing to migrate
 by hand.
+
+## Menu Editor (prices, items, daily specials)
+
+No setup needed beyond `schema.sql` — it creates and seeds a
+`menu_config` table with whatever menu was hardcoded in the app's own
+JS at the time you ran it. From there, any admin (a staff member with
+`isAdmin` checked — see "Bootstrap your first admin" above) can go to
+**Staff Hub > Menu Editor** and change tax rate, pizza sizes/topping
+pricing, toppings, specialty pizzas, every category and item, and the
+seven daily specials, no code change or redeploy needed. Non-admin
+staff can open the screen to look, but only an admin's changes save
+(enforced both in the UI and by row-level security, so this isn't
+just a client-side check).
+
+If `menu_config` is ever missing or unreachable (a fetch failing, or
+`schema.sql` not run yet on a fresh project), both the Customer Kiosk
+and the Staff POS fall back to the same hardcoded menu that used to be
+the only option — ordering never breaks because of this table, worst
+case is just that Menu Editor changes stop taking effect until it's
+reachable again.
 
 ## What this gets you, for free
 

@@ -487,7 +487,7 @@ const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','
    so ordering/pricing keeps working even when the database doesn't.
    loadMenuConfig() below overwrites these `let`-declared globals with
    the live values from Supabase when it can. See
-   supabase/menu-config-migration.sql and Staff Hub > Menu Editor. */
+   supabase/schema.sql and Staff Hub > Menu Editor. */
 function applyMenuConfig(cfg){
   if (!cfg || typeof cfg !== 'object') return false;
   if (typeof cfg.TAX_RATE === 'number') TAX_RATE = cfg.TAX_RATE;
@@ -2039,7 +2039,7 @@ function renderMenuEditor(migrated){
 
   if (!migrated){
     html += `<div style="background:var(--ink-soft); border:1px solid var(--gold); border-radius:10px; padding:14px 16px; margin-bottom:20px; font-size:13.5px; line-height:1.5;">
-      The live menu database hasn't been set up yet (see <code>supabase/menu-config-migration.sql</code>).
+      The live menu database hasn't been set up yet (see supabase/schema.sql).
       Editing works below, but <strong>Save Menu will not work until that migration has been run once</strong> —
       ask whoever manages the site. Showing today's menu so you can preview changes in the meantime.
     </div>`;
@@ -2267,7 +2267,7 @@ async function saveMenuEditor(){
     // else saved since this admin loaded the page.
     const current = await db.collection('menu_config').doc(1).get();
     if (!current.data()){
-      statusEl.textContent = 'Could not save: the menu database has not been set up yet (see supabase/menu-config-migration.sql).';
+      statusEl.textContent = 'Could not save: the menu database has not been set up yet (see supabase/schema.sql).';
       btn.disabled = false;
       return;
     }
