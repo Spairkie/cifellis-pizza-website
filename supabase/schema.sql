@@ -386,6 +386,7 @@ create policy "orders_insert_public" on public.orders
 -- other customers' orders, and never by guessing an id.
 drop policy if exists "orders_select_anyone" on public.orders;
 drop policy if exists "orders_select_staff" on public.orders;
+drop policy if exists "orders_select_staff_or_own" on public.orders;
 create policy "orders_select_staff_or_own" on public.orders
   for select to authenticated
   using (
