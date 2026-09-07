@@ -2,6 +2,11 @@
 
 Where the project stands, and what's left. Last reviewed 2026-09-07.
 
+**Picking this project up fresh (especially in Claude Code)?** Read
+`HANDOFF.md` first — it's a short orientation doc written specifically
+for that handoff, with credentials status, known gotchas, and where to
+start. This file is the detailed history.
+
 ## Feature backlog, added 2026-09-07
 
 A large batch of feature requests came in at once. Organized here by
