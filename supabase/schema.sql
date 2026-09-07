@@ -455,6 +455,49 @@ grant execute on function public.rate_delivery(text, text, smallint, text) to an
 
 
 -- =========================================================================
+-- Register shifts (Till / End-of-day management, Staff Hub > Till)
+-- =========================================================================
+-- One row per till session: opened with a starting cash count, closed with
+-- a counted cash amount and a snapshot of the computed cash/card/tip
+-- report for that window (snapshotted, not recomputed later, so a shift's
+-- history doesn't drift if orders are edited afterward). Generalizes the
+-- driver_shifts shape above to the register instead of a driver.
+create table if not exists public.register_shifts (
+  id uuid primary key default gen_random_uuid(),
+  "openedBy" uuid not null references auth.users(id),
+  "openedByEmail" text not null default '',
+  "startingCash" numeric(10,2) not null default 0,
+  "openedAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  "closedBy" uuid references auth.users(id),
+  "closedByEmail" text,
+  "countedCash" numeric(10,2),
+  "overShort" numeric(10,2),
+  "closedAt" bigint,
+  report jsonb,
+  notes text not null default '',
+  status text not null default 'open' check (status in ('open','closed')),
+  "createdAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+
+-- Only one open register at a time, for a single-register shop: a partial
+-- unique index on a constant expression means at most one row can ever
+-- have status = 'open' simultaneously (a second insert while one is
+-- already open violates the index instead of silently creating two).
+create unique index if not exists register_shifts_one_open_idx
+  on public.register_shifts ((1)) where status = 'open';
+create index if not exists register_shifts_status_idx on public.register_shifts (status);
+
+alter table public.register_shifts enable row level security;
+grant select, insert, update on public.register_shifts to authenticated;
+drop policy if exists "register_shifts_staff_all" on public.register_shifts;
+create policy "register_shifts_staff_all" on public.register_shifts
+  for all to authenticated
+  using (public.is_staff())
+  with check (public.is_staff());
+-- No delete policy -- same reasoning as orders above: keep full shift
+-- history, fix mistakes by hand in the dashboard rather than an undo UI.
+
+-- =========================================================================
 -- Menu configuration (admin-editable pricing/menu, Staff Hub > Menu Editor)
 -- =========================================================================
 -- A single JSON row holding everything that would otherwise be hardcoded

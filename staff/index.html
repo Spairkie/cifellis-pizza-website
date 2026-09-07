@@ -163,6 +163,9 @@
   .kitchen-pause-badge.is-clickable{ cursor:pointer; }
   .kitchen-pause-badge.is-clickable:hover{ border-color:var(--gold); color:var(--gold); }
   .header-clock{ font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--paper-dim); }
+  .kitchen-new-badge{ font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:700; line-height:1; background:var(--sauce); color:#fff; border:none; border-radius:999px; min-width:26px; height:26px; padding:0 8px; cursor:pointer; animation:kitchen-badge-pop .25s ease-out; }
+  .kitchen-new-badge:hover{ filter:brightness(1.1); }
+  @keyframes kitchen-badge-pop{ from{ transform:scale(0.6); opacity:0; } to{ transform:scale(1); opacity:1; } }
 
   /* pizza builder */
   .builder{ background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:18px; }
@@ -352,6 +355,11 @@
       <div class="t">Menu Editor</div>
       <div class="d">Prices, items, and daily specials — changes go live on the kiosk right away. For managers.</div>
     </button>
+    <button class="role-card" data-role="till" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.5" fill="currentColor" stroke="none"/><path d="M13 15h5"/></svg>
+      <div class="t">Till</div>
+      <div class="d">Open the register with a starting cash count, close out at the end of your shift.</div>
+    </button>
     <button class="role-card" data-role="storesettings" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       <div class="t">Store Settings</div>
@@ -381,6 +389,7 @@
     <div class="view" id="view-driverroster" hidden></div>
     <div class="view" id="view-menu" hidden></div>
     <div class="view" id="view-storesettings" hidden></div>
+    <div class="view" id="view-till" hidden></div>
   </main>
 </div>
 
@@ -738,7 +747,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -774,6 +783,7 @@ function computeRolePermissions(){
     driverroster: isAdmin,
     menu: isAdmin,
     storesettings: isAdmin,
+    till: isAdmin || !isDriver,
   };
 }
 
@@ -834,6 +844,7 @@ function goToRole(role){
   if (role === 'driverroster'){ document.getElementById('view-driverroster').hidden = false; initDriverRosterView(); }
   if (role === 'menu'){ document.getElementById('view-menu').hidden = false; initMenuEditorView(); }
   if (role === 'storesettings'){ document.getElementById('view-storesettings').hidden = false; initStoreSettingsView(); }
+  if (role === 'till'){ document.getElementById('view-till').hidden = false; initTillView(); }
 }
 
 document.querySelectorAll('.role-card').forEach(btn => {
@@ -1597,18 +1608,88 @@ function nextStatus(o){
 
 let kitchenActiveDrivers = [];
 
+/* New-order sound + badge: a counter person who isn't staring at the
+   screen needs to *hear* a new order land, and see a count of what they
+   missed. Scoped to however long Kitchen Board is the active screen --
+   the live subscription itself (and everything below) already stops on
+   any role switch (stopAllSubscriptions()), so this doesn't ring in the
+   background from a different Staff Hub screen. */
+let kitchenSeenOrderIds = new Set();
+let kitchenFirstSnapshot = true;
+let kitchenUnseenCount = 0;
+let kitchenAudioCtx = null;
+const KITCHEN_ORIGINAL_TITLE = document.title;
+
+function getKitchenAudioCtx(){
+  if (kitchenAudioCtx) return kitchenAudioCtx;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  try{ kitchenAudioCtx = new AudioCtx(); }catch(e){ kitchenAudioCtx = null; }
+  return kitchenAudioCtx;
+}
+
+function playNewOrderChime(){
+  // Synthesized, not a sourced sound file -- no licensing question, and
+  // genuinely enough for a "new order" alert (see ROADMAP.md's research
+  // note on this). Two ascending notes, like a soft doorbell.
+  const ctx = getKitchenAudioCtx();
+  if (!ctx) return;
+  try{
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const now = ctx.currentTime;
+    [[880, 0, 0.16], [1175, 0.13, 0.24]].forEach(([freq, start, dur]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.28, now + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + start);
+      osc.stop(now + start + dur + 0.05);
+    });
+  }catch(e){ /* badge/title still show the new order either way */ }
+}
+
+function updateKitchenBadge(){
+  const badge = document.getElementById('kitchen-new-badge');
+  if (badge){
+    badge.textContent = String(kitchenUnseenCount);
+    badge.hidden = kitchenUnseenCount === 0;
+  }
+  document.title = kitchenUnseenCount > 0 ? `(${kitchenUnseenCount}) ${KITCHEN_ORIGINAL_TITLE}` : KITCHEN_ORIGINAL_TITLE;
+}
+
+function clearKitchenBadge(){
+  kitchenUnseenCount = 0;
+  updateKitchenBadge();
+}
+
+// Coming back to the tab is the natural "I've seen it now" signal for
+// someone who stepped away -- reset next time Kitchen Board has
+// something to reset, harmless no-op otherwise.
+window.addEventListener('focus', clearKitchenBadge);
+
 function initKitchenView(){
   stopAllSubscriptions();
+  kitchenSeenOrderIds = new Set();
+  kitchenFirstSnapshot = true;
+  clearKitchenBadge();
   const view = document.getElementById('view-kitchen');
   view.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
-      <h2 style="font-size:26px;">Current Orders</h2>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <h2 style="font-size:26px;">Current Orders</h2>
+        <button type="button" id="kitchen-new-badge" class="kitchen-new-badge" hidden title="New orders since you last looked -- click to clear"></button>
+      </div>
       <div style="display:flex; align-items:center; gap:12px;">
         <button type="button" id="kitchen-pause-badge" class="kitchen-pause-badge"></button>
         <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--paper-dim);">Updates live</span>
       </div>
     </div>
     <div class="kanban" id="kanban-root"></div>`;
+  document.getElementById('kitchen-new-badge').addEventListener('click', clearKitchenBadge);
   if (App.db) loadStoreSettings(App.db).then(renderKitchenPauseBadge);
   renderKitchenPauseBadge();
   if (!App.db){
@@ -1635,6 +1716,19 @@ function initKitchenView(){
   try{
     const unsub = App.db.collection('orders').orderBy('createdAt','asc').onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
+      // Ding + badge for tickets that just arrived as 'new' since the
+      // last snapshot -- not on the first fetch (everything already
+      // sitting in 'new' when you open Kitchen Board isn't "new"), and
+      // not on every status change (advancing a ticket yourself
+      // shouldn't ring the new-order bell).
+      const freshlyNew = docs.filter(o => o.status === 'new' && !kitchenSeenOrderIds.has(o.id));
+      docs.forEach(o => kitchenSeenOrderIds.add(o.id));
+      if (!kitchenFirstSnapshot && freshlyNew.length){
+        playNewOrderChime();
+        kitchenUnseenCount += freshlyNew.length;
+        updateKitchenBadge();
+      }
+      kitchenFirstSnapshot = false;
       latestOrders = docs.filter(o => KITCHEN_STATUSES.includes(o.status));
       renderKanban(latestOrders);
     }, () => {
@@ -2639,6 +2733,235 @@ async function toggleOrdersPaused(){
   }
   badge.disabled = false;
   renderKitchenPauseBadge();
+}
+</script>
+
+<script>
+/* =========================================================================
+   TILL (Till / End-of-day management) -- register_shifts table + orders
+   ========================================================================= */
+let TillState = { openShift: null, history: [] };
+
+// Counter orders (pickup/phone/walk-in) are cash actually sitting in the
+// drawer; delivery orders are cash the driver is holding until they
+// settle up back at the shop, so kept separate rather than folded into
+// "expected drawer cash" -- see ROADMAP.md's till research note. Only
+// counts orders actually completed (paid) inside the window, by when
+// they were last updated (a reasonable stand-in for "completed at",
+// since there's no dedicated timestamp for it) -- an order placed
+// during a previous shift but paid for during this one counts as this
+// shift's cash, not the shift it was merely placed during.
+function computeTillReport(allOrders, openedAt, windowEnd){
+  const inWindow = allOrders.filter(o =>
+    o.status === 'completed' && (o.updatedAt||0) >= openedAt && (o.updatedAt||0) <= windowEnd
+  );
+  const counter = inWindow.filter(o => o.orderType !== 'delivery');
+  const delivery = inWindow.filter(o => o.orderType === 'delivery');
+  const sum = (arr, field) => arr.reduce((s,o) => s + (o[field]||0), 0);
+  const byMethod = (arr, method) => arr.filter(o => o.payMethod === method);
+
+  const counterCash = sum(byMethod(counter,'cash'), 'total');
+  const counterCard = sum(byMethod(counter,'card'), 'total');
+  const deliveryCash = sum(byMethod(delivery,'cash'), 'total');
+  const deliveryCard = sum(byMethod(delivery,'card'), 'total');
+  const tipsTotal = sum(inWindow, 'tip');
+  const orderCount = inWindow.length;
+  const revenueTotal = sum(inWindow, 'total');
+  const stillOpenCount = allOrders.filter(o =>
+    o.status !== 'completed' && o.status !== 'cancelled' && (o.createdAt||0) >= openedAt
+  ).length;
+
+  return {
+    counterCash, counterCard, deliveryCash, deliveryCard,
+    tipsTotal, orderCount, revenueTotal,
+    avgTicket: orderCount ? revenueTotal / orderCount : 0,
+    stillOpenCount,
+  };
+}
+
+async function initTillView(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-till');
+  view.innerHTML = '<p style="color:var(--paper-dim);">Loading till...</p>';
+  const db = App.db || await getDb();
+  if (!db){ view.innerHTML = '<p style="color:var(--bad);">Not connected to the database.</p>'; return; }
+  await loadTillShifts(db);
+}
+
+async function loadTillShifts(db){
+  try{
+    const snap = await db.collection('register_shifts').orderBy('openedAt','desc').get();
+    const rows = (snap.docs || []).map(d => d.data());
+    TillState.openShift = rows.find(r => r.status === 'open') || null;
+    TillState.history = rows.filter(r => r.status === 'closed').slice(0, 15);
+  }catch(e){
+    TillState.openShift = null;
+    TillState.history = [];
+  }
+  renderTillView();
+}
+
+function renderTillView(){
+  const view = document.getElementById('view-till');
+  const shift = TillState.openShift;
+  const who = (email) => escapeHtml((email || '').split('@')[0] || 'unknown');
+
+  let html = `<div class="view-header"><h2>Till</h2></div>`;
+
+  if (!shift){
+    html += `
+      <div class="me-card" style="max-width:420px; margin-bottom:28px;">
+        <div class="me-card-title">Open the Register</div>
+        <label style="display:block; font-size:13.5px;">Starting cash count
+          <input type="number" step="0.01" min="0" id="till-starting-cash" placeholder="0.00" style="width:100%; margin-top:6px;">
+        </label>
+        <button class="btn btn-sauce" id="till-open-btn" type="button" style="margin-top:14px;">Open Register</button>
+        <div id="till-open-status" style="margin-top:8px; font-size:13px; color:var(--paper-dim);"></div>
+      </div>`;
+  } else {
+    html += `
+      <div class="me-card" style="margin-bottom:20px;">
+        <div class="me-card-title">Register Open</div>
+        <div style="font-size:13.5px; color:var(--paper-dim); line-height:1.6;">
+          Opened by ${who(shift.openedByEmail)} at ${new Date(shift.openedAt).toLocaleString()}<br>
+          Starting cash: ${money(shift.startingCash)}
+        </div>
+      </div>
+      <div class="me-card" style="margin-bottom:20px;">
+        <div class="me-card-title">So Far This Shift</div>
+        <div id="till-report-root">Loading...</div>
+      </div>
+      <div class="me-card" style="max-width:420px; margin-bottom:28px;">
+        <div class="me-card-title">Close the Register</div>
+        <label style="display:block; font-size:13.5px;">Counted cash in drawer
+          <input type="number" step="0.01" min="0" id="till-counted-cash" placeholder="0.00" style="width:100%; margin-top:6px;">
+        </label>
+        <label style="display:block; font-size:13.5px; margin-top:10px;">Notes (optional)
+          <textarea id="till-close-notes" rows="2" style="width:100%; margin-top:6px;"></textarea>
+        </label>
+        <button class="btn btn-sauce" id="till-close-btn" type="button" style="margin-top:14px;">Close Register</button>
+        <div id="till-close-status" style="margin-top:8px; font-size:13px; color:var(--paper-dim);"></div>
+      </div>`;
+  }
+
+  html += `
+    <h3 style="font-size:17px; margin-bottom:10px;">Recent Shifts</h3>
+    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:6px 16px;">
+      ${TillState.history.length ? TillState.history.map((s,i) => `
+        <div class="row-between" style="padding:9px 0; flex-wrap:wrap; gap:6px; ${i<TillState.history.length-1?'border-bottom:1px solid var(--line-on-ink);':''}">
+          <span>${new Date(s.openedAt).toLocaleDateString()} &middot; ${who(s.openedByEmail)} &rarr; ${who(s.closedByEmail)}</span>
+          <span class="mono" style="color:${(s.overShort||0) < 0 ? 'var(--bad)' : 'var(--ok)'};">
+            Start ${money(s.startingCash)} &middot; Counted ${money(s.countedCash)} &middot; ${(s.overShort||0) < 0 ? 'Short' : 'Over'} ${money(Math.abs(s.overShort||0))}
+          </span>
+        </div>`).join('') : '<div class="cart-empty">No closed shifts yet.</div>'}
+    </div>`;
+
+  view.innerHTML = html;
+
+  if (!shift){
+    document.getElementById('till-open-btn').addEventListener('click', openRegisterShift);
+  } else {
+    document.getElementById('till-close-btn').addEventListener('click', closeRegisterShift);
+    subscribeTillReport(shift);
+  }
+}
+
+function subscribeTillReport(shift){
+  const root = document.getElementById('till-report-root');
+  if (!App.db || !root) return;
+  try{
+    const unsub = App.db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => d.data());
+      const report = computeTillReport(docs, shift.openedAt, Date.now());
+      const el = document.getElementById('till-report-root');
+      if (!el) return; // navigated away since this fired
+      el.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px;">
+          ${statCard('Counter Cash', money(report.counterCash))}
+          ${statCard('Counter Card', money(report.counterCard))}
+          ${statCard('Tips', money(report.tipsTotal))}
+          ${statCard('Orders', report.orderCount)}
+          ${statCard('Avg Ticket', money(report.avgTicket))}
+          ${statCard('Expected Drawer', money(shift.startingCash + report.counterCash))}
+        </div>
+        ${(report.deliveryCash || report.deliveryCard) ? `<div style="font-size:12.5px; color:var(--paper-dim); margin-top:12px;">Delivery orders this shift: ${money(report.deliveryCash)} cash, ${money(report.deliveryCard)} card &mdash; with drivers, not the drawer.</div>` : ''}
+        ${report.stillOpenCount ? `<div style="font-size:12.5px; color:var(--warn); margin-top:6px;">${report.stillOpenCount} order(s) from this shift still in progress -- not counted above yet.</div>` : ''}
+      `;
+    }, () => {
+      const el = document.getElementById('till-report-root');
+      if (el) el.innerHTML = '<div class="cart-empty">Could not load live orders.</div>';
+    });
+    App.unsub.push(unsub);
+  }catch(e){
+    root.innerHTML = '<div class="cart-empty">Could not load live orders.</div>';
+  }
+}
+
+async function openRegisterShift(){
+  const input = document.getElementById('till-starting-cash');
+  const statusEl = document.getElementById('till-open-status');
+  const btn = document.getElementById('till-open-btn');
+  const startingCash = Number(input.value) || 0;
+  const db = App.db || await getDb();
+  if (!db){ statusEl.textContent = 'Not connected to the database.'; return; }
+  btn.disabled = true;
+  statusEl.textContent = 'Opening...';
+  try{
+    const { data: sessionData } = await db.auth.getSession();
+    const user = sessionData && sessionData.session && sessionData.session.user;
+    await db.collection('register_shifts').add({
+      openedBy: user ? user.id : null,
+      openedByEmail: user ? user.email : '',
+      startingCash,
+      status: 'open',
+    });
+    await loadTillShifts(db);
+  }catch(e){
+    statusEl.textContent = 'Could not open register: ' + (e && e.message ? e.message : 'the register may already be open -- reload Till to check.');
+    btn.disabled = false;
+  }
+}
+
+async function closeRegisterShift(){
+  const shift = TillState.openShift;
+  if (!shift) return;
+  const input = document.getElementById('till-counted-cash');
+  const notesEl = document.getElementById('till-close-notes');
+  const statusEl = document.getElementById('till-close-status');
+  const btn = document.getElementById('till-close-btn');
+  if (!input.value){ statusEl.textContent = 'Enter the counted cash amount first.'; return; }
+  const countedCash = Number(input.value) || 0;
+  const db = App.db || await getDb();
+  if (!db){ statusEl.textContent = 'Not connected to the database.'; return; }
+  btn.disabled = true;
+  statusEl.textContent = 'Closing...';
+  try{
+    const { data: sessionData } = await db.auth.getSession();
+    const user = sessionData && sessionData.session && sessionData.session.user;
+    // Final snapshot: recompute fresh right at close time rather than
+    // trusting whatever the last live tick happened to render, so the
+    // stored report can never be stale relative to what's saved.
+    const snap = await db.collection('orders').get();
+    const docs = (snap.docs || []).map(d => d.data());
+    const closedAt = Date.now();
+    const report = computeTillReport(docs, shift.openedAt, closedAt);
+    const expectedCash = shift.startingCash + report.counterCash;
+    const overShort = countedCash - expectedCash;
+    await db.collection('register_shifts').doc(shift.id).update({
+      closedBy: user ? user.id : null,
+      closedByEmail: user ? user.email : '',
+      countedCash,
+      overShort,
+      closedAt,
+      report,
+      notes: notesEl.value.trim(),
+      status: 'closed',
+    });
+    await loadTillShifts(db);
+  }catch(e){
+    statusEl.textContent = 'Could not close register: ' + (e && e.message ? e.message : 'unknown error');
+    btn.disabled = false;
+  }
 }
 </script>
 

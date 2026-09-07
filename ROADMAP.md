@@ -7,6 +7,70 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Kitchen notification sound + badge, and Till/end-of-day management, 2026-09-07 (Claude Code)
+
+The remaining two Tier 1 backlog items, same session as the pause/Store
+Settings work above.
+
+**Kitchen notification sound + badge.** Kitchen Board now dings (a
+synthesized two-note chime via the Web Audio API -- no sourced audio
+file, no licensing question, per the research note below) and shows a
+red count badge next to "Current Orders" whenever a genuinely new order
+arrives (status freshly `'new'`, not just any status change -- advancing
+a ticket yourself doesn't ring it) while Kitchen Board is the active
+screen. The badge also prefixes the browser tab title (`(3) Staff Hub |
+...`) so a counter person working the register still notices a new
+order even with the Staff Hub in a background tab. Clears on click or
+when the window regains focus. Deliberately doesn't ding for whatever's
+already sitting in `'new'` the moment you open Kitchen Board -- only for
+what arrives after.
+
+**Till / End-of-day management** (new Staff Hub role, `register_shifts`
+table). Built to the shape in this file's own research note below:
+opening the register records a starting cash count; a live report while
+the register is open shows counter cash/card totals, tips, order count,
+and average ticket, computed from completed orders since the register
+opened; closing the register takes a counted cash amount, computes
+over/short against expected drawer cash, and snapshots the whole report
+onto the closed row (so history doesn't drift if orders are edited
+later). Available to the same audience as POS/Kitchen/Analytics (any
+non-driver-only staff, not admin-gated) -- whoever's actually working
+the register needs to open/close their own till.
+
+One correctness point worth flagging for whoever reads this next:
+**delivery cash is deliberately excluded from "expected drawer cash."**
+A delivery order's cash is collected by the driver at the door, not
+physically in the shop's register, until the driver returns and settles
+up -- something a naive "sum all cash orders" implementation would get
+wrong and make the till look short for no real reason. Delivery cash/card
+totals are still shown, just called out separately as "with drivers, not
+the drawer." Also: a completed order counts toward whichever shift was
+open when it was *completed* (`updatedAt`, the closest thing to a
+completion timestamp that exists), not whichever shift was open when it
+was *placed* -- so an order placed right at shift changeover counts as
+cash for whoever was actually holding the register when it was paid for.
+Enforced server-side that only one register can be open at a time (a
+partial unique index on `register_shifts`, not just a UI check) --
+tested directly that a second concurrent open is rejected at the
+database level.
+
+Tested end-to-end against the real live backend: opened a register,
+inserted a completed counter-cash order and a completed delivery-card
+order via direct SQL, confirmed the live report split them correctly
+(counter cash counted, delivery card called out separately, tips/order
+count/avg ticket all correct), closed with a deliberately short count
+and confirmed the over/short math and history row were both right,
+confirmed the one-open-shift-at-a-time constraint rejects a second
+concurrent open at the database level, confirmed a driver-only test
+account can't see the Till card. Cleaned up every test row afterward
+(orders and register_shifts) and confirmed zero rows left behind.
+
+**Feature backlog status:** all five Tier 1 items are now shipped. Tier
+2 (system clock -- already bundled into the pause/Store Settings work
+above; active-user indicators, deeper CRM/analytics, high-contrast mode,
+micro-interactions) is next if wanted, otherwise see Tier 3 for lower-
+priority/bigger-scope items.
+
 ## Pause online orders + Store Settings screen, 2026-09-07 (Claude Code)
 
 First work picked up from the `HANDOFF.md` handoff, with direct
@@ -116,16 +180,20 @@ actually taking live orders.
   ("Today's special" itself is still computed from `SPECIALS_BY_DAY` in
   `menu_config`, unrelated to this override — only the homepage's plain
   hours table got an override banner.)
-- [ ] **Till / End-of-day management**. Needs research into what this
+- [x] **Till / End-of-day management**. Needs research into what this
   actually means for a single-register pizza shop before building
   anything — see the research note further down. Likely: a cash-drawer
   starting/ending count, a shift-close report (cash vs. card totals,
   tips, order count) staff can run at close, not a full accounting
-  system.
-- [ ] **Kitchen notification sound + badge** for new orders. A counter
+  system. Shipped 2026-09-07 — see "Kitchen notification sound + badge,
+  and Till/end-of-day management" above.
+- [x] **Kitchen notification sound + badge** for new orders. A counter
   person who isn't staring at the screen needs to *hear* a new order
   land. Needs an actual audio asset (see note on sourcing below) and a
-  badge count on the Kitchen Board / browser tab title.
+  badge count on the Kitchen Board / browser tab title. Shipped
+  2026-09-07 — used a synthesized Web Audio chime (see "UI audio
+  assets" research note below), not a sourced file — see "Kitchen
+  notification sound + badge, and Till/end-of-day management" above.
 
 ### Tier 2 — real value, moderate effort
 - [ ] **System clock** in the Staff Hub header — trivial on its own,
