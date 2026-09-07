@@ -490,6 +490,34 @@ async function loadMenuConfig(db){
     return false;
   }
 }
+
+/* Store-wide operational settings (store_settings table): whether the
+   kiosk is currently taking online orders, the message shown when it
+   isn't, and the receipt footer message. Same fallback pattern as
+   menu_config above -- if the table's missing or the fetch fails, the
+   kiosk behaves exactly as if online ordering were never pausable. */
+let ORDERS_PAUSED = false;
+let PAUSE_MESSAGE = "We're not accepting online orders right now — please call the shop to place your order.";
+let RECEIPT_MESSAGE = "Thank you for your order!\nPay in person at pickup or delivery.";
+
+function applyStoreSettings(row){
+  if (!row || typeof row !== 'object') return false;
+  ORDERS_PAUSED = !!row.ordersPaused;
+  if (typeof row.pauseMessage === 'string' && row.pauseMessage) PAUSE_MESSAGE = row.pauseMessage;
+  if (typeof row.receiptMessage === 'string' && row.receiptMessage) RECEIPT_MESSAGE = row.receiptMessage;
+  return true;
+}
+
+async function loadStoreSettings(db){
+  if (!db) return false;
+  try{
+    const doc = await db.collection('store_settings').doc(1).get();
+    return applyStoreSettings(doc.data());
+  }catch(e){
+    console.error('Could not load live store settings, using built-in defaults:', e);
+    return false;
+  }
+}
 </script>
 
 <script>
@@ -717,6 +745,12 @@ function changeQty(key, delta){
 function buildMenuPaneHTML(mode){
   const today = SPECIALS_BY_DAY[new Date().getDay()];
   let html = '';
+  if (mode === 'customer' && ORDERS_PAUSED){
+    html += `<div class="paused-banner" style="background:var(--ink-soft); border:1px solid var(--gold); border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:14px; line-height:1.5;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--gold); margin-bottom:4px;">Online Ordering Paused</div>
+      <div>${escapeHtml(PAUSE_MESSAGE)}</div>
+    </div>`;
+  }
   if (mode === 'customer'){
     html += `<div class="menu-hero">
       <div class="menu-hero-photos">
@@ -1138,6 +1172,10 @@ function renderOrderLayout(mode){
     });
   }
   const submitBtn = document.getElementById(`submit-${mode}`);
+  if (mode === 'customer' && ORDERS_PAUSED){
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Online Ordering Paused';
+  }
   submitBtn.addEventListener('click', () => mode === 'customer' ? submitCustomerOrder() : submitPosOrder());
   renderCart(mode);
 }
@@ -1151,6 +1189,18 @@ function initCustomerView(){
 }
 
 async function submitCustomerOrder(){
+  // Re-check right before submitting, not just at page load -- staff may
+  // have paused ordering after this tab was opened. Deliberately not a
+  // full renderOrderLayout() here -- that would wipe whatever the
+  // customer already typed (name, address, notes) for a rare race
+  // condition; disabling the button in place is enough.
+  await loadStoreSettings(App.db || await getDb());
+  if (ORDERS_PAUSED){
+    const submitBtn = document.getElementById('submit-customer');
+    if (submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Online Ordering Paused'; }
+    showToast(PAUSE_MESSAGE);
+    return;
+  }
   const name = document.getElementById('custname-customer').value.trim();
   const phone = document.getElementById('custphone-customer').value.trim();
   const smsOptInEl = document.getElementById('smsoptin-customer');
@@ -1236,7 +1286,7 @@ function buildReceiptHTML(ticket, order){
     <tr class="grand"><td>Total</td><td class="amt">${money(order.total)}</td></tr>
   </table>
   ${order.notes ? `<hr><div class="meta">Notes: ${escapeHtml(order.notes)}</div>` : ''}
-  <div class="foot">Thank you for your order!<br>Pay in person at pickup or delivery.</div>
+  <div class="foot">${escapeHtml(RECEIPT_MESSAGE).replace(/\r\n|\n/g, '<br>')}</div>
   <button class="printbtn" onclick="window.print()">Print / Save as PDF</button>
 </body></html>`;
 }
@@ -1526,6 +1576,7 @@ async function showAccountPanel(){
 (async function boot(){
   const db = await getDb();
   await loadMenuConfig(db);
+  await loadStoreSettings(db);
   initCustomerView();
   await refreshAccountState();
   document.getElementById('brandHomeBtn').addEventListener('click', () => {

@@ -1216,10 +1216,11 @@
           <div class="street">700 Chews Landing Road</div>
           Lindenwold, NJ 08021
         </div>
-        <table class="hours-table">
+        <table class="hours-table" id="hoursTable">
           <tr><td>Sunday &ndash; Wednesday</td><td>11:00a &ndash; 9:00p</td></tr>
           <tr><td>Thursday &ndash; Saturday</td><td>11:00a &ndash; 10:00p</td></tr>
         </table>
+        <div id="hoursOverrideBanner" hidden style="margin-top:10px; padding:10px 12px; background:rgba(220,159,52,0.14); border:1px solid var(--gold); border-radius:8px; font-size:13.5px; color:var(--ink);"></div>
         <div style="margin-top:24px; display:flex; gap:12px; flex-wrap:wrap;">
           <a class="btn btn--sauce" href="tel:+18564358799">Call (856) 435-8799</a>
           <a class="btn btn--outline" style="color:var(--ink); border-color:var(--line-on-paper);" href="https://www.google.com/maps/search/?api=1&query=700+Chews+Landing+Road+Lindenwold+NJ+08021" target="_blank" rel="noopener">Get Directions &rarr;</a>
@@ -1353,6 +1354,33 @@
       navigator.serviceWorker.register('sw.js').catch(function(){});
     });
   }
+</script>
+
+<!-- Holiday/special hours override: reads one public row from Supabase
+     (store_settings, edited from Staff Hub > Store Settings) and, if a
+     manager has turned it on, shows a banner under the regular hours
+     table below. Fully optional -- if this fetch fails or the table
+     doesn't exist yet, the page just shows the regular static hours,
+     exactly as it always has. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="order/supabase-config.js"></script>
+<script>
+(async function loadHoursOverride(){
+  try{
+    if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY || typeof window.supabase === 'undefined') return;
+    const client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    const { data, error } = await client
+      .from('store_settings')
+      .select('hoursOverrideActive, hoursOverrideNote')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error || !data || !data.hoursOverrideActive || !data.hoursOverrideNote) return;
+    const banner = document.getElementById('hoursOverrideBanner');
+    if (!banner) return;
+    banner.textContent = data.hoursOverrideNote;
+    banner.hidden = false;
+  }catch(e){ /* homepage stays fully functional either way */ }
+})();
 </script>
 </body>
 </html>

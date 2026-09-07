@@ -158,6 +158,11 @@
   .item-card--soldout{ opacity:.55; cursor:not-allowed; }
   .item-card--soldout:hover{ border-color:var(--line-on-ink); }
   .soldout-badge{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--paper-dim); border:1px solid var(--line-on-ink); border-radius:999px; padding:4px 10px; white-space:nowrap; }
+  .kitchen-pause-badge{ font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; border-radius:999px; padding:6px 14px; white-space:nowrap; border:1px solid var(--line-on-ink); background:var(--ink-soft); color:var(--paper-dim); cursor:default; }
+  .kitchen-pause-badge.is-paused{ border-color:var(--bad); color:var(--bad); }
+  .kitchen-pause-badge.is-clickable{ cursor:pointer; }
+  .kitchen-pause-badge.is-clickable:hover{ border-color:var(--gold); color:var(--gold); }
+  .header-clock{ font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--paper-dim); }
 
   /* pizza builder */
   .builder{ background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:18px; }
@@ -347,6 +352,11 @@
       <div class="t">Menu Editor</div>
       <div class="d">Prices, items, and daily specials — changes go live on the kiosk right away. For managers.</div>
     </button>
+    <button class="role-card" data-role="storesettings" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <div class="t">Store Settings</div>
+      <div class="d">Pause online orders, holiday hours, receipt message. For managers.</div>
+    </button>
   </div>
   <button class="btn-ghost" id="installBtn" type="button" hidden style="margin-top:6px; font-size:13px;">Install this app on this device &darr;</button>
 </div>
@@ -370,6 +380,7 @@
     <div class="view" id="view-analytics" hidden></div>
     <div class="view" id="view-driverroster" hidden></div>
     <div class="view" id="view-menu" hidden></div>
+    <div class="view" id="view-storesettings" hidden></div>
   </main>
 </div>
 
@@ -527,6 +538,44 @@ async function loadMenuConfig(db){
       // expects {TAX_RATE, CATEGORIES, ...} directly, not the wrapping row.
   }catch(e){
     console.error('Could not load live menu config, using built-in defaults:', e);
+    return false;
+  }
+}
+
+/* Store-wide operational settings (store_settings table) -- whether the
+   kiosk is currently taking online orders (shown as a status badge on
+   Kitchen Board), and the working state edited from Store Settings.
+   Same fallback pattern as menu_config: missing table or failed fetch
+   just means "not paused, nothing overridden". */
+let StoreSettingsState = {
+  ordersPaused: false,
+  pauseMessage: "We're not accepting online orders right now — please call the shop to place your order.",
+  hoursOverrideActive: false,
+  hoursOverrideNote: '',
+  receiptMessage: "Thank you for your order!\nPay in person at pickup or delivery.",
+  version: null,
+};
+
+function applyStoreSettings(row){
+  if (!row || typeof row !== 'object') return false;
+  StoreSettingsState = {
+    ordersPaused: !!row.ordersPaused,
+    pauseMessage: row.pauseMessage || StoreSettingsState.pauseMessage,
+    hoursOverrideActive: !!row.hoursOverrideActive,
+    hoursOverrideNote: row.hoursOverrideNote || '',
+    receiptMessage: row.receiptMessage || StoreSettingsState.receiptMessage,
+    version: row.version,
+  };
+  return true;
+}
+
+async function loadStoreSettings(db){
+  if (!db) return false;
+  try{
+    const doc = await db.collection('store_settings').doc(1).get();
+    return applyStoreSettings(doc.data());
+  }catch(e){
+    console.error('Could not load live store settings, using built-in defaults:', e);
     return false;
   }
 }
@@ -689,7 +738,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -724,6 +773,7 @@ function computeRolePermissions(){
     driver: isAdmin || isDriver,
     driverroster: isAdmin,
     menu: isAdmin,
+    storesettings: isAdmin,
   };
 }
 
@@ -732,6 +782,18 @@ function applyRoleVisibility(){
   document.querySelectorAll('.role-card[data-role]').forEach(card => {
     card.hidden = !perms[card.getAttribute('data-role')];
   });
+}
+
+let headerClockTimer = null;
+function startHeaderClock(){
+  clearInterval(headerClockTimer);
+  const tick = () => {
+    const el = document.getElementById('header-clock');
+    if (!el){ clearInterval(headerClockTimer); return; }
+    el.textContent = new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+  };
+  tick();
+  headerClockTimer = setInterval(tick, 15000);
 }
 
 function goToRole(role){
@@ -752,7 +814,8 @@ function goToRole(role){
   stopAllSubscriptions();
 
   const right = document.getElementById('header-right');
-  right.innerHTML = '<button class="btn-ghost" id="switch-role-btn">Switch screen</button><button class="btn-ghost" id="signout-btn">Sign Out</button>';
+  right.innerHTML = '<span class="header-clock" id="header-clock"></span><button class="btn-ghost" id="switch-role-btn">Switch screen</button><button class="btn-ghost" id="signout-btn">Sign Out</button>';
+  startHeaderClock();
   document.getElementById('switch-role-btn').addEventListener('click', () => {
     localStorage.removeItem('cifellis_role');
     stopAllSubscriptions();
@@ -770,6 +833,7 @@ function goToRole(role){
   if (role === 'analytics'){ document.getElementById('view-analytics').hidden = false; initAnalyticsView(); }
   if (role === 'driverroster'){ document.getElementById('view-driverroster').hidden = false; initDriverRosterView(); }
   if (role === 'menu'){ document.getElementById('view-menu').hidden = false; initMenuEditorView(); }
+  if (role === 'storesettings'){ document.getElementById('view-storesettings').hidden = false; initStoreSettingsView(); }
 }
 
 document.querySelectorAll('.role-card').forEach(btn => {
@@ -1537,11 +1601,16 @@ function initKitchenView(){
   stopAllSubscriptions();
   const view = document.getElementById('view-kitchen');
   view.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
       <h2 style="font-size:26px;">Current Orders</h2>
-      <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--paper-dim);">Updates live</span>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button type="button" id="kitchen-pause-badge" class="kitchen-pause-badge"></button>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--paper-dim);">Updates live</span>
+      </div>
     </div>
     <div class="kanban" id="kanban-root"></div>`;
+  if (App.db) loadStoreSettings(App.db).then(renderKitchenPauseBadge);
+  renderKitchenPauseBadge();
   if (!App.db){
     document.getElementById('kanban-root').innerHTML = '<div class="kanban-empty">Not connected to the live order database.</div>';
     return;
@@ -2445,11 +2514,142 @@ async function saveMenuEditor(){
 </script>
 
 <script>
+/* =========================================================================
+   STORE SETTINGS (admin-only role) -- store_settings table
+   ========================================================================= */
+async function initStoreSettingsView(){
+  const view = document.getElementById('view-storesettings');
+  view.innerHTML = '<p style="color:var(--paper-dim);">Loading store settings...</p>';
+  const db = App.db || await getDb();
+  if (!db){ view.innerHTML = '<p style="color:var(--bad);">Not connected to the database.</p>'; return; }
+  await loadStoreSettings(db);
+  renderStoreSettings();
+}
+
+function renderStoreSettings(){
+  const view = document.getElementById('view-storesettings');
+  const s = StoreSettingsState;
+
+  view.innerHTML = `
+    <div class="view-header"><h2>Store Settings</h2></div>
+
+    <div class="me-card" style="margin-bottom:20px;">
+      <div class="me-card-title">Online Ordering</div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13.5px;">
+        <input type="checkbox" id="ss-paused" ${s.ordersPaused ? 'checked' : ''}>
+        Pause online ordering (kiosk stops taking new orders; phone/walk-in is unaffected)
+      </label>
+      <label style="display:block; margin-top:12px; font-size:13.5px;">Message shown to customers while paused
+        <textarea id="ss-pause-message" rows="2" style="width:100%; margin-top:6px;">${escapeHtml(s.pauseMessage)}</textarea>
+      </label>
+    </div>
+
+    <div class="me-card" style="margin-bottom:20px;">
+      <div class="me-card-title">Holiday / Special Hours</div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13.5px;">
+        <input type="checkbox" id="ss-hours-active" ${s.hoursOverrideActive ? 'checked' : ''}>
+        Show a special-hours banner on the homepage instead of the usual hours
+      </label>
+      <label style="display:block; margin-top:12px; font-size:13.5px;">Banner text (e.g. "Closed today for Labor Day" or "Today: 12pm&ndash;4pm, Holiday Hours")
+        <input id="ss-hours-note" value="${escapeHtml(s.hoursOverrideNote)}" style="width:100%; margin-top:6px;">
+      </label>
+    </div>
+
+    <div class="me-card" style="margin-bottom:20px;">
+      <div class="me-card-title">Receipt Message</div>
+      <label style="display:block; font-size:13.5px;">Shown at the bottom of the customer's printable receipt
+        <textarea id="ss-receipt-message" rows="2" style="width:100%; margin-top:6px;">${escapeHtml(s.receiptMessage)}</textarea>
+      </label>
+    </div>
+
+    <button class="btn btn-sauce" id="ss-save" type="button">Save Store Settings</button>
+    <span id="ss-save-status" style="margin-left:12px; font-size:13px; color:var(--paper-dim);"></span>
+  `;
+
+  document.getElementById('ss-save').addEventListener('click', saveStoreSettings);
+}
+
+async function saveStoreSettings(){
+  const statusEl = document.getElementById('ss-save-status');
+  const btn = document.getElementById('ss-save');
+  const db = App.db || await getDb();
+  if (!db){ statusEl.textContent = 'Not connected to the database.'; return; }
+  btn.disabled = true;
+  statusEl.textContent = 'Saving...';
+  try{
+    // Optimistic concurrency, same as Menu Editor: refuse to blindly
+    // overwrite if someone else saved since this admin loaded the page.
+    const current = await db.collection('store_settings').doc(1).get();
+    if (!current.data()){
+      statusEl.textContent = 'Could not save: the store_settings table has not been set up yet (see supabase/schema.sql).';
+      btn.disabled = false;
+      return;
+    }
+    if (StoreSettingsState.version !== null && current.data().version !== StoreSettingsState.version){
+      statusEl.textContent = 'Someone else saved store settings since you opened this page. Reload Store Settings to see their changes, then re-apply yours.';
+      btn.disabled = false;
+      return;
+    }
+    const patch = {
+      ordersPaused: document.getElementById('ss-paused').checked,
+      pauseMessage: document.getElementById('ss-pause-message').value.trim() || StoreSettingsState.pauseMessage,
+      hoursOverrideActive: document.getElementById('ss-hours-active').checked,
+      hoursOverrideNote: document.getElementById('ss-hours-note').value.trim(),
+      receiptMessage: document.getElementById('ss-receipt-message').value.trim() || StoreSettingsState.receiptMessage,
+    };
+    await db.collection('store_settings').doc(1).update(patch);
+    applyStoreSettings(Object.assign({}, StoreSettingsState, patch, { version: (StoreSettingsState.version || 1) + 1 }));
+    renderKitchenPauseBadge(); // reflect immediately in this tab's own Kitchen Board header
+    statusEl.textContent = 'Saved.';
+  }catch(e){
+    statusEl.textContent = 'Could not save: ' + (e && e.message ? e.message : 'unknown error');
+  }
+  btn.disabled = false;
+}
+
+/* Kitchen Board's one-tap pause badge: visible to any staff on Kitchen
+   Board (they need to know orders are paused even if they can't change
+   it), clickable only for admins. Same underlying store_settings row
+   Store Settings edits -- toggling here or there shows up in both. */
+function renderKitchenPauseBadge(){
+  const badge = document.getElementById('kitchen-pause-badge');
+  if (!badge) return; // not on Kitchen Board right now
+  const paused = StoreSettingsState.ordersPaused;
+  badge.textContent = paused ? 'Online Orders: Paused' : 'Online Orders: On';
+  badge.classList.toggle('is-paused', paused);
+  badge.classList.toggle('is-clickable', !!App.isAdmin);
+  badge.title = App.isAdmin ? 'Tap to ' + (paused ? 'resume' : 'pause') + ' online ordering' : '';
+  badge.onclick = App.isAdmin ? toggleOrdersPaused : null;
+}
+
+async function toggleOrdersPaused(){
+  const badge = document.getElementById('kitchen-pause-badge');
+  const db = App.db || await getDb();
+  if (!db || !badge) return;
+  badge.disabled = true;
+  try{
+    const current = await db.collection('store_settings').doc(1).get();
+    if (!current.data()){ showToast('Store settings not set up yet (see supabase/schema.sql).'); badge.disabled = false; return; }
+    const next = !current.data().ordersPaused;
+    await db.collection('store_settings').doc(1).update({ ordersPaused: next });
+    applyStoreSettings(Object.assign({}, current.data(), { ordersPaused: next, version: current.data().version + 1 }));
+    showToast(next ? 'Online ordering paused' : 'Online ordering resumed');
+  }catch(e){
+    showToast('Could not update: ' + (e && e.message ? e.message : 'unknown error'));
+  }
+  badge.disabled = false;
+  renderKitchenPauseBadge();
+}
+</script>
+
+<script>
 /* Runs last, after every view's init function above is defined, so an
    auto-resumed saved role (from a previous visit) never calls a
    not-yet-defined initXView function. */
 (async function boot(){
-  await loadMenuConfig(await getDb());
+  const db = await getDb();
+  await loadMenuConfig(db);
+  await loadStoreSettings(db);
   await initAuthGate();
   document.getElementById('brandHomeBtn').addEventListener('click', () => {
     if (document.getElementById('app-shell').hidden) return; // not signed in yet -- nothing to go back to

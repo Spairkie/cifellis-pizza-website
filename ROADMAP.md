@@ -7,6 +7,83 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Pause online orders + Store Settings screen, 2026-09-07 (Claude Code)
+
+First work picked up from the `HANDOFF.md` handoff, with direct
+Postgres access this time (a connection string from the owner) — schema
+changes were applied straight via `psql`-equivalent instead of the
+paste-into-dashboard dance the claude.ai session was stuck with. Built
+the two highest-priority Tier 1 backlog items together, since the
+backlog itself said they belonged on one settings surface.
+
+**New: `store_settings` table** (singleton row, same shape as
+`menu_config` — public read, admin-only write, version-bump trigger),
+now part of `supabase/schema.sql`. Holds `ordersPaused`, `pauseMessage`,
+`hoursOverrideActive`, `hoursOverrideNote`, and `receiptMessage`.
+
+**Pause/throttle online orders.** The kiosk (`order/index.html`) now
+loads this row at boot and again right before final submit (so a pause
+flipped mid-visit still catches the order, not just a stale page-load
+check). When paused: a banner explains why above the menu, the Place
+Order button disables with "Online Ordering Paused" instead of
+submitting, and `submitCustomerOrder()` itself refuses even if the UI
+were somehow bypassed. Staff-entered POS orders are untouched by design
+— this only gates the customer-facing kiosk.
+
+**New Staff Hub screen: Store Settings** (`data-role="storesettings"`,
+admin-only — hidden from the role picker entirely for non-admins, same
+as Driver Roster and Menu Editor since the least-privilege pass). Edits
+the pause toggle + message, a holiday/special-hours override banner
+text, and the receipt footer message, with the same optimistic-
+concurrency save check Menu Editor uses (refuses to overwrite if someone
+else saved since you opened the screen).
+
+**Kitchen Board pause badge.** A one-tap "Online Orders: On / Paused"
+badge in the Kitchen Board header, per the backlog's suggested
+placement — visible to every staff member on that screen (so kitchen
+staff know orders are paused even if they can't act on it) but only
+clickable for admins, who can flip it without leaving Kitchen Board.
+Same underlying `store_settings` row Store Settings edits; a toggle from
+either place is reflected in the other on next load.
+
+**Receipt message customization.** `buildReceiptHTML()` in
+`order/index.html` (the customer's printable/PDF receipt, already
+shipped) now renders the live `receiptMessage` instead of a hardcoded
+"Thank you for your order!" line — the one place a receipt message
+already existed to customize, since the print-bridge hardware path
+(item 3 below) isn't wired into the UI yet.
+
+**Holiday/special hours override, on the homepage.** `index.html` had
+zero Supabase dependency before this — added the Supabase JS CDN script
++ `order/supabase-config.js` and one small inline fetch (public read
+only, no adapter needed) that shows a banner under the static hours
+table when `hoursOverrideActive` is on. Scoped deliberately narrow: it's
+a banner over the existing static hours, not a rewrite of the whole
+hours system into the database — kept the actual regular hours as plain
+HTML, unchanged.
+
+**System clock**, bundled in per the backlog's own note ("bundling with
+Store Settings since both live in the same header area") — a small
+live clock in the Staff Hub header next to Switch Screen / Sign Out,
+updated every 15s.
+
+**Tested end-to-end against the real, live Supabase backend** (a
+working Postgres connection this session, unlike the claude.ai session
+that came before) via Playwright against a local static server: baseline
+kiosk/homepage behavior unchanged when nothing's paused; admin toggles
+pause + hours override from Store Settings; Kitchen Board badge updates
+and is clickable only for admin (confirmed read-only, non-clickable for
+`claude-test-staff`); kiosk picks up the pause (banner, disabled button,
+blocked submit) and homepage picks up the hours banner; receipt message
+plumbing confirmed. Reset `store_settings` back to defaults after
+testing and confirmed via direct query — nothing live was left paused.
+
+**Feature backlog status:** both Tier 1 items above are done; Sold Out
+toggle was already shipped before this session (confirmed in code,
+despite the checkbox below still showing unchecked from when the
+backlog was first written). Till/end-of-day management and the kitchen
+notification sound are the two Tier 1 items still open.
+
 ## Feature backlog, added 2026-09-07
 
 A large batch of feature requests came in at once. Organized here by
@@ -18,21 +95,27 @@ absolute. Checked off items link to where they ended up.
 Things that directly protect the kitchen or the money, for a shop
 actually taking live orders.
 
-- [ ] **Temporary "out of stock" toggle** (Menu Editor). Ran out of
+- [x] **Temporary "out of stock" toggle** (Menu Editor). Ran out of
   wings mid-shift — hide/disable an item on the kiosk in one tap
   without deleting it or touching pricing. Small addition to the
-  Menu Editor already built.
-- [ ] **Pause/throttle online orders**. The one every pizza-shop-with-
+  Menu Editor already built. Shipped in an earlier session (see git
+  log), before this backlog entry was even written down.
+- [x] **Pause/throttle online orders**. The one every pizza-shop-with-
   online-ordering story eventually needs: a kitchen slammed on a
   Friday night with no way to stop new online orders piling on top
   of a 45-minute backlog. Needs a store-status flag the kiosk checks
   before showing the order form, plus a one-tap control somewhere
-  staff-facing (Kitchen Board header is the natural spot).
-- [ ] **Store Settings screen** (admin-only, new Staff Hub role):
+  staff-facing (Kitchen Board header is the natural spot). Shipped
+  2026-09-07 — see "Pause online orders + Store Settings screen" above.
+- [x] **Store Settings screen** (admin-only, new Staff Hub role):
   holiday/special hours override (the hours shown on the homepage and
   used for "today's special" are currently hardcoded), receipt
   message customization, and the pause-orders toggle above all live
-  here as one settings surface rather than scattered controls.
+  here as one settings surface rather than scattered controls. Shipped
+  2026-09-07 — see "Pause online orders + Store Settings screen" above.
+  ("Today's special" itself is still computed from `SPECIALS_BY_DAY` in
+  `menu_config`, unrelated to this override — only the homepage's plain
+  hours table got an override banner.)
 - [ ] **Till / End-of-day management**. Needs research into what this
   actually means for a single-register pizza shop before building
   anything — see the research note further down. Likely: a cash-drawer
