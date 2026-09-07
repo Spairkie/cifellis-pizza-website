@@ -138,6 +138,30 @@
   }
   @media (max-width:860px){ .cart-btn{ display:inline-flex; } }
 
+  /* ---- account modal ---- */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(13,9,6,.72); z-index:300;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-card{
+    background:var(--ink); border:1px solid var(--line-on-ink); border-radius:14px;
+    max-width:400px; width:100%; padding:26px; box-shadow:0 24px 60px rgba(0,0,0,.5);
+    color:var(--paper); max-height:88vh; overflow-y:auto;
+  }
+  .modal-card h3{ font-size:20px; margin:0 0 4px; }
+  .modal-card p{ font-size:13px; color:var(--paper-dim); margin:0 0 16px; }
+  .modal-card .field-group input{
+    width:100%; background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
+    color:var(--paper); padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  .modal-tabs{ display:flex; gap:6px; margin-bottom:16px; }
+  .modal-tabs button{
+    flex:1; padding:9px; border-radius:8px; border:1.5px solid var(--line-on-ink);
+    background:transparent; color:var(--paper-dim); font-weight:600; font-size:13px; cursor:pointer;
+  }
+  .modal-tabs button[aria-pressed="true"]{ background:var(--sauce); color:var(--paper); border-color:var(--sauce); }
+  .modal-close{ float:right; background:none; border:none; color:var(--paper-dim); font-size:22px; cursor:pointer; line-height:1; }
+
   .menu-hero{ display:flex; align-items:center; gap:14px; margin-bottom:16px; }
   .menu-hero-photos{ display:flex; gap:6px; flex:none; }
   .menu-hero-photos img{ width:56px; height:56px; border-radius:10px; object-fit:cover; flex:none; border:1px solid var(--line-on-ink); }
@@ -280,6 +304,7 @@
       </div>
     </div>
     <div class="right" id="header-right">
+      <button class="btn-ghost" id="accountBtn" type="button">Sign In</button>
       <button class="cart-btn" id="cartBtn" type="button" aria-label="View your order">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
         <span class="cart-btn-badge" id="cartBtnBadge" hidden>0</span>
@@ -289,6 +314,7 @@
   </div>
   <main>
     <div class="view" id="view-customer"></div>
+    <div class="view" id="view-account" hidden></div>
     <div class="cart-backdrop" id="cartBackdrop"></div>
   </main>
 </div>
@@ -1146,7 +1172,7 @@ function showOrderConfirmation(ticket, order){
           ${order.tip ? `<div class="row-between" style="font-size:13px; color:var(--paper-dim);"><span>Tip</span><span class="mono">${money(order.tip)}</span></div>` : ''}
           <div class="row-between total" style="margin-top:6px;"><span>Total</span><span>${money(order.total)}</span></div>
         </div>
-        <div style="font-size:13px; color:var(--paper-dim); margin-top:16px; line-height:1.5;">Thank you. Your ticket number is on the screen above. Pay in person when your order is ready or delivered.</div>
+        <div style="font-size:13px; color:var(--paper-dim); margin-top:16px; line-height:1.5;">Thank you. Your ticket number is on the screen above. Pay in person when your order is ready or delivered.${order.orderType === 'delivery' ? ` Once it arrives, you can <a href="rate.html?ticket=${encodeURIComponent(ticket)}&phone=${encodeURIComponent(order.phone||'')}" style="color:var(--gold);">rate your driver here</a>.` : ''}</div>
         <button class="btn btn-outline" style="margin-top:18px; width:100%; justify-content:center;" id="receiptBtn" type="button">View / Print Receipt</button>
         <button class="btn btn-sauce" style="margin-top:10px; width:100%; justify-content:center;" id="newOrderBtn" type="button">Start a New Order</button>
       </div>
@@ -1158,9 +1184,169 @@ function showOrderConfirmation(ticket, order){
 </script>
 
 <script>
+/* =========================================================================
+   CUSTOMER ACCOUNTS (optional — ordering never requires one)
+   ========================================================================= */
+const CustomerAccount = { user: null, profile: null };
+
+function closeAccountModal(){
+  const el = document.getElementById('accountModalBackdrop');
+  if (el) el.remove();
+}
+
+function showAccountModal(){
+  closeAccountModal();
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.id = 'accountModalBackdrop';
+  backdrop.innerHTML = `
+    <div class="modal-card">
+      <button class="modal-close" id="accountModalClose" aria-label="Close">&times;</button>
+      <h3>Your Account</h3>
+      <p>Optional — you can always order without one. Creating an account saves your order history and details for next time.</p>
+      <div class="modal-tabs">
+        <button type="button" data-tab="signin" aria-pressed="true">Sign In</button>
+        <button type="button" data-tab="signup" aria-pressed="false">Create Account</button>
+      </div>
+      <div id="accountTabBody"></div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeAccountModal(); });
+  document.getElementById('accountModalClose').addEventListener('click', closeAccountModal);
+  const tabs = backdrop.querySelectorAll('.modal-tabs button');
+  tabs.forEach(btn => btn.addEventListener('click', () => {
+    tabs.forEach(b => b.setAttribute('aria-pressed', 'false'));
+    btn.setAttribute('aria-pressed', 'true');
+    renderAccountTab(btn.getAttribute('data-tab'));
+  }));
+  renderAccountTab('signin');
+}
+
+function renderAccountTab(tab){
+  const body = document.getElementById('accountTabBody');
+  if (!body) return;
+  if (tab === 'signup'){
+    body.innerHTML = `
+      <div class="field-group"><label>Name</label><input id="acc-name" placeholder="Your name"></div>
+      <div class="field-group"><label>Phone</label><input id="acc-phone" placeholder="(856) 555-0100"></div>
+      <div class="field-group"><label>Email</label><input id="acc-email" type="email" placeholder="you@example.com"></div>
+      <div class="field-group"><label>Password</label><input id="acc-password" type="password" placeholder="At least 6 characters"></div>
+      <button class="btn btn-sauce" id="acc-submit" style="width:100%; justify-content:center; margin-top:6px;" type="button">Create Account</button>
+      <div style="font-size:11.5px; color:var(--paper-dim); margin-top:10px; line-height:1.5;">Any past orders placed with this phone number will show up in your order history automatically.</div>`;
+    document.getElementById('acc-submit').addEventListener('click', async () => {
+      const name = document.getElementById('acc-name').value.trim();
+      const phone = document.getElementById('acc-phone').value.trim();
+      const email = document.getElementById('acc-email').value.trim();
+      const password = document.getElementById('acc-password').value;
+      if (!name || !phone || !email || password.length < 6){
+        showToast('Please fill in every field (password needs 6+ characters)');
+        return;
+      }
+      const db = await getDb();
+      if (!db || !db.auth){ showToast('Accounts are not connected right now'); return; }
+      const { data, error } = await db.auth.signUp({ email, password });
+      if (error){ showToast(error.message); return; }
+      if (data && data.user){
+        await db.collection('customers').doc(data.user.id).set({ phone, name, email });
+      }
+      showToast('Account created — you\'re signed in');
+      closeAccountModal();
+      await refreshAccountState();
+    });
+  } else {
+    body.innerHTML = `
+      <div class="field-group"><label>Email</label><input id="acc-email" type="email" placeholder="you@example.com"></div>
+      <div class="field-group"><label>Password</label><input id="acc-password" type="password" placeholder="Your password"></div>
+      <button class="btn btn-sauce" id="acc-submit" style="width:100%; justify-content:center; margin-top:6px;" type="button">Sign In</button>`;
+    document.getElementById('acc-submit').addEventListener('click', async () => {
+      const email = document.getElementById('acc-email').value.trim();
+      const password = document.getElementById('acc-password').value;
+      const db = await getDb();
+      if (!db || !db.auth){ showToast('Accounts are not connected right now'); return; }
+      const { error } = await db.auth.signInWithPassword({ email, password });
+      if (error){ showToast(error.message); return; }
+      showToast('Signed in');
+      closeAccountModal();
+      await refreshAccountState();
+    });
+  }
+}
+
+async function refreshAccountState(){
+  const db = await getDb();
+  const btn = document.getElementById('accountBtn');
+  if (!db || !db.auth){ if (btn) btn.hidden = true; return; }
+  const { data } = await db.auth.getSession();
+  const user = data && data.session && data.session.user;
+  CustomerAccount.user = user || null;
+  if (!user){
+    CustomerAccount.profile = null;
+    if (btn){ btn.hidden = false; btn.textContent = 'Sign In'; btn.onclick = showAccountModal; }
+    return;
+  }
+  const profileDoc = await db.collection('customers').doc(user.id).get();
+  CustomerAccount.profile = profileDoc.data() || null;
+  if (btn){
+    btn.hidden = false;
+    btn.textContent = (CustomerAccount.profile && CustomerAccount.profile.name) ? CustomerAccount.profile.name.split(' ')[0] : 'Account';
+    btn.onclick = showAccountPanel;
+  }
+  // Prefill the current order form, if it's on screen, as a convenience.
+  if (CustomerAccount.profile){
+    const nameEl = document.getElementById('custname-customer');
+    const phoneEl = document.getElementById('custphone-customer');
+    if (nameEl && !nameEl.value) nameEl.value = CustomerAccount.profile.name || '';
+    if (phoneEl && !phoneEl.value) phoneEl.value = CustomerAccount.profile.phone || '';
+  }
+}
+
+async function showAccountPanel(){
+  const db = await getDb();
+  const view = document.getElementById('view-account');
+  const customerView = document.getElementById('view-customer');
+  customerView.hidden = true;
+  view.hidden = false;
+  view.innerHTML = `<div style="max-width:560px; margin:0 auto; padding:24px 20px;">
+    <button class="btn-ghost" id="acc-back" type="button">&larr; Back to Menu</button>
+    <h2 style="font-size:26px; margin:14px 0 4px;">${escapeHtml((CustomerAccount.profile && CustomerAccount.profile.name) || 'Your Account')}</h2>
+    <div style="color:var(--paper-dim); font-size:13px; margin-bottom:20px;">${escapeHtml((CustomerAccount.profile && CustomerAccount.profile.phone) || '')}</div>
+    <h3 style="font-size:16px; margin-bottom:10px;">Order History</h3>
+    <div id="acc-orders">Loading...</div>
+    <button class="btn-ghost" id="acc-signout" style="margin-top:24px;" type="button">Sign Out</button>
+  </div>`;
+  document.getElementById('acc-back').addEventListener('click', () => { view.hidden = true; customerView.hidden = false; });
+  document.getElementById('acc-signout').addEventListener('click', async () => {
+    if (db && db.auth) await db.auth.signOut();
+    view.hidden = true;
+    customerView.hidden = false;
+    await refreshAccountState();
+    showToast('Signed out');
+  });
+  const ordersEl = document.getElementById('acc-orders');
+  if (!db){ ordersEl.textContent = 'Not connected to the database.'; return; }
+  try{
+    const unsub = db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => d.data());
+      ordersEl.innerHTML = docs.length ? docs.slice(0, 25).map(o => `
+        <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; margin-bottom:8px;">
+          <div class="row-between"><span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span><span class="mono">${money(o.total||0)}</span></div>
+          <div style="font-size:12px; color:var(--paper-dim); margin-top:4px;">${new Date(o.createdAt||0).toLocaleDateString()} &middot; ${escapeHtml(o.orderType||'')} &middot; ${escapeHtml(o.status||'')}</div>
+        </div>`).join('') : '<div class="cart-empty">No past orders on file for this account yet.</div>';
+    }, () => { ordersEl.textContent = 'Could not load order history.'; });
+    // One-shot: this is a summary view, not a live queue — release the
+    // subscription once rendered instead of leaving it running.
+    setTimeout(unsub, 3000);
+  }catch(e){
+    ordersEl.textContent = 'Could not load order history.';
+  }
+}
+</script>
+
+<script>
 (async function boot(){
   await getDb();
   initCustomerView();
+  await refreshAccountState();
 })();
 </script>
 

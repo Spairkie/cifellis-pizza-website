@@ -305,6 +305,11 @@
       <div class="t">Analytics</div>
       <div class="d">Today's numbers, top sellers, and which customers keep coming back.</div>
     </button>
+    <button class="role-card" data-role="driverroster">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+      <div class="t">Driver Roster</div>
+      <div class="d">Add drivers, their car info, and manage who's active — for managers.</div>
+    </button>
   </div>
   <button class="btn-ghost" id="installBtn" type="button" hidden style="margin-top:6px; font-size:13px;">Install this app on this device &darr;</button>
 </div>
@@ -326,6 +331,7 @@
     <div class="view" id="view-kitchen" hidden></div>
     <div class="view" id="view-driver" hidden></div>
     <div class="view" id="view-analytics" hidden></div>
+    <div class="view" id="view-driverroster" hidden></div>
   </main>
 </div>
 
@@ -526,6 +532,7 @@ const App = {
   unsub: [],
   cart: [],
   driverName: null,
+  driver: null,
 };
 
 function showDbBanner(msg){
@@ -604,7 +611,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -637,6 +644,7 @@ function goToRole(role){
   if (role === 'kitchen'){ document.getElementById('view-kitchen').hidden = false; initKitchenView(); }
   if (role === 'driver'){ document.getElementById('view-driver').hidden = false; initDriverView(); }
   if (role === 'analytics'){ document.getElementById('view-analytics').hidden = false; initAnalyticsView(); }
+  if (role === 'driverroster'){ document.getElementById('view-driverroster').hidden = false; initDriverRosterView(); }
 }
 
 document.querySelectorAll('.role-card').forEach(btn => {
@@ -1550,47 +1558,85 @@ function statCard(label, value){
    ========================================================================= */
 function initDriverView(){
   stopAllSubscriptions();
-  const saved = localStorage.getItem('cifellis_driver');
-  if (saved){ App.driverName = saved; renderDriverLists(); }
-  else{
-    const view = document.getElementById('view-driver');
-    view.innerHTML = `
-      <div class="driver-setup">
-        <h3 style="font-size:24px;">Driver Sign-in</h3>
-        <div style="font-size:13px; color:var(--paper-dim); margin-top:8px;">Enter your name to see deliveries.</div>
-        <div class="field-group" style="max-width:280px; margin:16px auto 0; text-align:left;">
-          <label>Your Name</label>
-          <input id="driver-name-input" placeholder="Driver name">
-        </div>
-        <button class="btn btn-sauce" id="driver-start-btn" style="margin-top:14px;" type="button">Start Shift</button>
-      </div>`;
-    document.getElementById('driver-start-btn').addEventListener('click', () => {
-      const name = document.getElementById('driver-name-input').value.trim();
-      if (!name){ showToast('Enter your name first'); return; }
-      localStorage.setItem('cifellis_driver', name);
-      App.driverName = name;
+  identifyDriverAndRender();
+}
+
+/* Drivers no longer just type a name — that made it trivial for anyone
+   to claim to be any driver, and gave no way to attach earnings/miles/
+   ratings to a real account. Instead, whoever is signed in (the same
+   Supabase Auth session the whole Staff Hub uses) is looked up by
+   email against the drivers table (populated from Driver Roster). */
+async function identifyDriverAndRender(){
+  const view = document.getElementById('view-driver');
+  view.innerHTML = '<div style="padding:20px;">Loading your driver profile...</div>';
+  const db = await getDb();
+  if (!db || !db.auth){ view.innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>'; return; }
+  const { data } = await db.auth.getSession();
+  const email = data && data.session && data.session.user && data.session.user.email;
+  if (!email){ view.innerHTML = '<div class="cart-empty">Could not read your signed-in account.</div>'; return; }
+  try{
+    const unsub = db.collection('drivers').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => Object.assign({ id:d.id }, d.data() || {}));
+      const mine = docs.find(d => (d.email||'').toLowerCase() === email.toLowerCase());
+      if (typeof unsub === 'function') unsub();
+      if (!mine){
+        view.innerHTML = `<div class="cart-empty">No driver profile found for ${escapeHtml(email)}.<br>Ask a manager to add you under Staff Hub &gt; Driver Roster, using this same email.</div>`;
+        return;
+      }
+      App.driver = mine;
       renderDriverLists();
-    });
+    }, () => { view.innerHTML = '<div class="cart-empty">Could not load driver profiles.</div>'; });
+  }catch(e){
+    view.innerHTML = '<div class="cart-empty">Could not load driver profiles.</div>';
   }
+}
+
+async function getOpenShift(driverId){
+  return new Promise((resolve) => {
+    const unsub = App.db.collection('driver_shifts').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => Object.assign({ id:d.id }, d.data() || {}));
+      const open = docs.find(s => s.driverId === driverId && !s.clockOut);
+      if (typeof unsub === 'function') unsub();
+      resolve(open || null);
+    }, () => resolve(null));
+  });
+}
+
+async function toggleShift(){
+  const driver = App.driver;
+  if (!driver) return;
+  const open = await getOpenShift(driver.id);
+  if (open){
+    await App.db.collection('driver_shifts').doc(open.id).update({ clockOut: Date.now() });
+    showToast('Shift ended');
+  } else {
+    await App.db.collection('driver_shifts').add({ driverId: driver.id, clockIn: Date.now(), clockOut: null });
+    showToast('Shift started');
+  }
+  renderDriverLists();
 }
 
 function renderDriverLists(){
   const view = document.getElementById('view-driver');
+  const driver = App.driver;
   view.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:baseline; padding:16px 0 6px;">
-      <div style="font-size:13px; color:var(--paper-dim);">Driver: <span style="color:var(--paper); font-weight:700;">${escapeHtml(App.driverName)}</span></div>
-      <button class="btn-ghost" id="driver-switch" type="button">Not you?</button>
+    <div style="display:flex; justify-content:space-between; align-items:baseline; padding:16px 0 6px; flex-wrap:wrap; gap:8px;">
+      <div style="font-size:13px; color:var(--paper-dim);">Driver: <span style="color:var(--paper); font-weight:700;">${escapeHtml(driver.name || driver.email)}</span></div>
+      <button class="btn btn-outline" id="driver-shift-btn" type="button" style="padding:6px 14px; font-size:12px;">...</button>
     </div>
+    <div id="driver-stats" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:8px; margin-bottom:18px;"></div>
     <div class="section-label">Available Deliveries</div>
     <div id="driver-available"></div>
     <div class="section-label">My Deliveries</div>
     <div id="driver-mine"></div>`;
-  document.getElementById('driver-switch').addEventListener('click', () => {
-    localStorage.removeItem('cifellis_driver');
-    App.driverName = null;
-    stopAllSubscriptions();
-    initDriverView();
+  const shiftBtn = document.getElementById('driver-shift-btn');
+  getOpenShift(driver.id).then(open => {
+    shiftBtn.textContent = open ? 'End Shift' : 'Start Shift';
+    shiftBtn.className = open ? 'btn btn-sauce' : 'btn btn-outline';
+    shiftBtn.style.padding = '6px 14px'; shiftBtn.style.fontSize = '12px';
   });
+  shiftBtn.addEventListener('click', toggleShift);
+
   if (!App.db){
     document.getElementById('driver-available').innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>';
     return;
@@ -1599,13 +1645,15 @@ function renderDriverLists(){
     const unsub = App.db.collection('orders').orderBy('createdAt','asc').onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
       const deliveries = docs.filter(o => o.orderType === 'delivery');
-      const available = deliveries.filter(o => o.status === 'ready' && !o.driver);
-      const mine = deliveries.filter(o => o.status === 'out_for_delivery' && o.driver === App.driverName);
+      const available = deliveries.filter(o => o.status === 'ready' && !o.driverId);
+      const mine = deliveries.filter(o => o.status === 'out_for_delivery' && o.driverId === driver.id);
+      const myCompleted = deliveries.filter(o => o.status === 'completed' && o.driverId === driver.id);
+      renderDriverStats(myCompleted);
       document.getElementById('driver-available').innerHTML = available.length ? available.map(o => renderDriverCard(o,false)).join('') : '<div class="cart-empty">No deliveries ready right now.</div>';
       document.getElementById('driver-mine').innerHTML = mine.length ? mine.map(o => renderDriverCard(o,true)).join('') : '<div class="cart-empty">You have no deliveries out.</div>';
       available.forEach(o => {
         const btn = document.getElementById(`claim-${o.id}`);
-        if (btn) btn.addEventListener('click', () => updateOrder(o.id, { status:'out_for_delivery', driver: App.driverName }));
+        if (btn) btn.addEventListener('click', () => updateOrder(o.id, { status:'out_for_delivery', driver: driver.name, driverId: driver.id }));
       });
       mine.forEach(o => {
         const btn = document.getElementById(`complete-${o.id}`);
@@ -1620,6 +1668,26 @@ function renderDriverLists(){
   }
 }
 
+function renderDriverStats(completed){
+  const today0 = startOfTodayMs();
+  const todayDeliveries = completed.filter(o => (o.createdAt||0) >= today0);
+  const totalMiles = completed.reduce((s,o) => s + (o.deliveryMiles||0), 0);
+  const totalTips = completed.reduce((s,o) => s + (o.tip||0), 0);
+  const rated = completed.filter(o => o.driverRating != null);
+  const avgRating = rated.length ? (rated.reduce((s,o)=>s+o.driverRating,0)/rated.length).toFixed(1) : '—';
+  const el = document.getElementById('driver-stats');
+  if (!el) return;
+  el.innerHTML = [
+    ['Today', todayDeliveries.length],
+    ['Lifetime Miles', totalMiles.toFixed(1)],
+    ['Lifetime Tips', money(totalTips)],
+    ['Avg Rating', avgRating === '—' ? '—' : avgRating + ' \u2605'],
+  ].map(([label,val]) => `<div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:8px 10px; text-align:center;">
+    <div style="font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--paper-dim); font-family:'IBM Plex Mono',monospace;">${label}</div>
+    <div style="font-size:16px; font-weight:700; margin-top:2px;" class="mono">${val}</div>
+  </div>`).join('');
+}
+
 function renderDriverCard(o, mine){
   const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(o.address || '');
   return `<div class="driver-card">
@@ -1629,12 +1697,117 @@ function renderDriverCard(o, mine){
     </div>
     <div class="addr">${escapeHtml(o.address||'')}</div>
     <div class="sub">${escapeHtml(o.customerName||'')}${o.phone ? ', ' + escapeHtml(o.phone) : ''}</div>
+    ${o.deliveryMiles != null ? `<div class="sub">~${o.deliveryMiles} mi &middot; about ${o.deliveryEtaMins} min drive</div>` : ''}
     ${o.payMethod === 'cash' ? `<div class="due">Collect ${money(o.total||0)} cash</div>` : `<div class="due">Paid by card</div>`}
+    ${o.tip ? `<div class="due" style="color:var(--gold);">+${money(o.tip)} tip</div>` : ''}
     <div class="driver-actions">
       <a href="${mapsUrl}" target="_blank" rel="noopener" class="btn btn-outline">Directions</a>
       ${mine ? `<button class="btn btn-sauce" id="complete-${o.id}" type="button">Mark Delivered</button>` : `<button class="btn btn-sauce" id="claim-${o.id}" type="button">Claim Delivery</button>`}
     </div>
   </div>`;
+}
+</script>
+
+<script>
+/* =========================================================================
+   DRIVER ROSTER (staff-side: create/manage driver profiles)
+   ========================================================================= */
+function initDriverRosterView(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-driverroster');
+  view.innerHTML = `
+    <div style="padding:18px 20px; max-width:900px; margin:0 auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2 style="font-size:24px; margin:0;">Driver Roster</h2>
+        <button class="btn btn-outline" id="addDriverBtn" type="button">+ Add Driver</button>
+      </div>
+      <div style="font-size:12.5px; color:var(--paper-dim); margin-bottom:16px;">Use the same email here as the driver's Supabase Auth sign-in — that's how the Driver App matches them to this profile. Also add them to the <span class="mono">staff</span> table with <span class="mono">isDriver</span> checked so they can sign in at all (see supabase/README.md).</div>
+      <div id="driverroster-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>`;
+  document.getElementById('addDriverBtn').addEventListener('click', () => showDriverEditor(null));
+  const list = document.getElementById('driverroster-list');
+  if (!App.db){ list.innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>'; return; }
+  try{
+    const unsub = App.db.collection('drivers').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => Object.assign({ id:d.id }, d.data() || {}));
+      list.innerHTML = docs.length ? docs.map(renderDriverRosterRow).join('') : '<div class="cart-empty">No drivers added yet.</div>';
+      docs.forEach(d => {
+        const editBtn = document.getElementById(`roster-edit-${d.id}`);
+        if (editBtn) editBtn.addEventListener('click', () => showDriverEditor(d));
+      });
+    }, () => { list.innerHTML = '<div class="cart-empty">Could not load drivers.</div>'; });
+    App.unsub.push(unsub);
+  }catch(e){
+    list.innerHTML = '<div class="cart-empty">Could not load drivers.</div>';
+  }
+}
+
+function renderDriverRosterRow(d){
+  const car = [d.carColor, d.carMake, d.carModel].filter(Boolean).join(' ') || 'No car info on file';
+  return `<div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    <div style="min-width:140px;">
+      <div style="font-weight:700;">${escapeHtml(d.name||'Unnamed')}</div>
+      <div style="font-size:12px; color:var(--paper-dim);">${escapeHtml(d.email||'')}</div>
+    </div>
+    <div style="font-size:12.5px; color:var(--paper-dim); flex:1; min-width:160px;">${escapeHtml(car)}${d.carPlate ? ' &middot; ' + escapeHtml(d.carPlate) : ''}</div>
+    <span class="status-chip" style="background:${d.active ? 'rgba(60,120,60,.2)' : 'rgba(198,42,47,.2)'};">${d.active ? 'Active' : 'Inactive'}</span>
+    <button class="btn-ghost" id="roster-edit-${d.id}" type="button">Edit</button>
+  </div>`;
+}
+
+function showDriverEditor(driver){
+  showConfirmModal({
+    title: driver ? `Edit ${driver.name || 'Driver'}` : 'Add a Driver',
+    confirmLabel: driver ? 'Save' : 'Add Driver',
+    onConfirm: null, // replaced below; showConfirmModal's default body doesn't fit this form, so we build it manually
+  });
+  // showConfirmModal is built for short confirmations; this form needs
+  // more fields, so replace its body with a real form right after it
+  // renders rather than teaching that helper a second shape.
+  const card = document.querySelector('#confirmModalBackdrop .modal-card');
+  if (!card) return;
+  const f = (label, key, placeholder) => `<div class="field-group"><label>${label}</label><input id="drv-${key}" placeholder="${placeholder||''}" value="${escapeHtml((driver && driver[key]) || '')}"></div>`;
+  card.innerHTML = `
+    <h3>${driver ? 'Edit Driver' : 'Add a Driver'}</h3>
+    ${f('Name','name')}
+    ${f('Phone','phone','(856) 555-0100')}
+    ${f('Email (matches their sign-in)','email','driver@example.com')}
+    <div style="display:flex; gap:10px;">
+      <div style="flex:1;">${f('Car Make','carMake','Honda')}</div>
+      <div style="flex:1;">${f('Car Model','carModel','Civic')}</div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div style="flex:1;">${f('Car Color','carColor','Silver')}</div>
+      <div style="flex:1;">${f('Plate','carPlate')}</div>
+    </div>
+    ${f('Notes / Preferences','notes','Prefers pickup-only shifts, etc.')}
+    <div class="field-group" style="display:flex; align-items:center; gap:8px;">
+      <input type="checkbox" id="drv-active" style="width:auto;" ${(!driver || driver.active) ? 'checked' : ''}>
+      <label style="margin:0; text-transform:none; font-size:13px;" for="drv-active">Active</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="confirmModalCancel" type="button">Cancel</button>
+      <button class="btn btn-outline" id="drv-save" type="button">${driver ? 'Save' : 'Add Driver'}</button>
+    </div>`;
+  document.getElementById('confirmModalCancel').addEventListener('click', () => document.getElementById('confirmModalBackdrop').remove());
+  document.getElementById('drv-save').addEventListener('click', async () => {
+    const payload = {
+      name: document.getElementById('drv-name').value.trim(),
+      phone: document.getElementById('drv-phone').value.trim(),
+      email: document.getElementById('drv-email').value.trim(),
+      carMake: document.getElementById('drv-carMake').value.trim(),
+      carModel: document.getElementById('drv-carModel').value.trim(),
+      carColor: document.getElementById('drv-carColor').value.trim(),
+      carPlate: document.getElementById('drv-carPlate').value.trim(),
+      notes: document.getElementById('drv-notes').value.trim(),
+      active: document.getElementById('drv-active').checked,
+    };
+    if (!payload.name || !payload.email){ showToast('Name and email are required'); return; }
+    if (driver){ await App.db.collection('drivers').doc(driver.id).update(payload); }
+    else{ await App.db.collection('drivers').add(payload); }
+    document.getElementById('confirmModalBackdrop').remove();
+    showToast(driver ? 'Driver updated' : 'Driver added');
+  });
 }
 </script>
 

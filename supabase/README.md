@@ -43,6 +43,32 @@ Commit and push (or ask Claude to). Once GitHub Pages redeploys (usually
 under a minute), reload the Order Hub and the red "Not connected" banner
 should be gone.
 
+## Before you re-run schema.sql if you already have staff signed in
+
+**This matters if you're updating an existing project, not setting one up
+fresh.** This version adds customer accounts, and doing that safely
+required a real access-control change: there's now a `staff` table that
+says who's staff, and only rows in it can read or manage orders. Before
+this, *any* signed-in user was treated as staff (there was no other
+kind of signed-in user). If you skip the step below, your existing
+staff accounts will still be able to sign in, but every screen will
+look empty or broken, because they're no longer recognized as staff.
+
+Run this once, in the SQL Editor, **before** any customer creates an
+account (right after running the updated `schema.sql` is the right
+time):
+
+```sql
+insert into public.staff (id)
+select id from auth.users
+on conflict (id) do nothing;
+```
+
+This makes everyone who has ever signed in count as staff, which is
+exactly the group that should be staff today. Do not run it again once
+customers start signing up — at that point add new staff (and drivers)
+one at a time from the Table Editor instead, on the `staff` table.
+
 ## 5. Turn on email sign-in and create staff accounts
 
 The Staff Hub (`/staff/`) requires a Supabase Auth sign-in before it shows
@@ -56,9 +82,38 @@ Kiosk (`/order/`) works with no login.
    for the whole counter, whichever fits how the shop runs). Check
    **Auto Confirm User** so they can sign in immediately without a
    confirmation email.
-3. Give that email and password to whoever will use the Staff Hub. They
+3. **New step:** open **Table Editor** > `staff`, and add a row with
+   that same user's `id` (copy it from the Authentication > Users list).
+   Signing in with an email/password Supabase recognizes is no longer
+   enough on its own — a row here is what actually grants access to
+   orders. Check `isDriver` if this person is a driver (see "Driver
+   accounts" below); leave it unchecked for POS/Kitchen/Analytics
+   staff.
+4. Give that email and password to whoever will use the Staff Hub. They
    sign in at `/staff/` on whatever device runs POS, Kitchen Board, or
    Driver App. Signing in is remembered on that device until they sign out.
+
+## Driver accounts
+
+Drivers sign in the same way staff do (a Supabase Auth account from
+step 5 above, with `isDriver` checked in the `staff` table), but they
+also need a profile row in the `drivers` table — that's where their
+name, phone, car info, and preferences live, and it's what their
+earnings/mileage/rating history attaches to. Create that profile from
+the Staff Hub itself: **Driver Roster** > **Add Driver**, using the
+*same email* as their Supabase Auth account. That email is how the app
+matches a signed-in driver to their profile the first time they open
+the Driver App.
+
+## Customer accounts
+
+No setup needed — this works automatically once `schema.sql` has run.
+A customer can place orders with no account at all (the default), or
+tap **Sign In / Create Account** in the Customer Kiosk to make one.
+Creating an account links to whatever phone number they give at
+signup, so any past orders placed anonymously with that same phone
+number show up in their order history right away — nothing to migrate
+by hand.
 
 ## What this gets you, for free
 

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rate Your Delivery | Cifelli's Pizza</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rye&family=Work+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    --ink:#1c1712; --ink-soft:#2a231d; --paper:#f4ead6; --paper-dim:#e9dcbf;
+    --sauce:#c22a2f; --gold:#dc9f34; --line-on-ink: rgba(244,234,214,.16);
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; background:var(--ink); color:var(--paper);
+    font-family:"Work Sans",sans-serif; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{ max-width:380px; width:100%; text-align:center; }
+  h1{ font-family:"Rye",serif; font-size:28px; margin:12px 0 4px; }
+  p{ color:var(--paper-dim); font-size:13.5px; line-height:1.5; }
+  .field-group{ text-align:left; margin-top:16px; }
+  .field-group label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper-dim); margin-bottom:5px; }
+  .field-group input, .field-group textarea{
+    width:100%; background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
+    color:var(--paper); padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  .stars{ display:flex; justify-content:center; gap:8px; margin:20px 0; }
+  .stars button{
+    background:none; border:none; font-size:36px; line-height:1; cursor:pointer;
+    color:rgba(244,234,214,.25); padding:0; transition:color .1s;
+  }
+  .stars button.on{ color:var(--gold); }
+  .btn{
+    display:block; width:100%; margin-top:18px; padding:13px; border:none; border-radius:999px;
+    background:var(--sauce); color:var(--paper); font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .msg{ margin-top:14px; font-size:13px; }
+  .msg.error{ color:#e07b7b; }
+  .msg.ok{ color:#8ec98a; }
+</style>
+</head>
+<body>
+<div class="card">
+  <svg viewBox="0 0 100 100" width="56" height="56" style="margin:0 auto;">
+    <circle cx="50" cy="50" r="48" fill="#f4ead6"/><circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="5"/>
+    <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+  </svg>
+  <h1>Rate Your Delivery</h1>
+  <p>Let us know how your driver did. This takes ten seconds and helps us keep the good ones around.</p>
+
+  <div id="lookupStep">
+    <div class="field-group"><label>Ticket Number</label><input id="ticketInput" placeholder="e.g. C-4821"></div>
+    <div class="field-group"><label>Phone Number on the Order</label><input id="phoneInput" placeholder="(856) 555-0100"></div>
+  </div>
+
+  <div class="stars" id="stars">
+    <button type="button" data-v="1">&#9733;</button>
+    <button type="button" data-v="2">&#9733;</button>
+    <button type="button" data-v="3">&#9733;</button>
+    <button type="button" data-v="4">&#9733;</button>
+    <button type="button" data-v="5">&#9733;</button>
+  </div>
+
+  <div class="field-group"><label>Comments (optional)</label><textarea id="commentInput" rows="3" placeholder="Anything you'd like us to know"></textarea></div>
+
+  <button class="btn" id="submitBtn" type="button" disabled>Submit Rating</button>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="supabase-config.js"></script>
+<script>
+  let rating = 0;
+  const starButtons = document.querySelectorAll('#stars button');
+  starButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      rating = Number(btn.getAttribute('data-v'));
+      starButtons.forEach(b => b.classList.toggle('on', Number(b.getAttribute('data-v')) <= rating));
+      document.getElementById('submitBtn').disabled = false;
+    });
+  });
+
+  // Pre-fill from a link like rate.html?ticket=C-4821&phone=8565551234
+  const params = new URLSearchParams(location.search);
+  if (params.get('ticket')) document.getElementById('ticketInput').value = params.get('ticket');
+  if (params.get('phone')) document.getElementById('phoneInput').value = params.get('phone');
+
+  document.getElementById('submitBtn').addEventListener('click', async () => {
+    const ticket = document.getElementById('ticketInput').value.trim();
+    const phone = document.getElementById('phoneInput').value.trim();
+    const comment = document.getElementById('commentInput').value.trim();
+    const msg = document.getElementById('msg');
+    const btn = document.getElementById('submitBtn');
+    msg.textContent = '';
+    msg.className = 'msg';
+    if (!ticket || !phone || !rating){
+      msg.textContent = 'Please fill in your ticket number, phone number, and a star rating.';
+      msg.className = 'msg error';
+      return;
+    }
+    if (typeof window.supabase === 'undefined' || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY){
+      msg.textContent = 'Ratings are not connected right now — please try again later.';
+      msg.className = 'msg error';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    const client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    const { data, error } = await client.rpc('rate_delivery', {
+      p_ticket: ticket, p_phone: phone, p_rating: rating, p_comment: comment || null,
+    });
+    if (error){
+      msg.textContent = 'Something went wrong: ' + error.message;
+      msg.className = 'msg error';
+      btn.disabled = false;
+      btn.textContent = 'Submit Rating';
+      return;
+    }
+    if (!data){
+      msg.textContent = "Couldn't find a completed delivery matching that ticket and phone number — or it's already been rated.";
+      msg.className = 'msg error';
+      btn.disabled = false;
+      btn.textContent = 'Submit Rating';
+      return;
+    }
+    document.getElementById('lookupStep').style.display = 'none';
+    document.getElementById('commentInput').closest('.field-group').style.display = 'none';
+    btn.style.display = 'none';
+    msg.textContent = 'Thank you! Your rating has been recorded.';
+    msg.className = 'msg ok';
+  });
+</script>
+</body>
+</html>

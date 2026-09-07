@@ -22,13 +22,8 @@
  * the driver's own GPS app.
  */
 
-/* TODO: verify this against the shop's exact pin. Right-click the
-   shop's location on Google Maps and click the lat/lng that pops up
-   at the top of the context menu to get an exact value, then replace
-   the numbers below. This is currently the approximate center of
-   Lindenwold, NJ, close enough for a rough delivery-distance estimate
-   but not pinpoint-accurate. */
-const SHOP_LOCATION = { lat: 39.8185, lon: -74.9907 };
+/* Confirmed from the shop's own Street View location. */
+const SHOP_LOCATION = { lat: 39.8125468, lon: -75.019359 };
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving';
