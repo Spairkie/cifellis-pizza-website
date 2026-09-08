@@ -410,11 +410,35 @@ create policy "orders_insert_public" on public.orders
 -- abuse shows up -- both need a new account, so deferred for now, same
 -- as the payment/SMS scaffolds elsewhere in this project.
 create or replace function public.enforce_order_rate_limit()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
 declare
   recent_count int;
 begin
-  if new.source = 'customer' and new.phone <> '' then
+  -- security definer is not optional here, unlike it might look at a
+  -- glance: this function is invoked as a BEFORE INSERT trigger on an
+  -- anon-role insert (the public kiosk has no SELECT policy on orders at
+  -- all -- see orders_select_staff_or_own below, "to authenticated" only).
+  -- Without security definer, the SELECT COUNT(*) a few lines down runs
+  -- as SECURITY INVOKER -- i.e. as anon -- and RLS silently filters it to
+  -- zero rows every time, regardless of how many matching orders actually
+  -- exist. That makes `recent_count >= 5` never true, which means this
+  -- rate limit was completely inert for every real (unauthenticated)
+  -- customer order, not enforcing anything, until this was caught and
+  -- fixed. Same is_staff()/rate_delivery()-style reasoning as elsewhere
+  -- in this file: security definer runs with the function owner's
+  -- privileges, bypassing RLS for this function's own internal lookup,
+  -- so it can actually see the rows it needs to count.
+  --
+  -- Deliberately no `and new.phone <> ''` exemption either: the client-
+  -- side form always sends a phone number (submitCustomerOrder requires
+  -- one before it will submit), but nothing stops a request sent straight
+  -- to the REST endpoint from omitting it -- an empty phone used to skip
+  -- this whole check, which was a second, independent unlimited-rate hole
+  -- on top of the first. Grouping by the literal phone value (including
+  -- '') rate-limits that case the same as any other.
+  if new.source = 'customer' then
     select count(*) into recent_count
     from public.orders
     where phone = new.phone

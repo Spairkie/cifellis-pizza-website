@@ -1,6 +1,6 @@
 # Roadmap
 
-Where the project stands, and what's left. Last reviewed 2026-09-07.
+Where the project stands, and what's left. Last reviewed 2026-09-08.
 
 **Picking this project up fresh (especially in Claude Code)?** Read
 `HANDOFF.md` first — it's a short orientation doc written specifically
@@ -54,6 +54,73 @@ already-shipped items unless something here specifically asks for it.**
 - [x] Prepare menu/order UI for more real food photography (owner is
   sourcing photos separately) — responsive layouts, stronger visual
   prominence for the Original Panzarotti/specialty pies/signature items
+
+## Fixed: order rate limiter was completely inert, 2026-09-08 (Claude Code)
+
+A deeper code-review pass over the payment-adjacent parts of the ordering
+pipeline (not new features — the owner asked specifically for this after
+the consolidation work above), looking for the kind of bug that only
+shows up when someone deliberately tries to break the trust boundary
+rather than just clicking through the UI normally.
+
+**Found:** `enforce_order_rate_limit()` (the trigger meant to cap a
+single phone number at 5 customer orders per 15 minutes — see "Anti-
+abuse: block a burst of orders..." in `supabase/schema.sql`) has been
+silently doing nothing since it was written. It runs as the default
+`SECURITY INVOKER`, so when a real customer order comes in from the
+public kiosk (as the `anon` Postgres role, signed out), the trigger's
+own internal `select count(*) from orders where phone = ...` executes
+*as that same anon role* — and since there is no RLS SELECT policy that
+grants `anon` visibility into `orders` at all (`orders_select_staff_or_own`
+is `to authenticated` only), that count query is silently RLS-filtered
+to zero rows, every single time, no matter how many matching orders
+actually exist. `recent_count >= 5` was therefore never true. The limiter
+looked correctly wired (trigger attached, function present, tested logic)
+but had never actually blocked a real anonymous order. On top of that,
+found a second, independent hole in the same trigger: it explicitly
+skipped the check entirely whenever `phone = ''` — harmless from the
+normal UI (which requires a phone before submitting) but a full bypass
+for anything hitting the REST endpoint directly with the public anon
+key, which the page already exposes client-side.
+
+**Fixed:** added `security definer` (with `set search_path = public`),
+the same pattern this file already uses for `is_staff()`/`is_admin()`/
+`rate_delivery()`/`redeem_promo_code()` and for the identical reason —
+so the trigger's internal lookup runs with the function owner's
+privileges and actually sees the rows it needs to count — and removed
+the `phone <> ''` exemption so an empty-phone order groups into (and is
+capped by) its own bucket instead of skipping the check outright.
+
+**Verified against production Supabase directly** (not the UI): 6 rapid
+inserts as the real `anon` role with an empty phone — before the fix, all
+6 succeeded (confirming the bug); after, the first 5 succeeded and the
+6th was rejected with the trigger's real error message. A 7th insert
+with a distinct real phone number succeeded normally (confirming the fix
+doesn't false-positive across different phone numbers). All 7 test rows
+deleted afterward.
+
+**Also found, not yet fixed — flagged for a decision, not attempted
+blind:** `orders_insert_public` (`with check (true)`) places no
+server-side constraint on `subtotal`/`tax`/`tip`/`total`/`discountAmount`,
+or on `unitPrice` inside `items`, against the real prices in
+`menu_config` or a verified `promo_redemptions` row. Every order's
+dollar amounts are entirely client-computed and trusted as-is on
+insert — normal use is unaffected (the kiosk and POS always compute
+these correctly), but a request built by hand against the same public
+REST endpoint and anon key already embedded in the page could insert a
+real order with, say, `total: 0.01` for full-price items. Today that's
+a till/free-food risk, not a card-fraud one, since `order/payments.js`
+confirms no real payment processor is wired up yet (everything is still
+pay-in-person). It matters more once that changes: payments.js's own
+plan is to charge whatever amount gets passed in at submit time, so if
+that amount is taken from this same client-trusted total rather than
+freshly recomputed server-side, this becomes a direct payment-fraud
+vector instead of a till-shortage one. Deliberately not fixed in this
+pass — a real fix means recomputing pricing server-side from `items` +
+`menu_config` (specialty pizzas and build-your-own toppings don't carry
+a simple lookup key back to a menu_config row the way a flat-menu item
+does, so this needs a real design decision, not a quick patch) — noted
+here so it isn't lost, worth revisiting before real card payments go in.
 
 ## Cart state and pizza-builder UI consolidated, 2026-09-07 (Claude Code)
 
@@ -937,9 +1004,10 @@ actually taking live orders.
   notification sound + badge, and Till/end-of-day management" above.
 
 ### Tier 2 — real value, moderate effort
-- [ ] **System clock** in the Staff Hub header — trivial on its own,
+- [x] **System clock** in the Staff Hub header — trivial on its own,
   bundling with Store Settings since both live in the same header
-  area.
+  area. Shipped 2026-09-07 — see the "System clock" note above (was
+  already live; this checkbox just hadn't been updated).
 - [x] **Active-user indicators** — who else is signed into the Staff
   Hub right now (useful for a small team coordinating who's on
   register vs. kitchen). Needs a lightweight presence mechanism
@@ -950,10 +1018,15 @@ actually taking live orders.
   what Analytics already shows, small inline sparkline-style charts
   instead of just numbers, a horizontal timeline of today's order
   events. Shipped 2026-09-07 — see "CRM/analytics improvements" above.
-- [ ] **High-contrast / day mode toggle**. The whole site is currently
+- [x] **High-contrast / day mode toggle**. The whole site is currently
   one dark theme by design (matches the brand), so this is a real
   toggle to build (a second color scheme), not just respecting a
-  system preference.
+  system preference. Shipped 2026-09-07, scoped to the public-facing
+  pages (`index.html`, `order/index.html`) — see "High-contrast
+  accessibility mode" and "High-contrast mode extended to the ordering
+  kiosk" above. Full day-mode (a second color scheme rather than a
+  higher-contrast variant of the existing dark theme) explicitly
+  deferred again, per those entries; Staff Hub wasn't in scope.
 - [ ] **Micro-interactions / hover states** — polish pass across
   buttons, cards, transitions. Ongoing/incremental rather than a single
   task.
