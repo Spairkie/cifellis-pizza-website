@@ -1,106 +1,160 @@
 # Owner's To-Do List
 
-Things that are blocked on you specifically — an account to create, a
-piece of hardware to buy, content only you can provide — not on more
-code. This is your personal tracking list; `ROADMAP.md` has the full
-technical detail behind each item if you want it (linked below), and
-`git log` has the from-scratch history of everything already built.
-Check things off here as you get to them; nothing in this file is read
-by the app itself.
+Every decision or purchase left standing between here and "finished" —
+ordered by what actually blocks going live vs. what's optional polish.
+Nothing in this file is read by the app itself; check things off as you
+get to them. `ROADMAP.md` has the technical detail behind each item,
+linked below; `git log` has the build history.
 
-## [ ] Add SMS order notifications
+## 1. Payment processing — the big one
 
-**What you need:** a Twilio account — buy a phone number, get an
-Account SID and Auth Token. No free tier for production sending
-(trial credit only); budget roughly $1/month for the number plus
-~$0.0079 per text.
+**Decide:** (a) require payment upfront for delivery, or keep today's
+pay-on-arrival model? (b) buy a physical card reader, or skip it for now?
 
-**What's already built and waiting on this:** the checkbox on the
-order form ("Text me when my order's ready"), the `phoneOptIn` column
-on every order, and the actual Edge Function code itself
-(`supabase/functions/send-order-sms/`) — deploying it is what's left.
-Full detail: `ROADMAP.md` → "2. SMS order notifications."
+**Stick with Stripe.** It's already half-built into this code (both
+server-side Edge Functions, the client glue in `order/payments.js`) —
+switching processors now means throwing that away for no real benefit.
 
-## [ ] Add real card payments
+| Processor | In-person rate | Monthly fee | Hardware |
+|---|---|---|---|
+| **Stripe** (in code already) | 2.7% + 5¢ | $0 | $59–$349 |
+| Square | 2.6% + 10¢ | $0–$149 | $49–$899 |
+| Clover | bundled, varies | $15–$85+ | $199–$1,899 |
 
-**Decision needed from you first:** which processor (Stripe is the
-standard choice for a business this size — flat ~2.9% + 30c, no
-monthly fee), and whether delivery orders should require payment
-upfront or keep today's pay-on-arrival model.
+**If you want a physical reader:** Stripe Reader M2 ($59, Bluetooth to a
+phone/tablet already running the Staff Hub) is the cheapest way in.
+BBPOS WisePOS E ($249) is a standalone touchscreen option if you'd
+rather not tie up a tablet. Tap to Pay on a staff phone needs no reader
+purchase at all.
 
-**What's already built and waiting on this (2026-09-08):** the whole
-server-side scaffold — `supabase/functions/create-payment-intent/` and
-`supabase/functions/stripe-webhook/` (the amount always comes from the
-order already in the database, never the client; the webhook, not the
-browser, is the only thing that ever marks an order actually paid) —
-plus the client-side glue in `order/payments.js`
-(`paymentsConfigured()`, `payForOrderNow()`), already loaded on the
-kiosk page and completely inert until you set a real key. Deliberately
-not built yet: the actual "Pay Now" checkout button/UI — there's no way
-to test that without real Stripe keys, and it needs your call on the
-upfront-vs-pay-on-arrival question above anyway.
+**What's built, what's left:** server always computes the charge amount
+itself, only a signature-verified webhook ever marks an order paid — the
+only missing piece is a Stripe account and the "Pay Now" button, which
+needs real keys to build against. Full detail: `ROADMAP.md` → "1. Real
+card payments."
 
-**What you need once decided:** a Stripe account, then follow the "HOW
-TO FINISH THIS" steps at the top of `order/payments.js` and both Edge
-Function files above (in order — they reference each other).
+## 2. Receipt printer
 
-Full detail: `ROADMAP.md` → "1. Real card payments."
+**You're looking at:** Star Micronics TSP143IIIU (~$290–390). Good
+printer — but it's **USB, not network/Wi-Fi.**
 
-## [ ] Set up receipt printing
+**The catch:** `print-bridge/` (already built and tested) currently only
+talks to *network* printers. USB support is stubbed, waiting on exactly
+this kind of printer's vendor/product ID to finish — a small, already-
+scoped piece of code once you have it in hand to test against.
 
-**What you need:** a thermal receipt printer (network/Wi-Fi ones are
-the easy path — 58mm or 80mm, look for "ESC/POS" in the listing) and a
-cheap mini PC or Raspberry Pi to run the print bridge near it. If you
-want USB instead of network, that also needs your printer's vendor/
-product ID off the actual hardware.
+**Simpler alternative:** any Wi-Fi/LAN ESC/POS printer (58mm or 80mm)
+works with the bridge today, zero further code.
 
-**What's already built and waiting on this:** `print-bridge/` — the
-ESC/POS formatting and sending to a network printer is tested and
-working code, just needs real hardware to point at, plus one button
-wired up in the Staff Hub to actually call it (the function to add is
-commented at the bottom of `print-bridge/index.js`).
+**Also need:** a cheap mini PC or Raspberry Pi (~$40–100) near the
+printer to run the bridge service — doesn't need to be the same device
+running the Staff Hub.
+
+**Ongoing cost:** 80mm thermal paper runs ~$1–1.60/roll in bulk (a
+50-roll case is roughly $50–75 total).
 
 Full detail: `ROADMAP.md` → "3. Receipt printing."
 
-## [ ] Upload real food photography
+## 3. What to run the Staff Hub on
 
-**What you need:** photos of the menu items, however you're sourcing
-them.
+**Good news: you likely don't need to buy a "POS system."** POS, Kitchen
+Board, and Driver App are already a website — any device with a modern
+browser runs them, installable as an app.
 
-**What's already built and waiting on this:** drop a photo into
-`images/menu/` using the matching filename below and it replaces the
-placeholder automatically — no code change, no deploy step beyond the
-usual `git add`/commit/push (or just committing the new image file
-directly). Also true for the homepage's other photo spots (storefront,
-hero shots) if you ever want to refresh those.
+**Cheapest real option:** a budget Android tablet ($80–150 each) per
+screen — one at the register, one in the kitchen — plus a $15–25 stand
+each. Two screens, roughly $200–350 total.
 
-Category banner filenames currently still on placeholders:
-- `images/menu/stromboli.jpg`
-- `images/menu/calzone.jpg`
-- `images/menu/wings.jpg`
-- `images/menu/hoagie.jpg`
-- `images/menu/burger.jpg`
-- `images/menu/pasta.jpg`
-- `images/menu/salad.jpg`
+**More durable, if grease/drops/heat are a real concern:** a rugged
+tablet (~$200–300, e.g. AGM PAD P2 Active).
+
+**Don't buy:** a bundled commercial POS terminal (Clover Mini/Station,
+Square Register — $850–1,900+ each). That hardware locks to its own
+proprietary software — it would run a second, redundant system next to
+this one, not power it.
+
+**Decide:** how many screens, tablet vs. rugged, budget.
+
+## 4. SMS order notifications
+
+**Need:** a Twilio account (phone number, Account SID + Auth Token). No
+free tier for production sending — budget ~$1/month plus ~$0.008/text.
+
+**Built and waiting:** the "text me when it's ready" opt-in checkbox,
+the `phoneOptIn` column, and the Edge Function itself
+(`supabase/functions/send-order-sms/`) — deploying it is what's left.
+
+Full detail: `ROADMAP.md` → "2. SMS order notifications."
+
+## 5. Staff badge sign-in (NFC/RFID) — new idea, not started
+
+**What you asked:** can staff sign in (or otherwise use) your Identiv
+uTrust 3700 F card reader instead of typing credentials every time?
+
+**Short answer: yes, but it needs one more small local service, same
+idea as the receipt printer.** A browser can't talk to that reader
+directly — Web NFC (the browser API that could) only works in Chrome on
+Android phones, never on a desktop, and the uTrust is a USB desktop
+reader. So this needs a small always-on Node service (same pattern as
+`print-bridge/`) that reads a tapped card and tells the Staff Hub who it
+belongs to; the real Supabase Auth login stays exactly as secure as it
+is today, the badge is just a faster trigger for it, restricted to your
+own shop's bridge (a stolen card ID can't be used from outside).
+
+**Read this before buying cards.** Cheap MIFARE Classic cards/key fobs
+(the $1–2 kind sold everywhere) use broken encryption and can be cloned
+in under a second with a ~$30 tool anyone can buy. That's fine for
+"identify who's on the register" as a convenience — **not fine alone**
+for anything sensitive (admin actions, refunds/voids). If a tap needs to
+actually mean something, pair it with a quick PIN on the numeric keypad
+(tap = who, PIN = proof) or buy MIFARE DESFire EV1 cards instead — same
+reader, real AES encryption, not practically cloneable, a few dollars
+more per card.
+
+**Decide:** (a) build this at all, (b) Classic (cheap, convenience-only)
+or DESFire (secure) cards, (c) tap alone or tap+PIN for sensitive
+actions.
+
+**Cost:** reader already owned. Cards: MIFARE Classic ~$0.50–2 each,
+DESFire EV1 ~$2–5 each. No new recurring cost either way.
+
+Full technical design: `ROADMAP.md` → "6. Staff badge sign-in (NFC/RFID)."
+
+## 6. Upload real food photography
+
+**Need:** photos of the menu items.
+
+**Built and waiting:** drop a photo into `images/menu/` with the
+matching filename below and it replaces the placeholder automatically —
+no code change:
+
+`stromboli.jpg` · `calzone.jpg` · `wings.jpg` · `hoagie.jpg` ·
+`burger.jpg` · `pasta.jpg` · `salad.jpg`
 
 Once real photos exist, worth revisiting which other items (beyond the
-Panzarotti and Specialty Pies already flagged) should get the
-"Signature" prominence treatment — that's a one-line change per item
-once you have a list in mind. Full detail: `ROADMAP.md` → "6. Smaller
-polish items."
+Panzarotti/Specialty Pies already flagged) should get the "Signature"
+prominence treatment. Full detail: `ROADMAP.md` → "8. Smaller polish
+items."
 
-## Also sitting in the backlog, lower urgency
+## 7. Custom domain + SEO
 
-Not urgent enough to be above the fold here, but written down in
-`ROADMAP.md`'s Backlog section so nothing gets lost:
-- **External numeric keypad shortcuts** — you confirmed it's a
-  standard keyboard, so this already works today with zero code;
-  flag it again once you land on an exact model if you want dedicated
-  shortcuts built (e.g. auto-focus + Enter-to-submit on POS's cash-
-  tendered field).
-- **Custom domain migration** (`cifelli.com`) — full checklist already
-  written in `ROADMAP.md` → "4b," including the DNS steps that are on
-  you, not something code can do for you.
-- **Google Search Console / Bing / Google Business Profile** — SEO
-  setup, intentionally paused until the domain migration above, so it
-  isn't done twice.
+**Not started** — you have `cifelli.com` but haven't asked for the
+migration. Full DNS/code checklist (including the steps only you can do
+at your registrar): `ROADMAP.md` → "4b." Search Console/Bing/Google
+Business Profile setup is intentionally deferred until after the domain
+moves, so it isn't done twice — full detail: `ROADMAP.md` → "4."
+
+---
+
+## Already resolved — no decision needed
+
+- **Numeric keypad (V7/SEVEN KP400):** it's a plain USB keyboard —
+  already works today in any POS number field, nothing to buy or
+  configure. Revisit only if you want dedicated shortcuts (e.g.
+  auto-focus + Enter-to-submit on POS's cash-tendered field) —
+  `ROADMAP.md` → Backlog.
+- **UI sounds:** the only one actually worth adding is a System Health
+  "service went down" alert tone — everywhere else a sound was
+  considered (POS submit, driver claim/complete) is already covered by
+  an on-screen toast. No audio files to source or license either way —
+  synthesized the same way as the existing kitchen chime.

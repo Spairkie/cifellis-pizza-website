@@ -98,9 +98,10 @@ what an order costs), the live shared queue across all four screens,
 ticket numbers, and the kitchen board's order-aging warnings. Also real:
 customer accounts with order history and reorder, favorites ("My Usual"),
 scheduled orders (with real lead-time/business-hours validation), a
-catering/large-order inquiry form, an optional loyalty program (off by
-default, admin-configurable), and an admin-only System Health screen in
-the Staff Hub.
+catering/large-order inquiry form, a public order-status page (check
+"preparing / ready / out for delivery" without calling), an optional
+loyalty program (off by default, admin-configurable), and an admin-only
+System Health screen in the Staff Hub.
 
 Not built: real payment processing. Card is selectable as a payment method
 throughout, but nothing actually charges a card, every order is paid in

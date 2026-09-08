@@ -881,12 +881,16 @@ function showOrderConfirmation(ticket, order){
           <div class="row-between total" style="margin-top:6px;"><span>Total</span><span>${money(order.total)}</span></div>
         </div>
         <div style="font-size:13px; color:var(--paper-dim); margin-top:16px; line-height:1.5;">Thank you. Your ticket number is on the screen above. Pay in person when your order is ready or delivered.${order.orderType === 'delivery' ? ` Once it arrives, you can <a href="rate.html?ticket=${encodeURIComponent(ticket)}&phone=${encodeURIComponent(order.phone||'')}" style="color:var(--gold);">rate your driver here</a>.` : ''}</div>
+        <button class="btn btn-outline" style="margin-top:10px; width:100%; justify-content:center;" id="statusBtn" type="button">Check Order Status</button>
         <button class="btn btn-outline" style="margin-top:18px; width:100%; justify-content:center;" id="receiptBtn" type="button">View / Print Receipt</button>
         <button class="btn btn-sauce" style="margin-top:10px; width:100%; justify-content:center;" id="newOrderBtn" type="button">Start a New Order</button>
       </div>
     </div>`;
   document.getElementById('newOrderBtn').addEventListener('click', initCustomerView);
   document.getElementById('receiptBtn').addEventListener('click', () => openReceipt(ticket, order));
+  document.getElementById('statusBtn').addEventListener('click', () => {
+    window.location.href = `status.html?ticket=${encodeURIComponent(ticket)}&phone=${encodeURIComponent(order.phone||'')}`;
+  });
 }
 
 </script>

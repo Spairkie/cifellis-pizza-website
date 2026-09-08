@@ -1530,7 +1530,9 @@ function renderTicket(o){
   const next = nextStatus(o);
   const needsDriver = o.status === 'ready' && o.orderType === 'delivery' && !o.driverId;
   let waitingBlock = '';
-  if (!next && needsDriver){
+  if (o.status === 'out_for_delivery' && o.driver){
+    waitingBlock = `<div class="age">Out for delivery with <b>${escapeHtml(o.driver)}</b></div>`;
+  } else if (!next && needsDriver){
     if (App.isAdmin && kitchenActiveDrivers.length){
       waitingBlock = `<div class="age">Waiting for a driver &mdash; or assign one:</div>
         <div style="display:flex; gap:6px; margin-top:6px;">

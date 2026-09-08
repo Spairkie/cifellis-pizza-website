@@ -519,6 +519,46 @@ end;
 $$;
 grant execute on function public.rate_delivery(text, text, smallint, text) to anon, authenticated;
 
+-- Customer order-status lookup (order/status.html). Anon has no SELECT
+-- grant on orders at all (see "About security" in supabase/README.md),
+-- so this is the read equivalent of rate_delivery() above -- a narrow,
+-- security-definer function gated the same way (ticket + phone, both
+-- printed on the receipt, not guessable from the order id alone),
+-- returning only what a customer needs to see their own order's
+-- progress, never the full row. Normalizes both sides of the phone
+-- comparison (same trick as enforce_order_rate_limit() above) rather
+-- than just the input: a customer-placed order's phone is always
+-- normalized already (create_order() below does that), but a POS-
+-- entered phone/walk-in order's isn't -- staff insert directly with
+-- whatever punctuation they typed -- so comparing only the input would
+-- silently fail to find those.
+create or replace function public.order_status_lookup(p_ticket text, p_phone text)
+returns jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_order public.orders%rowtype;
+begin
+  select * into v_order from public.orders
+    where ticket = p_ticket and public.normalize_phone(phone) = public.normalize_phone(p_phone)
+    limit 1;
+  if not found then
+    return null;
+  end if;
+  return jsonb_build_object(
+    'ticket', v_order.ticket,
+    'status', v_order.status,
+    'orderType', v_order."orderType",
+    'createdAt', v_order."createdAt",
+    'scheduledFor', v_order."scheduledFor",
+    'driver', case when v_order.status = 'out_for_delivery' then v_order.driver else null end,
+    'cancelReason', case when v_order.status = 'cancelled' then v_order."cancelReason" else null end
+  );
+end;
+$$;
+grant execute on function public.order_status_lookup(text, text) to anon, authenticated;
+
 
 -- =========================================================================
 -- Register shifts (Till / End-of-day management, Staff Hub > Till)

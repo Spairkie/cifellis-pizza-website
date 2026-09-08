@@ -18,7 +18,11 @@ today and what's still open.
 **Fully working:** the Customer Kiosk (`/order/`) — browse, build pizzas,
 pickup/delivery, tip, live delivery distance/ETA, optional accounts with
 order history/reorder/favorites, scheduled orders, printable receipts,
-driver ratings. The Staff Hub (`/staff/`) — POS, Kitchen Board, Driver
+driver ratings, and a public order-status page (`order/status.html`,
+linked from the confirmation screen — ticket + phone, same access model
+as the driver-rating page, polls every 20s while an order is still in
+progress). The Staff Hub (`/staff/`) — POS, Kitchen Board (now also
+showing which driver is en route on an out-for-delivery ticket), Driver
 App, Analytics, Driver Roster, Menu Editor, Store Settings (hours,
 pause-ordering, receipt message), Catering Inquiries, and an admin-only
 System Health screen. A Supabase Postgres backend with row-level security
@@ -29,12 +33,14 @@ order costs). Cloudflare Web Analytics is live on the public pages.
 
 **Scaffolded, not finished** — each blocked on an account or hardware
 decision from the owner, not on more code. See `OWNER-TODO.md` for the
-short version, and the numbered sections below for detail:
+short, prioritized version of every open decision below:
 
 1. [Real card payments](#1-real-card-payments)
 2. [SMS order notifications](#2-sms-order-notifications)
 3. [Receipt printing](#3-receipt-printing)
 4. [SEO](#4-seo--deferred-until-the-custom-domain-is-live) / [4b. Custom domain migration](#4b-custom-domain-migration-spairkiegithubio--cifellicom)
+6. [Staff badge sign-in (NFC/RFID)](#6-staff-badge-sign-in-nfcrfid) — not started, design only
+7. [POS/kitchen screens (hardware)](#7-poskitchen-screens-hardware)
 
 ## Backlog
 
@@ -48,23 +54,29 @@ Not blocked on the owner — just not built yet, roughly in priority order:
   manual (Playwright + real accounts) each session rather than a
   standing suite. Worth formalizing once there's a staging environment
   to run it against.
-- [ ] **Customer order-status page** — a link a customer could check
-  (ticket/phone, like `order/rate.html`'s pattern) to see "preparing /
-  ready / out for delivery" without calling the shop.
 - [ ] **Conversion/funnel analytics** — where kiosk sessions drop off
   before completing checkout. Different instrumentation than Analytics'
   existing post-order reporting; scope deliberately rather than bolting
   on ad hoc.
 - [ ] **Micro-interactions / hover states** — polish pass across buttons,
   cards, transitions. Ongoing/incremental rather than a single task.
-- [ ] **External numeric keypad shortcuts** — confirmed the owner's
-  keypad is a standard USB keyboard, so this already works today with
-  zero code. Revisit only if dedicated shortcuts are wanted (e.g.
-  auto-focus + Enter-to-submit on POS's cash-tendered field).
-- [ ] **UI audio asset library** beyond the one kitchen notification
-  chime — sourcing/licensing real audio is a different kind of work than
-  code (can't fabricate copyright-clear audio), scope to what's actually
-  needed rather than building a "library" speculatively.
+- [ ] **External numeric keypad shortcuts** — the owner's keypad (a V7/
+  SEVEN KP400, confirmed 2026-09-08) is a plain USB HID keyboard, so
+  typing on it already works today with zero code, on any POS number
+  field. The only remaining question is whether dedicated shortcuts are
+  wanted — e.g. auto-focus + Enter-to-submit on POS's cash-tendered
+  field, so a closer can type a total and hit Enter without touching the
+  mouse. Genuinely useful for a register that uses this keypad daily;
+  small to build once wanted.
+- [ ] **A System Health "went down" alert tone**, added 2026-09-08 — of
+  everywhere a new UI sound was considered (POS submit, driver
+  claim/complete, bug report sent), this is the one actually worth
+  building: it's the one screen where *missing* the alert has a real
+  cost (nobody notices payments/print-bridge/etc. went down until a
+  customer complains), the others are just nice-to-have confirmation
+  blips a visible toast already covers. Same zero-licensing approach as
+  the existing kitchen chime: a synthesized Web Audio tone, not a
+  sourced file — no "audio library" needed at all.
 
 ---
 
@@ -80,16 +92,37 @@ a client-supplied value, and only the signature-verified Stripe webhook
 (never the browser) ever marks an order paid. "Card" today just tells
 whoever's ringing it up to bring the reader over.
 
-**Decision needed from the owner:** which processor (Stripe is the
-standard choice for a business this size — flat ~2.9% + 30c, no monthly
-fee), and whether delivery orders should require payment upfront or keep
-today's pay-on-arrival model.
+**Decision needed from the owner:** whether delivery orders should
+require payment upfront or keep today's pay-on-arrival model, and which
+in-person card reader to pair with it (see below) — the processor itself
+is effectively already decided, since Stripe is what's built. See
+`OWNER-TODO.md` for the full processor/hardware comparison and cost
+numbers researched 2026-09-08.
 
-**What's needed once decided:** a Stripe account, then the "HOW TO FINISH
-THIS" steps at the top of `order/payments.js` and both Edge Function
-files (in order — they reference each other). Building the actual "Pay
-Now" button is the remaining work, and needs real Stripe keys to test
-against.
+**Processor: stay with Stripe** — it's the one already scaffolded in
+this code (`order/payments.js`, both Edge Functions); switching to
+Square or Clover would mean discarding that and rebuilding on a
+different SDK for no real benefit at this shop's size. Stripe's online
+rate is 2.9% + 30c (what `OWNER-TODO.md` used to cite); in-person, via a
+Stripe Terminal reader or Tap to Pay, it's cheaper — 2.7% + 5c — and
+that's the rate that actually applies to counter/in-person card
+payments.
+
+**In-person reader options, if physical hardware is wanted at the
+register** (no monthly fee, pay-per-transaction only): Stripe Reader M2
+($59, Bluetooth to an existing phone/tablet, no screen), BBPOS WisePad 3
+($59, adds a PIN pad), BBPOS WisePOS E ($249, standalone touchscreen
+terminal), Stripe Reader S700 ($349, top of the line). Tap to Pay on a
+staff iPhone/Android needs no reader purchase at all. None of this is
+required for the app to work today — cash/card-in-person already works
+without any of it, this is only for accepting a tap/chip payment
+*through Stripe* instead of the counter's existing card machine.
+
+**What's needed once the owner decides on upfront-vs-pay-on-arrival:**
+the "HOW TO FINISH THIS" steps at the top of `order/payments.js` and
+both Edge Function files (in order — they reference each other).
+Building the actual "Pay Now" button on the kiosk is the remaining code
+work, and needs real Stripe keys to test against.
 
 ## 2. SMS order notifications
 
@@ -119,7 +152,19 @@ function to add is commented at the bottom of `print-bridge/index.js`.
 
 **What it needs:** a thermal receipt printer (network/Wi-Fi is the easy
 path — 58mm or 80mm, "ESC/POS" in the listing) and a cheap mini PC or
-Raspberry Pi to run the bridge near it.
+Raspberry Pi to run the bridge near it. The **Star Micronics TSP143IIIU**
+the owner is already looking at (researched 2026-09-08, ~$290-390
+depending on retailer) is a real, well-regarded fit — ESC/POS compatible,
+80mm/3" width, auto-cutter — but it's **USB only, not network/Wi-Fi**.
+That's the one thing to weigh: `print-bridge/`'s tested path today is
+the network transport (`sendOverLan`); USB support is the still-stubbed
+part (`print-bridge/transport.js`) that needs the printer's actual
+vendor/product ID to finish, which this model would finally provide. A
+Wi-Fi-model Star printer would work with zero further code; the
+TSP143IIIU works too, it just means finishing the USB path first.
+Thermal paper (80mm, the size this printer takes): roughly $1-1.60/roll
+in bulk (50-roll cases run about $50-75 total, cheaper per roll than
+small packs) — a genuinely small ongoing cost.
 
 ## 4. SEO — deferred until the custom domain is live
 
@@ -174,14 +219,41 @@ sits alongside it if funnel-level detail (e.g. "what fraction of menu
 visitors complete checkout") is ever worth the added complexity — an
 addition on top of Cloudflare, not a replacement.
 
-## 6. Smaller polish items
+## 6. Staff badge sign-in (NFC/RFID)
+
+**Status:** not started — design only, written up 2026-09-08 in response
+to the owner already owning an Identiv uTrust 3700 F contactless smart
+card reader and asking whether staff could sign in with a tap instead of
+typing credentials every time.
+
+**The short version:** yes, but it needs a small local bridge service
+(the same pattern `print-bridge/` already uses for the receipt printer),
+not a browser API — see why, and the full design, in `OWNER-TODO.md`'s
+"Staff badge sign-in" section. That's the right place to read this since
+it's a real decision (card type, PIN-pairing) before any of it gets
+built, not just an implementation note.
+
+**What it needs:** the reader is already owned. Building it needs a
+decision on card type (cheap MIFARE Classic vs. the safer MIFARE DESFire
+EV1, both readable by the same device) and whether a tap alone is enough
+or should pair with a PIN for anything sensitive — see `OWNER-TODO.md`.
+
+## 7. POS/kitchen screens (hardware)
+
+**Status:** research only, written up 2026-09-08. This project's Staff
+Hub is already a browser-based PWA — POS, Kitchen Board, and Driver App
+all just need *a device with a modern browser*, not proprietary POS
+terminal hardware. See `OWNER-TODO.md` for the actual hardware/cost
+comparison (a budget Android tablet vs. a bundled commercial POS
+system) — the short version is a bundled system would mean paying for,
+and partially rebuilding onto, hardware and software this project
+doesn't need.
+
+## 8. Smaller polish items
 
 - **Driver preferences** are free-text notes today, not structured data.
   Worth breaking out (max delivery radius, preferred shift times) if the
   notes field starts feeling limiting, not before.
-- **Kitchen Board** could show which driver is en route to a ticket, not
-  just that it's "out for delivery," now that driver assignment/tips show
-  up elsewhere in the app.
 - **Menu photos** — category banners in `images/menu/` are still
   placeholder illustrations for stromboli, calzone, wings, hoagie,
   burger, pasta, and salad; dropping in a same-named real photo replaces

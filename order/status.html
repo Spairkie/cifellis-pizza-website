@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Order Status | Cifelli's Pizza</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rye&family=Work+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    --ink:#1c1712; --ink-soft:#2a231d; --paper:#f4ead6; --paper-dim:#e9dcbf;
+    --sauce:#c22a2f; --gold:#dc9f34; --line-on-ink: rgba(244,234,214,.16);
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; background:var(--ink); color:var(--paper);
+    font-family:"Work Sans",sans-serif; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{ max-width:400px; width:100%; text-align:center; }
+  h1{ font-family:"Rye",serif; font-size:28px; margin:12px 0 4px; }
+  p{ color:var(--paper-dim); font-size:13.5px; line-height:1.5; }
+  .field-group{ text-align:left; margin-top:16px; }
+  .field-group label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper-dim); margin-bottom:5px; }
+  .field-group input{
+    width:100%; background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
+    color:var(--paper); padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  .btn{
+    display:block; width:100%; margin-top:18px; padding:13px; border:none; border-radius:999px;
+    background:var(--sauce); color:var(--paper); font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-outline{ background:transparent; border:1.5px solid var(--line-on-ink); color:var(--paper); }
+  .msg{ margin-top:14px; font-size:13px; }
+  .msg.error{ color:#e07b7b; }
+  .msg.ok{ color:#8ec98a; }
+
+  .track{ margin-top:26px; }
+  .ticket-num{ font-family:"IBM Plex Mono",monospace; font-size:22px; letter-spacing:.04em; color:var(--gold); }
+  .steps{ display:flex; justify-content:space-between; margin:22px 0 6px; position:relative; }
+  .steps::before{ content:''; position:absolute; top:11px; left:6%; right:6%; height:2px; background:var(--line-on-ink); z-index:0; }
+  .step{ position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:6px; flex:1; }
+  .step .dot{ width:22px; height:22px; border-radius:50%; background:var(--ink-soft); border:2px solid var(--line-on-ink); }
+  .step.done .dot{ background:var(--gold); border-color:var(--gold); }
+  .step.current .dot{ background:var(--sauce); border-color:var(--sauce); box-shadow:0 0 0 4px rgba(194,42,47,.25); }
+  .step .label{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--paper-dim); text-align:center; }
+  .step.done .label, .step.current .label{ color:var(--paper); }
+  .status-note{ margin-top:16px; font-size:14px; }
+  .status-note b{ color:var(--gold); }
+  .cancelled-note{ margin-top:16px; padding:12px; background:rgba(194,42,47,.15); border-radius:8px; font-size:13.5px; color:#e8a5a8; }
+  .refresh-hint{ margin-top:18px; font-size:11px; color:var(--paper-dim); opacity:.7; }
+  .back-link{ display:block; margin-top:14px; font-size:12.5px; color:var(--paper-dim); }
+</style>
+</head>
+<body>
+<div class="card">
+  <svg viewBox="0 0 100 100" width="56" height="56" style="margin:0 auto;">
+    <circle cx="50" cy="50" r="48" fill="#f4ead6"/><circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="5"/>
+    <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+  </svg>
+  <h1>Order Status</h1>
+  <p>Check where your order stands without calling the shop.</p>
+
+  <div id="lookupStep">
+    <div class="field-group"><label>Ticket Number</label><input id="ticketInput" placeholder="e.g. C-4821"></div>
+    <div class="field-group"><label>Phone Number on the Order</label><input id="phoneInput" placeholder="(856) 555-0100"></div>
+    <button class="btn" id="lookupBtn" type="button">Check Status</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div id="resultStep" hidden>
+    <div class="track">
+      <div class="ticket-num" id="resultTicket"></div>
+      <div class="steps" id="steps"></div>
+      <div class="status-note" id="statusNote"></div>
+      <div class="cancelled-note" id="cancelledNote" hidden></div>
+      <div class="refresh-hint" id="refreshHint"></div>
+    </div>
+    <button class="btn btn-outline" id="lookupAnotherBtn" type="button" style="margin-top:20px;">Check a Different Order</button>
+  </div>
+
+  <a class="back-link" href="tel:+18564358799">Or call us at (856) 435-8799</a>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="supabase-config.js"></script>
+<script>
+  const STEP_ORDER = ['new','preparing','ready','out_for_delivery','completed'];
+  const STEP_LABELS = { new:'Received', preparing:'Preparing', ready:'Ready', out_for_delivery:'Out for Delivery', completed:'Complete' };
+  let pollTimer = null;
+  let currentLookup = null; // { ticket, phone }
+
+  function escapeHtml(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
+
+  function client(){
+    if (typeof window.supabase === 'undefined' || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) return null;
+    return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  }
+
+  function renderResult(data){
+    const stepsForType = (data.orderType === 'delivery') ? STEP_ORDER : STEP_ORDER.filter(s => s !== 'out_for_delivery');
+    document.getElementById('resultTicket').textContent = data.ticket;
+    const isCancelled = data.status === 'cancelled';
+    const currentIdx = stepsForType.indexOf(data.status);
+    document.getElementById('steps').innerHTML = isCancelled ? '' : stepsForType.map((s, i) => {
+      const cls = i < currentIdx ? 'done' : (i === currentIdx ? 'current' : '');
+      return `<div class="step ${cls}"><div class="dot"></div><div class="label">${STEP_LABELS[s]}</div></div>`;
+    }).join('');
+    const note = document.getElementById('statusNote');
+    const cancelledNote = document.getElementById('cancelledNote');
+    if (isCancelled){
+      note.innerHTML = '';
+      cancelledNote.hidden = false;
+      cancelledNote.textContent = 'This order was cancelled.' + (data.cancelReason ? ' (' + data.cancelReason + ')' : '') + ' Call us if that doesn’t look right.';
+    } else {
+      cancelledNote.hidden = true;
+      if (data.status === 'out_for_delivery' && data.driver){
+        note.innerHTML = `Out for delivery with <b>${escapeHtml(data.driver)}</b>.`;
+      } else if (data.status === 'completed'){
+        note.innerHTML = (data.orderType === 'delivery') ? 'Delivered. Enjoy!' : 'Ready and picked up. Enjoy!';
+      } else if (data.status === 'ready'){
+        note.innerHTML = (data.orderType === 'delivery') ? 'Ready — waiting for a driver.' : '<b>Ready for pickup now.</b>';
+      } else if (data.scheduledFor){
+        note.innerHTML = `Scheduled for ${escapeHtml(new Date(data.scheduledFor).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }))}.`;
+      } else {
+        note.innerHTML = '';
+      }
+    }
+    document.getElementById('refreshHint').textContent = isCancelled || data.status === 'completed'
+      ? ''
+      : 'This updates automatically every 20 seconds.';
+    document.getElementById('lookupStep').hidden = true;
+    document.getElementById('resultStep').hidden = false;
+  }
+
+  async function runLookup(ticket, phone, { silent } = {}){
+    const sb = client();
+    const msg = document.getElementById('msg');
+    if (!sb){
+      if (!silent){ msg.textContent = 'Order status is not connected right now — please try again later.'; msg.className = 'msg error'; }
+      return;
+    }
+    const { data, error } = await sb.rpc('order_status_lookup', { p_ticket: ticket, p_phone: phone });
+    if (error){
+      if (!silent){ msg.textContent = 'Something went wrong: ' + error.message; msg.className = 'msg error'; }
+      return;
+    }
+    if (!data){
+      if (!silent){
+        msg.textContent = "Couldn't find an order matching that ticket and phone number — double-check both and try again.";
+        msg.className = 'msg error';
+      }
+      return;
+    }
+    renderResult(data);
+    if (pollTimer) clearInterval(pollTimer);
+    if (data.status !== 'completed' && data.status !== 'cancelled'){
+      pollTimer = setInterval(() => runLookup(ticket, phone, { silent: true }), 20000);
+    }
+  }
+
+  document.getElementById('lookupBtn').addEventListener('click', async () => {
+    const ticket = document.getElementById('ticketInput').value.trim();
+    const phone = document.getElementById('phoneInput').value.trim();
+    const msg = document.getElementById('msg');
+    const btn = document.getElementById('lookupBtn');
+    msg.textContent = ''; msg.className = 'msg';
+    if (!ticket || !phone){
+      msg.textContent = 'Please enter both your ticket number and phone number.';
+      msg.className = 'msg error';
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Checking...';
+    currentLookup = { ticket, phone };
+    await runLookup(ticket, phone);
+    btn.disabled = false; btn.textContent = 'Check Status';
+  });
+
+  document.getElementById('lookupAnotherBtn').addEventListener('click', () => {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    document.getElementById('resultStep').hidden = true;
+    document.getElementById('lookupStep').hidden = false;
+    document.getElementById('msg').textContent = '';
+  });
+
+  // Pre-fill + auto-check from a link like status.html?ticket=C-4821&phone=8565551234
+  // (linked from the order confirmation screen, order/index.html).
+  const params = new URLSearchParams(location.search);
+  if (params.get('ticket')) document.getElementById('ticketInput').value = params.get('ticket');
+  if (params.get('phone')) document.getElementById('phoneInput').value = params.get('phone');
+  if (params.get('ticket') && params.get('phone')){
+    document.getElementById('lookupBtn').click();
+  }
+</script>
+</body>
+</html>
