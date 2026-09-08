@@ -504,6 +504,11 @@
   .menu-item .leader{ flex:1; border-bottom:1px dotted var(--line-on-paper); transform:translateY(-4px); min-width:12px; }
   .menu-item .price{ font-size:15.5px; font-weight:600; color:var(--sauce-deep); white-space:nowrap; }
   .menu-item .price::before{ content:"$"; font-size:11px; vertical-align:top; }
+  .menu-signature-badge{
+    font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--ink); background:var(--gold); border-radius:999px; padding:3px 10px; white-space:nowrap;
+  }
+  .menu-item--signature{ background:rgba(220,159,52,.10); margin:0 -12px; padding:9px 12px; border-radius:8px; }
 
   .chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
   .chip{
@@ -962,7 +967,7 @@
         <span class="chip">Spinach</span><span class="chip">Broccoli</span>
       </div>
 
-      <div class="menu-cat__head" style="margin-top:30px;"><h3 style="font-size:19px;">Specialty Pies</h3></div>
+      <div class="menu-cat__head" style="margin-top:30px;"><h3 style="font-size:19px;">Specialty Pies</h3><span class="menu-signature-badge">Signature</span></div>
       <ul class="menu-items">
         <li class="menu-item"><span class="name">Bacon BBQ Chicken Ranch <span class="size">Medium</span></span><span class="leader"></span><span class="price mono">24.00</span></li>
         <li class="menu-item"><span class="name">Bacon BBQ Chicken Ranch <span class="size">Large</span></span><span class="leader"></span><span class="price mono">26.00</span></li>
@@ -982,9 +987,9 @@
 
     <!-- PANZAROTTI -->
     <div class="menu-cat" data-cat="panzarotti">
-      <div class="menu-cat__head"><h3>"The Original" Panzarotti</h3><span class="menu-cat__note">deep fried &amp; golden brown</span></div>
+      <div class="menu-cat__head"><h3>"The Original" Panzarotti</h3><span class="menu-signature-badge">Signature</span><span class="menu-cat__note">deep fried &amp; golden brown</span></div>
       <ul class="menu-items">
-        <li class="menu-item"><span class="name">Panzarotti<span class="desc">Add $0.75 per extra ingredient</span></span><span class="leader"></span><span class="price mono">8.25</span></li>
+        <li class="menu-item menu-item--signature"><span class="name">Panzarotti<span class="desc">Add $0.75 per extra ingredient</span></span><span class="leader"></span><span class="price mono">8.25</span></li>
       </ul>
     </div>
 

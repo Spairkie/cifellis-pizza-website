@@ -211,6 +211,13 @@
   .item-card--soldout{ opacity:.55; cursor:not-allowed; }
   .item-card--soldout:hover{ border-color:var(--line-on-ink); }
   .soldout-badge{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--paper-dim); border:1px solid var(--line-on-ink); border-radius:999px; padding:4px 10px; white-space:nowrap; }
+  .signature-badge{
+    display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--ink); background:var(--gold); border-radius:999px;
+    padding:2px 8px; white-space:nowrap; vertical-align:middle; margin-left:6px;
+  }
+  .item-card--signature{ border-color:var(--gold); background:linear-gradient(180deg, rgba(220,159,52,.10), rgba(220,159,52,.03)); }
+  .item-card--signature:hover{ border-color:var(--gold); }
 
   /* pizza builder */
   .builder{ background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:18px; }
@@ -582,6 +589,17 @@ function changeQty(key, delta){
   renderCart(orderCtx.mode);
 }
 
+/* A small, deliberately simple way to give specific items stronger
+   visual prominence (a badge + a highlighted card border) without a
+   new menu_config field or Menu Editor control -- easy to extend with
+   more names/categories once real food photography exists and there's
+   a concrete list of which dishes should stand out. Panzarotti is the
+   shop's own namesake dish (the very first category, and the one named
+   in this site's own daily specials), so it's the one flagged today. */
+function isSignatureItem(cat, it){
+  return cat.key === 'panzarotti';
+}
+
 function buildMenuPaneHTML(mode){
   const today = SPECIALS_BY_DAY[new Date().getDay()];
   let html = '';
@@ -627,7 +645,10 @@ function buildMenuPaneHTML(mode){
         <button class="btn btn-sauce" id="addpizza-${mode}" type="button">Add Pizza</button>
       </div>
     </div>
-    <div style="margin-top:14px; font-size:13px; color:var(--paper-dim); font-weight:700;">Specialty Pies</div>
+    <div style="margin-top:14px; display:flex; align-items:center; gap:8px;">
+      <span class="signature-badge">Signature</span>
+      <span style="font-size:13px; color:var(--paper-dim); font-weight:700;">Specialty Pies</span>
+    </div>
     <div class="item-grid" style="margin-top:8px;" id="specialty-${mode}"></div>
   </div>`;
 
@@ -638,8 +659,8 @@ function buildMenuPaneHTML(mode){
       <div class="item-grid">`;
     cat.items.forEach((it, idx) => {
       const soldOut = !!it.soldOut;
-      html += `<button type="button" class="item-card${soldOut ? ' item-card--soldout' : ''}" data-add-cat="${cat.key}" data-add-idx="${idx}" ${soldOut ? 'aria-disabled="true"' : ''}>
-        <span><span class="n">${escapeHtml(it.name)}</span>${it.size?`<span class="s">${escapeHtml(it.size)}</span>`:''}${it.desc?`<span class="s">${escapeHtml(it.desc)}</span>`:''}</span>
+      html += `<button type="button" class="item-card${soldOut ? ' item-card--soldout' : ''}${isSignatureItem(cat, it) ? ' item-card--signature' : ''}" data-add-cat="${cat.key}" data-add-idx="${idx}" ${soldOut ? 'aria-disabled="true"' : ''}>
+        <span><span class="n">${escapeHtml(it.name)}${isSignatureItem(cat, it) ? '<span class="signature-badge">Signature</span>' : ''}</span>${it.size?`<span class="s">${escapeHtml(it.size)}</span>`:''}${it.desc?`<span class="s">${escapeHtml(it.desc)}</span>`:''}</span>
         <span style="display:flex; align-items:center; gap:8px;">${soldOut ? `<span class="soldout-badge">Sold Out</span>` : `<span class="p">${money(it.price)}</span><span class="plus">+</span>`}</span>
       </button>`;
     });

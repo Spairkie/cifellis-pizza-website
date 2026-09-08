@@ -50,7 +50,7 @@ already-shipped items unless something here specifically asks for it.**
   the next increment would cover.
 
 **Priority 5 — content / conversion polish**
-- [ ] Prepare menu/order UI for more real food photography (owner is
+- [x] Prepare menu/order UI for more real food photography (owner is
   sourcing photos separately) — responsive layouts, stronger visual
   prominence for the Original Panzarotti/specialty pies/signature items
 
@@ -274,6 +274,43 @@ database; Staff POS rang up a separate real order with matching
 totals; Analytics, Menu Editor (correct tax rate), Till, and Kitchen
 Board all confirmed rendering with no errors. Test orders cleaned up
 afterward.
+
+## Priority 5: prepare for more food photography, 2026-09-07 (Claude Code)
+
+Last item on the owner's roadmap. The owner is sourcing real photos
+separately — nothing to integrate yet — so this is genuinely prep, not
+photo placement:
+
+**Responsive image handling confirmed already solid.** The category
+banner images (`order/index.html`'s kiosk) already use
+`object-fit:cover`, full-width/fixed-height for a consistent crop
+regardless of source image dimensions, `loading="lazy"`, and an
+`onerror` fallback straight to the existing placeholder SVG — exactly
+what dropping in new, real photos needs, with zero code changes (per
+the existing convention already noted in this file's "Smaller polish
+items" section: a same-named real photo in `images/menu/` replaces the
+placeholder automatically).
+
+**Stronger visual prominence for Original Panzarotti and the Specialty
+Pies**, on both the homepage's static menu preview and the live kiosk
+— a "Signature" badge plus a subtle highlighted card treatment (gold-
+tinted background/border), no new photos required to see the effect
+now. Implemented as a small `isSignatureItem(cat, it)` helper in
+`order/index.html` (currently just flags the `panzarotti` category —
+the shop's own namesake dish, the one already named in this site's
+daily-specials list) rather than a hardcoded one-off, so flagging more
+items later (once there's an actual list of which dishes should stand
+out, informed by the incoming photos) is a one-line change, not a new
+feature. Deliberately not added to `staff/index.html`'s POS — that's
+an internal tool where an eye-catching badge doesn't serve a purpose,
+this is customer-browsing polish specifically.
+
+Verified visually on both the homepage's Panzarotti section and the
+live kiosk's Panzarotti category — badge and highlight render
+correctly on both, no console errors.
+
+**With this, every item on the owner's "Next Development Roadmap" (see
+the tracker at the top of this file) is shipped.**
 
 ## Polish round: 3D hero pizza, anti-spam, Staff Hub UI cleanup, 2026-09-07 (Claude Code)
 
