@@ -44,16 +44,89 @@ already-shipped items unless something here specifically asks for it.**
 **Priority 4 — code quality**
 - [x] Reduce duplicated ordering logic between `order/index.html` and
   `staff/index.html` (pricing, cart, pizza-builder, menu normalization,
-  validation) — no framework rewrite, just shared files. First
-  increment shipped: pricing math + menu normalization, in
-  `order/ordering-core.js`. Cart state and pizza-builder UI
-  deliberately still separate — see the dated entry for why and what
-  the next increment would cover.
+  validation) — no framework rewrite, just shared files. Both
+  increments now shipped: pricing/menu normalization, then cart state
+  + pizza-builder/cart-pane UI, all consolidated into
+  `order/ordering-core.js`. See the "Cart state and pizza-builder UI
+  consolidated" dated entry for the second increment's detail.
 
 **Priority 5 — content / conversion polish**
 - [x] Prepare menu/order UI for more real food photography (owner is
   sourcing photos separately) — responsive layouts, stronger visual
   prominence for the Original Panzarotti/specialty pies/signature items
+
+## Cart state and pizza-builder UI consolidated, 2026-09-07 (Claude Code)
+
+The second (and last planned) increment of the Priority 4 item above.
+`order/index.html` (customer kiosk, always `mode==='customer'`) and
+`staff/index.html` (Staff Hub POS, always `mode==='pos'`) each carried a
+full, near-duplicate copy of 14 identically-named functions covering
+cart state, the menu/cart pane HTML builders, and all their wiring:
+`resetOrderCtx`, `addLine`, `changeQty`, `buildMenuPaneHTML`,
+`buildCartPaneHTML`, `wireCategoryBar`, `wireItemButtons`,
+`renderSpecialtyPizzas`, `wireSpecialtyButtons`, `renderPizzaBuilder`,
+`wireSeg`, `updateChangeDue`, `renderCart`, `renderOrderLayout` — plus
+the small cart-drawer helpers `updateCartButtonBadge`, `openMobileCart`,
+`closeMobileCart`, `wireMobileCart`, and `saveCartToStorage` (needed by
+the now-shared `renderCart`). All of it now lives once in
+`order/ordering-core.js`, loaded by both pages.
+
+Before merging, diffed every one of those functions line-by-line
+between the two files rather than assuming either copy was current.
+8 were already byte-identical (safe to move as-is). The other 6 had
+real, deliberate differences that needed reconciling by hand rather
+than picking one file's version wholesale:
+- `wireItemButtons` — sold-out toast text differs by audience
+  ("is sold out right now" for customers vs. "is marked sold out —
+  clear it in Menu Editor to sell it" for staff); kept as an explicit
+  `mode` branch in the merged function.
+- `resetOrderCtx` — merged field shape now carries every field either
+  page uses (`promoCode`/`discountAmount`/`discountLabel`/
+  `formLoadedAt` from the customer side, `editingOrderId` from POS);
+  harmless unused fields on the other page.
+- `buildMenuPaneHTML`, `renderCart` — `order/index.html`'s copies were
+  strict supersets (paused-ordering banner, menu-hero photos, signature
+  badges, discount row, mobile-cart badge, cart persistence — each
+  already gated behind `mode==='customer'` or a null-checked DOM
+  lookup), so those became the canonical versions with no behavior
+  change for POS.
+- `buildCartPaneHTML` — the one real trap. `order/index.html`'s POS
+  fallback branch (dead code — that page never renders in `pos` mode)
+  had gone stale after this session's earlier `order/index.html`-only
+  work (the Check Address button, the tip UI) and no longer matched
+  what `staff/index.html` actually serves. Used `staff/index.html`'s
+  live POS branch, unchanged, rather than the tempting-but-wrong
+  shortcut of reusing `order/index.html`'s fuller-looking-but-stale one.
+- `renderOrderLayout` — the other real trap. `order/index.html` wires
+  the tip-percentage buttons and promo-code button inside one
+  `if (mode==='customer')` block, since in that file only customers see
+  tip UI. But `staff/index.html`'s POS cart pane *also* has a tip
+  section (counter tips, driver tips on phone-in deliveries) and wires
+  it unconditionally. Copying `order/index.html`'s version verbatim
+  would have silently broken tip buttons in POS. The merged function
+  keeps promo-button wiring customer-only (self-guarded by a null
+  check, since POS has no promo UI) but moved tip-segment wiring
+  outside any mode check, matching `staff/index.html`'s working
+  behavior. Mobile-cart wiring, saved-address autofill, and the
+  online-ordering-pause disable stayed customer-only exactly as
+  before.
+
+Also removed, now that both files were already open for this: the dead
+vestigial customer-ordering-flow copy inside `staff/index.html`
+(`initCustomerView`, `submitCustomerOrder`, `showOrderConfirmation`) —
+never called from anywhere in that file (confirmed via
+`goToRole`/`initPosView`), flagged as safe-to-delete-later in
+`HANDOFF.md` since before this session started.
+
+Verified with `node --check` on every inline `<script>` block in both
+files plus `ordering-core.js`, then a live end-to-end Playwright run
+against production Supabase on a local static server: a real customer
+order through the kiosk (specialty pizza + build-your-own, tip applied,
+cart badge, full checkout) and a real POS order through Staff Hub
+(login, add item, tip applied — confirming the `renderOrderLayout` fix
+above actually works — cash tendered/change due, ring-up, cart reset
+after submit). Both produced real orders (`T730573`, `T700885`/
+`T732832`); all three deleted from `orders` afterward.
 
 ## High-contrast mode extended to the ordering kiosk, 2026-09-07 (Claude Code)
 
