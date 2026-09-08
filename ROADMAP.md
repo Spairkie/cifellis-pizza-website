@@ -37,8 +37,9 @@ already-shipped items unless something here specifically asks for it.**
 - [x] Disaster-recovery documentation (backup/restore, outage
   procedure, phone-order fallback, printed menu backup)
 - [x] High-contrast accessibility mode (dark stays default; light/day
-  mode explicitly deferred again until wanted) — `index.html` only so
-  far, kiosk is a natural follow-up
+  mode explicitly deferred again until wanted) — now covers both
+  `index.html` and `order/index.html` (the kiosk), sharing one
+  `localStorage` preference between them
 
 **Priority 4 — code quality**
 - [x] Reduce duplicated ordering logic between `order/index.html` and
@@ -53,6 +54,24 @@ already-shipped items unless something here specifically asks for it.**
 - [x] Prepare menu/order UI for more real food photography (owner is
   sourcing photos separately) — responsive layouts, stronger visual
   prominence for the Original Panzarotti/specialty pies/signature items
+
+## High-contrast mode extended to the ordering kiosk, 2026-09-07 (Claude Code)
+
+The follow-up flagged in the Priority 3 entry below: `order/index.html`
+now has the same high-contrast toggle as the homepage, same
+implementation (the same three custom properties overridden under
+`:root[data-contrast="high"]`, applied before first paint via an early
+script). Deliberately shares the exact same `localStorage` key
+(`cifellisHighContrast`) as the homepage's toggle rather than a
+separate one — since both pages are the same origin, turning it on
+either place carries over to the other automatically, no extra code
+needed for that beyond just reusing the key. `staff/index.html` (an
+internal tool, not public-facing) remains out of scope.
+
+Verified directly: toggling on the homepage and then navigating to the
+kiosk shows it already applied at `domcontentloaded` (no flash), the
+kiosk's own toggle reflects and controls the same shared state, and
+toggling off from the kiosk updates the stored preference correctly.
 
 ## Priority 1: reliability / production hardening, 2026-09-07 (Claude Code)
 
