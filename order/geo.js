@@ -85,43 +85,70 @@ async function lookupDelivery(addressText){
   return { ...geo, ...route };
 }
 
-/* Wires an address <input> to show a live distance/ETA line beneath it
-   once the visitor pauses typing. Debounced to respect Nominatim's
-   rate limit and avoid firing on every keystroke.
-     inputEl:  the address text input
-     resultEl: an element to write the result line into
-     onResult: optional callback(result|null) — result is what
-               lookupDelivery() returns, or null on failure/too-short
-               input. Use this to store distance/ETA on the order. */
-function wireDeliveryLookup(inputEl, resultEl, onResult){
-  let timer = null;
+/* Repeat lookups of the same address text (re-clicking Check Address
+   without changing it, or typing back to an address already checked
+   this session) are served from here instead of hitting Nominatim/OSRM
+   again -- session-lifetime, keyed by normalized address text. Also
+   caches a not-found result, so a bad address the visitor keeps
+   re-checking doesn't keep re-hitting the network either. */
+const geocodeCache = new Map();
+
+async function lookupDeliveryCached(addressText){
+  const key = addressText.trim().toLowerCase();
+  if (geocodeCache.has(key)) return geocodeCache.get(key);
+  const result = await lookupDelivery(addressText);
+  geocodeCache.set(key, result);
+  return result;
+}
+
+/* Wires an address <input> to an explicit "Check Address" button rather
+   than firing on every keystroke -- both to respect Nominatim's rate
+   limit (a shared public instance, see the note at the top of this
+   file) and because a debounced-but-automatic lookup fires a network
+   request for every half-typed address a visitor doesn't actually
+   intend to submit. Editing the address after a check clears the old
+   result rather than leaving a stale distance showing.
+     inputEl:   the address text input
+     resultEl:  an element to write the result line into
+     onResult:  optional callback(result|null) — result is what
+                lookupDelivery() returns, or null on failure/stale/
+                too-short input. Use this to store distance/ETA on the
+                order.
+     checkBtnEl: the "Check Address" button that triggers a lookup. */
+function wireDeliveryLookup(inputEl, resultEl, onResult, checkBtnEl){
   let requestId = 0;
+  let lastCheckedValue = null;
+
   inputEl.addEventListener('input', () => {
-    clearTimeout(timer);
+    if (inputEl.value.trim() === lastCheckedValue) return; // unchanged since the last check -- leave the result showing
+    resultEl.textContent = inputEl.value.trim().length >= 6 ? 'Tap "Check Address" to verify distance.' : '';
+    if (onResult) onResult(null);
+  });
+
+  if (!checkBtnEl) return;
+  checkBtnEl.addEventListener('click', async () => {
     const value = inputEl.value;
     if (value.trim().length < 6){
-      resultEl.textContent = '';
-      if (onResult) onResult(null);
+      resultEl.textContent = 'Enter a full street address first.';
       return;
     }
     resultEl.textContent = 'Checking address...';
     const myRequest = ++requestId;
-    timer = setTimeout(async () => {
-      const result = await lookupDelivery(value);
-      if (myRequest !== requestId) return; // a newer keystroke superseded this lookup
-      if (!result){
-        resultEl.textContent = "Couldn't verify that address — you can still submit, we'll call to confirm.";
-        if (onResult) onResult(null);
-        return;
-      }
-      if (result.miles == null){
-        resultEl.textContent = 'Address found, but distance could not be estimated.';
-        if (onResult) onResult(result);
-        return;
-      }
-      const farNote = result.miles > 8 ? ' — that\'s outside our usual delivery range, we may need to call you.' : '';
-      resultEl.textContent = `~${result.miles} mi from the shop, about ${result.minutes} min drive${farNote}`;
+    const result = await lookupDeliveryCached(value);
+    if (myRequest !== requestId) return; // superseded by a newer click
+    lastCheckedValue = value.trim();
+    if (!result){
+      resultEl.textContent = "Couldn't verify that address — you can still submit, we'll call to confirm.";
+      if (onResult) onResult(null);
+      return;
+    }
+    if (result.miles == null){
+      resultEl.textContent = 'Address found, but distance could not be estimated.';
       if (onResult) onResult(result);
-    }, 900);
+      return;
+    }
+    const farNote = result.miles > 8 ? ' — that\'s outside our usual delivery range, we may need to call you.' : '';
+    resultEl.textContent = `~${result.miles} mi from the shop, about ${result.minutes} min drive${farNote}`;
+    if (onResult) onResult(result);
   });
 }

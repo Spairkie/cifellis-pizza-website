@@ -836,7 +836,11 @@ function buildCartPaneHTML(mode){
           <input type="checkbox" id="smsoptin-${mode}" style="width:auto;">
           <label for="smsoptin-${mode}" style="margin:0; text-transform:none; font-size:13px; letter-spacing:normal; color:var(--paper-dim); font-family:inherit;">Text me when my order's ready (standard rates may apply)</label>
         </div>
-        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address">
+        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label>
+          <div style="display:flex; gap:8px;">
+            <input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address" style="flex:1;">
+            <button type="button" class="btn btn-outline" id="addrcheck-${mode}" style="padding:0 14px; white-space:nowrap;">Check Address</button>
+          </div>
           <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
         </div>
         <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Allergies, extra sauce, etc."></div>
@@ -1131,10 +1135,11 @@ function renderOrderLayout(mode){
   });
   const addrInput = document.getElementById(`custaddr-${mode}`);
   const addrInfo = document.getElementById(`addrinfo-${mode}`);
+  const addrCheckBtn = document.getElementById(`addrcheck-${mode}`);
   if (addrInput && addrInfo && typeof wireDeliveryLookup === 'function'){
     wireDeliveryLookup(addrInput, addrInfo, (result) => {
       orderCtx.deliveryInfo = result;
-    });
+    }, addrCheckBtn);
   }
   if (mode === 'customer'){
     const promoApplyBtn = document.getElementById(`promoapply-${mode}`);
@@ -1250,19 +1255,29 @@ async function applyPromoCode(mode){
 
 const ORDER_MIN_FORM_TIME_MS = 3000; // faster than this and it's not a human filling out the form
 
-async function submitCustomerOrder(){
-  // Anti-bot: a hidden field no real visitor sees or fills (screen
-  // readers skip it too, via aria-hidden), and a minimum time between
-  // the form appearing and submit -- neither is a real security
-  // boundary on its own (a script targeting this form specifically can
-  // trivially work around both), but together they silently stop the
-  // common case, an unsophisticated bot/script hammering the public
-  // endpoint. Fails silently (no error shown) so as not to coach an
-  // actual bot on what tripped it -- see the note in schema.sql's
-  // orders_rate_limit_trigger for the server-side backstop this pairs
-  // with.
+/* Anti-bot checks for the public checkout form. Both client-side checks
+   here are cheap to bypass for a script written specifically against
+   this form -- they stop the common case (an unsophisticated bot/
+   script hammering the endpoint), not a targeted attacker. The real,
+   unbypassable backstop is server-side: schema.sql's
+   orders_rate_limit_trigger, which runs no matter how the insert is
+   made.
+
+   EXTENSION POINT for a real challenge (Cloudflare Turnstile or
+   hCaptcha, both free) if actual abuse ever shows up: add the
+   widget's script tag + a container div near the submit button, then
+   here, get its response token (`turnstile.getResponse()` /
+   `hcaptcha.getResponse()`) and verify it server-side before allowing
+   the insert -- e.g. a Postgres function similar to redeem_promo_code
+   that calls out to the provider's siteverify endpoint via
+   `pg_net`/an Edge Function, or move order creation behind a Supabase
+   Edge Function entirely (see the longer note in ROADMAP.md's "Anti-
+   abuse architecture" entry for why that's the better long-term home
+   for this rather than a Postgres function). Return false here on a
+   missing/failed token, same as the checks below. */
+function passesAntiSpamChecks(){
   const honeypot = document.getElementById('hp-customer');
-  if (honeypot && honeypot.value.trim()) return; // real visitors never fill this in, so never a false positive
+  if (honeypot && honeypot.value.trim()) return false; // real visitors never fill this in, so never a false positive
   if (Date.now() - orderCtx.formLoadedAt < ORDER_MIN_FORM_TIME_MS){
     // Unlike the honeypot, a very fast real customer (autofill + an
     // already-restored cart on a return visit) could plausibly trip
@@ -1270,8 +1285,13 @@ async function submitCustomerOrder(){
     // rather than a silent no-op, phrased generically enough not to
     // hand a bot the exact mechanism.
     showToast('Please review your order and try again.');
-    return;
+    return false;
   }
+  return true;
+}
+
+async function submitCustomerOrder(){
+  if (!passesAntiSpamChecks()) return;
   // Re-check right before submitting, not just at page load -- staff may
   // have paused ordering after this tab was opened. Deliberately not a
   // full renderOrderLayout() here -- that would wipe whatever the

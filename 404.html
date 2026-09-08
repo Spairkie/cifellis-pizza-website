@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Page Not Found | Cifelli's Pizza</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rye&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  :root{
+    --ink:#1c1712; --paper:#f4ead6; --paper-dim:#e9dcbf;
+    --sauce:#c22a2f; --sauce-deep:#821e21; --gold:#dc9f34;
+    --line-on-ink: rgba(244,234,214,.16);
+  }
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--ink); color:var(--paper);
+    font-family:"Work Sans",system-ui,sans-serif;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    padding:32px 20px;
+  }
+  .wrap{ max-width:440px; }
+  .badge{ width:76px; height:76px; margin:0 auto 22px; display:block; }
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--gold); margin-bottom:10px;
+  }
+  h1{
+    font-family:"Rye",serif; font-weight:400; font-size:clamp(34px,7vw,48px);
+    margin:0 0 14px; line-height:1.05;
+  }
+  p{ color:var(--paper-dim); font-size:15.5px; line-height:1.6; margin:0 0 30px; }
+  .actions{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .btn{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:13px 16px; border-radius:999px; font-weight:700; font-size:14px;
+    text-decoration:none; border:1px solid var(--line-on-ink);
+  }
+  .btn--sauce{ background:var(--sauce); color:var(--paper); border-color:var(--sauce); grid-column:1 / -1; }
+  .btn--sauce:hover{ background:var(--sauce-deep); }
+  .btn--outline{ color:var(--paper); }
+  .btn--outline:hover{ border-color:var(--gold); color:var(--gold); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <svg class="badge" viewBox="0 0 100 100" role="img" aria-label="Cifelli's Pizza badge">
+      <circle cx="50" cy="50" r="48" fill="#f4ead6"/>
+      <circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="4"/>
+      <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+      <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="none" stroke="#821e21" stroke-width="2"/>
+      <circle cx="50" cy="46" r="4.2" fill="#f4ead6"/>
+      <circle cx="40" cy="58" r="4.2" fill="#f4ead6"/>
+      <circle cx="60" cy="58" r="4.2" fill="#f4ead6"/>
+      <circle cx="50" cy="70" r="4.2" fill="#f4ead6"/>
+    </svg>
+    <div class="eyebrow">404</div>
+    <h1>That slice is gone<em>.</em></h1>
+    <p>The page you're looking for doesn't exist, or the link's out of date. Here's how to get back to something real.</p>
+    <div class="actions">
+      <a class="btn btn--sauce" href="/cifellis-pizza-website/order/">Order Online &rarr;</a>
+      <a class="btn btn--outline" href="/cifellis-pizza-website/">Home</a>
+      <a class="btn btn--outline" href="/cifellis-pizza-website/#menu">Menu</a>
+      <a class="btn btn--outline" href="tel:+18564358799" style="grid-column:1 / -1;">Call (856) 435-8799</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -1293,7 +1293,11 @@ function buildCartPaneHTML(mode){
         </div>
         <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Your name"></div>
         <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
-        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address">
+        <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label>
+          <div style="display:flex; gap:8px;">
+            <input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address" style="flex:1;">
+            <button type="button" class="btn btn-outline" id="addrcheck-${mode}" style="padding:0 14px; white-space:nowrap;">Check Address</button>
+          </div>
           <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
         </div>
         <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Allergies, extra sauce, etc."></div>
@@ -1528,10 +1532,11 @@ function renderOrderLayout(mode){
   });
   const addrInput = document.getElementById(`custaddr-${mode}`);
   const addrInfo = document.getElementById(`addrinfo-${mode}`);
+  const addrCheckBtn = document.getElementById(`addrcheck-${mode}`);
   if (addrInput && addrInfo && typeof wireDeliveryLookup === 'function'){
     wireDeliveryLookup(addrInput, addrInfo, (result) => {
       orderCtx.deliveryInfo = result;
-    });
+    }, addrCheckBtn);
   }
   const tipSeg = document.getElementById(`tipseg-${mode}`);
   const tipCustom = document.getElementById(`tipcustom-${mode}`);

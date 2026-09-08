@@ -7,6 +7,128 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Next Development Roadmap, added 2026-09-07 by the owner
+
+The active backlog as of this writing — supersedes the older "Feature
+backlog" further down this file (that one's fully resolved except the
+day-mode/high-contrast item, folded into item 10 below). Each item's
+own dated entry (search this file for its name) has the implementation
+detail; this list is just the tracker. **Do not redo or interfere with
+already-shipped items unless something here specifically asks for it.**
+
+**Priority 1 — reliability / production hardening**
+- [x] Branded 404 page (Home / Order Online / Call / Menu)
+- [x] Fix service-worker fallbacks (HTML fallback for navigations only)
+- [x] Anti-abuse architecture prep (Turnstile-ready extension point +
+  documented Edge Function long-term path)
+- [x] Delivery address validation rework (explicit Check Address
+  button, cached lookups, no more per-keystroke geocoding)
+
+**Priority 2 — performance / customer UX**
+- [ ] Optimize intro + 3D loading (smarter timing than plain eager,
+  without reintroducing the lazy-load deadlock)
+- [ ] Improve repeat-visitor intro (shortened/skipped on return visits,
+  an Order Now action on the intro itself)
+- [ ] Persistent mobile conversion bar (Order / Call / Directions)
+
+**Priority 3 — privacy / accessibility / recovery**
+- [ ] Customer-facing policies (privacy, ordering/cancellation/refund,
+  SMS consent, delivery/location-data disclosure)
+- [ ] Disaster-recovery documentation (backup/restore, outage
+  procedure, phone-order fallback, printed menu backup)
+- [ ] High-contrast accessibility mode (dark stays default; light/day
+  mode explicitly deferred again until wanted)
+
+**Priority 4 — code quality**
+- [ ] Reduce duplicated ordering logic between `order/index.html` and
+  `staff/index.html` (pricing, cart, pizza-builder, menu normalization,
+  validation) — no framework rewrite, just shared files
+
+**Priority 5 — content / conversion polish**
+- [ ] Prepare menu/order UI for more real food photography (owner is
+  sourcing photos separately) — responsive layouts, stronger visual
+  prominence for the Original Panzarotti/specialty pies/signature items
+
+## Priority 1: reliability / production hardening, 2026-09-07 (Claude Code)
+
+First batch from the owner's structured "Next Development Roadmap." Four
+items, all shipped.
+
+**Branded 404 page.** New `404.html` at the repo root (GitHub Pages
+serves this automatically for any unmatched path under a project site).
+Self-contained (its own inline styles, doesn't depend on the rest of the
+site loading correctly) with Home / Order Online / Menu / Call links.
+Uses root-relative paths (`/cifellis-pizza-website/...`) matching every
+other absolute link already in this codebase — which means, same as
+`robots.txt`/`sitemap.xml`/the canonical tags, it'll need updating
+during the eventual custom-domain migration (see "4b. Custom domain
+migration" below) — added to that checklist.
+
+**Service worker fallback bug, fixed in all three (`sw.js`,
+`order/sw.js`, `staff/sw.js`).** All three had the same bug: on ANY
+failed same-origin GET, they fell back to serving `index.html` — not
+just for page navigations, but for a failed JS/CSS/image/font/`.glb`
+request too. In practice this only ever fires when a visitor is truly
+offline (a normal 404 for a missing file resolves as a successful fetch
+with a 404 status, never hitting the failure path at all) — but for
+that offline-and-not-yet-cached case, a script tag or `<model-viewer>`
+getting HTML back where it expected JS or a binary model fails with a
+confusing parse error instead of a clean "you're offline" signal.
+Fixed: the index.html fallback now only applies when `request.mode ===
+'navigate'` (an actual page load); everything else either serves its
+own cached copy if one exists, or fails as a normal network error, same
+as if there were no service worker at all. Bumped `CACHE_NAME` in all
+three (v1 → v2) so this fix reaches already-installed clients on their
+next visit, not just new ones. Verified directly: going offline and
+fetching a JS file that was never cached now correctly throws a network
+error instead of returning HTML; a navigation request while offline
+still correctly serves the cached app shell.
+
+**Anti-abuse architecture, prepared for a future upgrade.** The
+honeypot + timing check in `order/index.html`'s checkout now live in
+one named function, `passesAntiSpamChecks()`, with the exact extension
+point documented inline for adding a real challenge later (Cloudflare
+Turnstile or hCaptcha, both free) if actual abuse ever shows up:
+render the widget's container near the submit button, read its
+response token, and verify it server-side before the insert is
+allowed — rather than trusting a client-side "the widget rendered"
+signal, which proves nothing on its own.
+
+The longer-term architectural question the owner raised — moving
+anonymous order creation behind a Supabase Edge Function instead of a
+direct client-side table insert — is worth writing down even though it
+isn't built yet: an Edge Function would let order creation do things a
+plain PostgREST insert + trigger can't cleanly do: verify a Turnstile
+token against Cloudflare's siteverify endpoint (an outbound HTTPS call
+mid-request, not something a Postgres trigger does well without
+`pg_net` and its own complexity), rate-limit with real request context
+(IP address, not just phone number — the current trigger's only real
+gap, since a bot randomizing phone numbers per request isn't caught by
+`enforce_order_rate_limit`), and keep all of that logic in one place
+written in real application code (TypeScript/Deno) instead of split
+across client JS and PL/pgSQL. This is a genuinely bigger change (new
+tooling — the Supabase CLI and a `supabase functions deploy` step not
+currently part of this project's workflow — and a new trust model,
+since the Edge Function would need the `service_role` key server-side
+to bypass RLS the way the client currently doesn't need to) — not
+attempted now, flagged here so it doesn't need rediscovering from
+scratch. Worth doing once (or before) real abuse shows up, not
+preemptively.
+
+**Delivery address checking, reworked in `order/geo.js`.** No longer
+fires a geocode lookup on a debounced timer while typing — instead, an
+explicit "Check Address" button next to the field (added in both
+`order/index.html`'s customer/POS forms and `staff/index.html`'s
+duplicate of the same form). Repeat lookups of the same address text
+within a session (re-clicking Check Address without changing it, or
+typing back to something already checked) are served from an in-memory
+cache instead of hitting Nominatim/OSRM again. `geo.js` itself is
+unchanged in shape — still the one file to swap for a paid geocoder
+later, per its own header comment — this only changed when/how often
+it's called, not what it calls. Verified directly: typing an address no
+longer fires any geocode request; clicking Check Address fires exactly
+one; clicking it again unchanged fires zero more (served from cache).
+
 ## Polish round: 3D hero pizza, anti-spam, Staff Hub UI cleanup, 2026-09-07 (Claude Code)
 
 A batch of owner-requested polish items, all shipped together.
@@ -1059,6 +1181,9 @@ find-and-replace, currently pointing at
    verify).
 8. Re-check the PWA manifests (`manifest.webmanifest` in the root,
    `order/`, and `staff/`) for any absolute `start_url` values.
+9. `404.html`'s four link `href`s are root-relative
+   (`/cifellis-pizza-website/...`) — update to just `/...` once served
+   from a custom domain's root instead of a GitHub Pages subpath.
 
 **Effort:** small — mostly a careful find-and-replace plus DNS
 propagation wait time (can be minutes to 48 hours depending on the

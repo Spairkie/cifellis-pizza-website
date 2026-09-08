@@ -6,7 +6,7 @@
  * offline, and never touching Supabase requests (different origin) so
  * live order data is always read and written fresh.
  */
-const CACHE_NAME = 'cifellis-staff-hub-v1';
+const CACHE_NAME = 'cifellis-staff-hub-v2';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -47,6 +47,19 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
         return res;
       })
-      .catch(() => caches.match(req).then((cached) => cached || caches.match('./index.html')))
+      .catch(async () => {
+        // The app-shell fallback (index.html) only ever makes sense for a
+        // page navigation -- a failed JS/CSS/image/font/etc. request must
+        // stay a normal network failure, never silently receive HTML back
+        // (a script tag getting an HTML response for its .js request fails
+        // with a confusing parse error, not a clear "offline" signal).
+        const cached = await caches.match(req);
+        if (cached) return cached;
+        if (req.mode === 'navigate') {
+          const shell = await caches.match('./index.html');
+          if (shell) return shell;
+        }
+        throw new Error('Network request failed and nothing cached for ' + req.url);
+      })
   );
 });
