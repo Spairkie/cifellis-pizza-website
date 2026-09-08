@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Catering &amp; Large Orders | Cifelli's Pizza</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Planning something big? Tell us about it and we'll follow up with a quote.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rye&family=Work+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ink:#1c1712; --ink-soft:#2a231d; --paper:#f4ead6; --paper-dim:#e9dcbf;
+    --sauce:#c22a2f; --gold:#dc9f34; --line-on-ink: rgba(244,234,214,.16);
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; background:var(--ink); color:var(--paper);
+    font-family:"Work Sans",sans-serif; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{ max-width:460px; width:100%; }
+  .center{ text-align:center; }
+  h1{ font-family:"Rye",serif; font-size:30px; margin:12px 0 4px; }
+  p{ color:var(--paper-dim); font-size:13.5px; line-height:1.5; }
+  .field-group{ margin-top:14px; text-align:left; }
+  .field-group label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper-dim); margin-bottom:5px; font-family:"IBM Plex Mono",monospace; }
+  .field-group input, .field-group textarea{
+    width:100%; background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
+    color:var(--paper); padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  .row2{ display:flex; gap:10px; }
+  .row2 > div{ flex:1; }
+  .btn{
+    display:block; width:100%; margin-top:18px; padding:13px; border:none; border-radius:999px;
+    background:var(--sauce); color:var(--paper); font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .msg{ margin-top:14px; font-size:13px; text-align:center; }
+  .msg.error{ color:#e07b7b; }
+  .msg.ok{ color:#8ec98a; }
+  .back-link{ display:inline-block; margin-top:18px; color:var(--paper-dim); font-size:12.5px; text-decoration:none; }
+  .back-link:hover{ color:var(--paper); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="center">
+    <svg viewBox="0 0 100 100" width="56" height="56">
+      <circle cx="50" cy="50" r="48" fill="#f4ead6"/><circle cx="50" cy="50" r="48" fill="none" stroke="#c22a2f" stroke-width="5"/>
+      <path d="M50 22 L78 68 A32 32 0 0 1 22 68 Z" fill="#c22a2f"/>
+    </svg>
+    <h1>Catering &amp; Large Orders</h1>
+    <p>Office party, graduation, game day — tell us what you need and we'll follow up with a quote. This isn't an order yet, just the start of a conversation; nothing here gets sent to the kitchen.</p>
+  </div>
+
+  <div id="formStep">
+    <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+      <label>Company</label><input id="cat-hp" name="company" tabindex="-1" autocomplete="off">
+    </div>
+    <div class="field-group"><label>Your Name</label><input id="cat-name" placeholder="Your name"></div>
+    <div class="row2">
+      <div class="field-group"><label>Phone</label><input id="cat-phone" placeholder="(856) 555-0100"></div>
+      <div class="field-group"><label>Email (optional)</label><input id="cat-email" type="email" placeholder="you@example.com"></div>
+    </div>
+    <div class="row2">
+      <div class="field-group"><label>Event Date (optional)</label><input id="cat-date" type="date"></div>
+      <div class="field-group"><label>About How Many People?</label><input id="cat-guests" type="number" min="1" placeholder="25"></div>
+    </div>
+    <div class="field-group"><label>What are you looking for?</label><textarea id="cat-details" rows="4" placeholder="e.g. 6 large pizzas and a tray of wings for an office lunch, need it by noon"></textarea></div>
+
+    <button class="btn" id="submitBtn" type="button">Send Inquiry</button>
+  </div>
+  <div class="msg" id="msg"></div>
+  <div class="center"><a class="back-link" href="index.html">&larr; Back to ordering</a></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="supabase-config.js"></script>
+<script>
+  const msg = document.getElementById('msg');
+  const formStep = document.getElementById('formStep');
+  // Same honeypot + minimum-time-on-page pairing as every other public
+  // form in this project (order/index.html's checkout, staff/apply.html)
+  // -- neither is a real security boundary alone, but together they
+  // stop the common case of an unsophisticated bot/script.
+  const CATERING_MIN_FORM_TIME_MS = 3000;
+  const formLoadedAt = Date.now();
+
+  document.getElementById('submitBtn').addEventListener('click', async () => {
+    const honeypot = document.getElementById('cat-hp');
+    if (honeypot && honeypot.value.trim()) return; // real visitors never fill this in
+    msg.textContent = ''; msg.className = 'msg';
+    if (Date.now() - formLoadedAt < CATERING_MIN_FORM_TIME_MS){
+      msg.textContent = 'Please review your inquiry and try again.';
+      msg.className = 'msg error';
+      return;
+    }
+    const name = document.getElementById('cat-name').value.trim();
+    const phone = document.getElementById('cat-phone').value.trim();
+    const email = document.getElementById('cat-email').value.trim();
+    const eventDate = document.getElementById('cat-date').value || null;
+    const guestCountRaw = document.getElementById('cat-guests').value;
+    const guestCount = guestCountRaw ? Number(guestCountRaw) : null;
+    const details = document.getElementById('cat-details').value.trim();
+    if (!name || !phone){
+      msg.textContent = 'Please add your name and phone number.';
+      msg.className = 'msg error';
+      return;
+    }
+    if (typeof window.supabase === 'undefined' || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY){
+      msg.textContent = 'Not connected right now — please call the shop directly at (856) 435-8799.';
+      msg.className = 'msg error';
+      return;
+    }
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    try{
+      const client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+      const { error } = await client.from('catering_inquiries').insert({
+        name, phone, email, eventDate, guestCount, details,
+      });
+      if (error) throw error;
+      formStep.style.display = 'none';
+      msg.textContent = "Thanks! We'll follow up by phone or email to talk details and pricing.";
+      msg.className = 'msg ok';
+    }catch(e){
+      msg.textContent = 'Could not send that: ' + (e && e.message ? e.message : 'unknown error') + '. Please call (856) 435-8799 instead.';
+      msg.className = 'msg error';
+      btn.disabled = false;
+      btn.textContent = 'Send Inquiry';
+    }
+  });
+</script>
+</body>
+</html>

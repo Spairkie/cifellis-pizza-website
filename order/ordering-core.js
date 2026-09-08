@@ -269,7 +269,22 @@ function resolveRefToLine(ref){
 }
 
 function resetOrderCtx(mode){
-  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null, promoCode:null, discountAmount:0, discountLabel:'', formLoadedAt:Date.now(), editingOrderId:null };
+  orderCtx = {
+    mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash',
+    tip:0, tipPct:null, deliveryInfo:null, promoCode:null, discountAmount:0, discountLabel:'',
+    formLoadedAt:Date.now(), editingOrderId:null,
+    // One key per checkout attempt, sent to create_order() so a
+    // network-flaky double-submit (slow connection prompting a second
+    // click) returns the original order instead of creating a
+    // duplicate -- see create_order()'s idempotency handling in
+    // supabase/schema.sql. Regenerated on every reset, i.e. every fresh
+    // "New Order", so it's never reused across genuinely different orders.
+    idempotencyKey: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('idem-' + Date.now() + '-' + Math.random().toString(36).slice(2)),
+    // null = ASAP (today's behavior, unchanged). A future epoch-ms
+    // pickup/delivery time otherwise -- see the "When?" field in
+    // buildCartPaneHTML's customer branch.
+    scheduledFor: null,
+  };
 }
 
 const CART_STORAGE_KEY = 'cifellisCart';
@@ -391,6 +406,17 @@ function buildCartPaneHTML(mode){
             <button type="button" data-v="pickup" aria-pressed="true">Pickup</button>
             <button type="button" data-v="delivery">Delivery</button>
           </div>
+        </div>
+        <div class="field-group"><label>When?</label>
+          <div class="seg" id="whenseg-${mode}">
+            <button type="button" data-v="asap" aria-pressed="true">As Soon As Possible</button>
+            <button type="button" data-v="schedule">Schedule for Later</button>
+          </div>
+          <div id="schedulegroup-${mode}" hidden style="display:flex; gap:8px; margin-top:8px;">
+            <input type="date" id="scheduledate-${mode}" style="flex:1;">
+            <input type="time" id="scheduletime-${mode}" style="flex:1;">
+          </div>
+          <div id="scheduleinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
         </div>
         <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
           <label>Company</label><input id="hp-${mode}" name="company" tabindex="-1" autocomplete="off">
@@ -717,6 +743,61 @@ function renderOrderLayout(mode){
     wireDeliveryLookup(addrInput, addrInfo, (result) => {
       orderCtx.deliveryInfo = result;
     }, addrCheckBtn);
+  }
+  // Scheduled orders (customer kiosk only -- these elements don't exist
+  // in the POS cart pane). Client-side lead-time/advance-window checks
+  // here are just a fast UX bounce; create_order() re-validates all of
+  // this (plus actual business hours for the chosen date, which this
+  // doesn't check client-side) and is the real authority -- see
+  // supabase/schema.sql.
+  const whenSeg = document.getElementById(`whenseg-${mode}`);
+  const scheduleGroup = document.getElementById(`schedulegroup-${mode}`);
+  const scheduleDateEl = document.getElementById(`scheduledate-${mode}`);
+  const scheduleTimeEl = document.getElementById(`scheduletime-${mode}`);
+  const scheduleInfo = document.getElementById(`scheduleinfo-${mode}`);
+  if (whenSeg && scheduleGroup && scheduleDateEl && scheduleTimeEl && scheduleInfo){
+    const localDateStr = (d) => {
+      const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    };
+    scheduleDateEl.min = localDateStr(new Date());
+    scheduleDateEl.max = localDateStr(new Date(Date.now() + 14*86400000));
+    const updateScheduledFor = () => {
+      if (!scheduleDateEl.value || !scheduleTimeEl.value){
+        orderCtx.scheduledFor = null;
+        scheduleInfo.textContent = 'Pick a date and time.';
+        scheduleInfo.style.color = 'var(--paper-dim)';
+        return;
+      }
+      const ts = new Date(`${scheduleDateEl.value}T${scheduleTimeEl.value}:00`).getTime();
+      if (isNaN(ts)){ orderCtx.scheduledFor = null; return; }
+      if (ts < Date.now() + 30*60*1000){
+        orderCtx.scheduledFor = null;
+        scheduleInfo.textContent = "Needs at least 30 minutes' notice.";
+        scheduleInfo.style.color = 'var(--bad)';
+        return;
+      }
+      if (ts > Date.now() + 14*86400000){
+        orderCtx.scheduledFor = null;
+        scheduleInfo.textContent = 'Up to 14 days in advance only.';
+        scheduleInfo.style.color = 'var(--bad)';
+        return;
+      }
+      orderCtx.scheduledFor = ts;
+      scheduleInfo.textContent = 'The shop will confirm this fits business hours when you submit.';
+      scheduleInfo.style.color = 'var(--paper-dim)';
+    };
+    wireSeg(`whenseg-${mode}`, '_scheduleChoice', (v) => {
+      scheduleGroup.hidden = (v !== 'schedule');
+      if (v === 'asap'){
+        orderCtx.scheduledFor = null;
+        scheduleInfo.textContent = '';
+      } else {
+        updateScheduledFor();
+      }
+    });
+    scheduleDateEl.addEventListener('change', updateScheduledFor);
+    scheduleTimeEl.addEventListener('change', updateScheduledFor);
   }
   const promoApplyBtn = document.getElementById(`promoapply-${mode}`);
   if (promoApplyBtn) promoApplyBtn.addEventListener('click', () => applyPromoCode(mode));

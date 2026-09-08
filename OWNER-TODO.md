@@ -28,11 +28,23 @@ standard choice for a business this size — flat ~2.9% + 30c, no
 monthly fee), and whether delivery orders should require payment
 upfront or keep today's pay-on-arrival model.
 
-**What you need once decided:** a Stripe account (or your chosen
-processor's). The frontend steps are already written out in
-`order/payments.js`.
+**What's already built and waiting on this (2026-09-08):** the whole
+server-side scaffold — `supabase/functions/create-payment-intent/` and
+`supabase/functions/stripe-webhook/` (the amount always comes from the
+order already in the database, never the client; the webhook, not the
+browser, is the only thing that ever marks an order actually paid) —
+plus the client-side glue in `order/payments.js`
+(`paymentsConfigured()`, `payForOrderNow()`), already loaded on the
+kiosk page and completely inert until you set a real key. Deliberately
+not built yet: the actual "Pay Now" checkout button/UI — there's no way
+to test that without real Stripe keys, and it needs your call on the
+upfront-vs-pay-on-arrival question above anyway.
 
-Full detail: `ROADMAP.md` → "1. Real card payments."
+**What you need once decided:** a Stripe account, then follow the "HOW
+TO FINISH THIS" steps at the top of `order/payments.js` and both Edge
+Function files above (in order — they reference each other).
+
+Full detail: `ROADMAP.md` → "Phase 8" entry, 2026-09-08.
 
 ## [ ] Set up receipt printing
 

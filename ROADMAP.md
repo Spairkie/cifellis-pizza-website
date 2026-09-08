@@ -59,9 +59,162 @@ Features)**
 - [x] Phase 4 (Operational Monitoring) — owner gave the go-ahead
   2026-09-08. Staff Hub > System Health screen, admin-only. See "Phase
   4: Operational Monitoring shipped" below.
-- [ ] Phase 8 (Growth Features) — in progress. Real payments explicitly
-  deferred by the owner (scaffold only, no live processor) until they
-  decide to turn it on.
+- [x] Phase 8 (Growth Features) — shipped 2026-09-08. Order Again was
+  already done (Part 1's reorder fix). Real payments deliberately
+  scaffolded only, no live processor — the owner will decide when to
+  turn it on; see OWNER-TODO.md for exactly what's left. See "Phase 8:
+  Growth Features shipped" below for everything else.
+
+## Phase 8: Growth Features shipped, 2026-09-08 (Claude Code)
+
+Built on top of Part 1's server-authoritative order model, since every
+one of these needed it to actually be safe: a favorite, a scheduled
+order, and a reorder all resolve through the same `ref`-based pricing
+create_order() already validates -- none of them could exist safely
+before that landed.
+
+**Order Again** was already done -- see Part 1's reorder fix above, no
+separate work needed here.
+
+**Favorites ("My Usual")**: `customer_favorites` (own-row RLS) saves a
+canonical item `ref` and a label, never a price. "Add to Cart" resolves
+it through the exact same `resolveRefToLine()` reorder uses, so a
+favorited item that's since been removed, marked sold out, or had a
+topping discontinued gets skipped with a toast the same way a stale
+reorder line does. Saved from an order's own history (Account panel)
+via a per-item "save as favorite" link.
+
+**Marketing Opt-In**: a real, separate consent record on `customers`
+(`marketingOptIn`/`Channel`/`At`/`Source`) -- deliberately distinct from
+the existing `phoneOptIn` on orders, which is transactional ("text me
+when THIS order's ready") and needs no separate consent model. Default
+off, stamped only the moment it actually turns on (not re-stamped every
+time other preferences are saved). Nothing sends to it yet -- same
+"not configured" state as SMS order notifications until a real provider
+is wired up.
+
+**Loyalty**: configurable, server-controlled, disabled by default (per
+the review's own requirement -- the owner hasn't chosen point/reward
+rules yet, see OWNER-TODO.md). `loyalty_config` (admin-editable in
+Store Settings: enabled toggle, points-per-dollar, reward threshold,
+reward description) and `loyalty_points` (one row per customer, written
+*only* by `award_loyalty_points()`, a database trigger that fires when
+an order's status becomes 'completed' -- never by a direct client
+write, so a balance can only ever come from a real completed order
+while the program is enabled). Customer-facing balance display in the
+Account panel stays completely invisible whenever the program is off.
+
+**Scheduled Orders**: `orders.scheduledFor` (null = ASAP, today's
+behavior, completely unchanged) validated in `create_order()` against a
+minimum 30-minute lead time, a 14-day advance-booking window, and real
+business hours for that date via `hours_for_date()` (see Structured
+Hours below) -- a request outside any of those is rejected with a
+specific reason, not a generic error. Kitchen Board hides a scheduled
+order from the live queue (and doesn't ring the new-order chime for it)
+until 45 minutes out, showing it in a read-only "Upcoming Scheduled
+Orders" list instead; it automatically joins the live queue once that
+window is reached, re-evaluated every 30s (not just on the next
+Realtime event, which time passing alone would never trigger). Kiosk
+checkout UI: an "ASAP / Schedule for Later" toggle revealing a date+
+time picker, client-side bounds for fast UX feedback, server-side
+validation as the real authority.
+
+**Structured Holiday / Special Hours**: `store_hours` (regular weekly
+hours, admin-editable in Store Settings) and `store_hours_overrides`
+(dated closures/special hours, add/remove UI in the same screen) are
+the real structured data Scheduled Orders validates against --
+upgrading the old `hoursOverrideActive`/`hoursOverrideNote` pair on
+`store_settings`, which is unchanged and still just the banner trigger
+on the homepage's static hours table (not replaced -- a full dynamic
+rebuild of that table felt like more risk than this needed). Seeded
+from the homepage's actual current hours (Sun-Wed 11-9, Thu-Sat 11-10).
+`hours_for_date()` is the one function everything reads through -- an
+override always wins over that date's regular hours, field by field.
+
+**Catering / Large Orders**: a new public inquiry page
+(`order/catering.html`, linked from the homepage) with the same
+honeypot + minimum-time-on-page anti-bot pairing every other public
+form in this project already has. Submits to `catering_inquiries` --
+deliberately its own table, never `orders`, so an inquiry can never
+land in the kitchen queue by accident. New admin-only Staff Hub screen
+(Catering Inquiries) with a status workflow (new/contacted/quoted/
+confirmed/declined); confirming a real booking still means staff ring
+it up through POS once terms are agreed, same as any phone order.
+
+**Idempotency**: every `create_order()` call now carries a client-
+generated key (regenerated on every fresh "New Order," `orderCtx.
+idempotencyKey`). A retried request with the same key -- a slow
+connection prompting a second click, or later, a retried payment
+webhook -- returns the original order's result instead of creating a
+duplicate; a `unique_violation` race between two near-simultaneous
+identical requests is caught and resolved the same way, so the caller
+always gets a consistent successful result rather than an error or a
+double order. This is also exactly the mechanism real online payments
+need to avoid double-charging on a retried webhook -- built now,
+because Scheduled Orders' double-submit risk (a customer waiting on a
+future-dated confirmation, more likely to double-tap) needed it
+immediately anyway.
+
+**Online Payments — scaffold only, no live processor** (explicit
+owner instruction: build the structure now, decide when to actually
+turn it on later). Two Supabase Edge Functions:
+`create-payment-intent` (computes the charge amount itself from the
+order already in the database, never trusts a client-supplied amount --
+same principle as `create_order()`'s own pricing) and `stripe-webhook`
+(the *only* thing that ever marks an order `paymentStatus: 'paid'` --
+not the browser, not create-payment-intent, only a signature-verified,
+server-to-server event from Stripe itself). `order/payments.js` has the
+real client-side glue (`paymentsConfigured()`, `payForOrderNow()`) and
+is now actually loaded on the kiosk page (it wasn't wired into any
+`<script>` tag before), completely inert until a real key is set. Pay-
+in-person stays the only working path until then, unchanged. No "Pay
+Now" UI yet -- deliberately not built without real Stripe keys to test
+it against; see OWNER-TODO.md for the exact remaining steps.
+
+**Two real bugs caught and fixed during this pass, both from the same
+root cause** -- the Firestore-shaped adapter's `.doc(id)` pattern
+(`order/db-supabase.js`) assumes the table's primary key column is
+literally named `id`, same as the existing `promo_codes` surrogate-key
+precedent already documented in `supabase/schema.sql`. `store_hours`/
+`store_hours_overrides` briefly shipped with `dayOfWeek`/`date` as the
+real column names instead (caught immediately via a genuine "column
+does not exist" REST error while testing the admin hours UI, fixed by
+renaming both to `id` with an in-place migration); `loyalty_points`
+hit the same class of bug but was fixed differently -- rather than add
+a redundant surrogate `id` next to its real key (`customerId`), the
+lookup was rewritten to use the adapter's `.where()` method instead,
+since `customerId` genuinely is the natural key there. Also caught,
+separately: `loadAndRenderHours()` (the Store Settings hours editor)
+appended a fresh container on every Save/Add/Remove instead of reusing
+the existing one, leaving stale duplicate-ID elements in the DOM that
+`getElementById` calls would silently keep finding instead of the
+freshly rendered content -- the "Add Override" list simply never
+appeared to update after adding one, even though the row was really
+being saved. All three caught by testing through the actual UI, not
+just the underlying queries.
+
+**Tested against production throughout, not just at the end**: every
+SQL piece (idempotency dedup + race handling, scheduling's lead-time/
+advance-window/hours rejections with `hours_for_date()` overrides,
+loyalty's disabled-by-default/enabled/no-double-award behavior via a
+real trigger, favorites' and catering's RLS scoping) verified directly
+against Postgres before any UI existed to wrap it. Then full real
+end-to-end passes through the actual UI for every feature: a real
+scheduled kiosk order confirmed correctly excluded from Kitchen
+Board's live queue and shown in Upcoming instead; the Store Settings
+hours editor's weekly-save/add-override/remove-override cycle (where
+the container-duplication bug above was caught); sign-up → order →
+save-favorite → add-favorite-to-cart, plus the marketing opt-in
+checkbox persisting correctly; the admin Loyalty toggle actually
+enabling a customer's balance display (where the `loyalty_points`
+column bug above was caught, then independently re-verified via a
+direct client call after the flaky browser sign-in -- itself hit by
+this session's own cumulative test-account rate limiting, not a
+product bug -- made a clean rerun impractical); and the full catering
+flow, public form through to a staff status change persisting in the
+database. All test data deleted after every pass; confirmed the
+database back to a clean, all-default state at the end (verified
+directly: zero rows in every new table, loyalty back to disabled).
 
 ## Phase 4: Operational Monitoring shipped, 2026-09-08 (Claude Code)
 

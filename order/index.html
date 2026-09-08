@@ -375,6 +375,13 @@
 <script src="db-supabase.js"></script>
 <script src="geo.js"></script>
 <script src="ordering-core.js"></script>
+<!-- Inert until window.STRIPE_PUBLISHABLE_KEY is actually set (see
+     order/payments.js) -- safe to load unconditionally, it just defines
+     functions and paymentsConfigured() stays false. Add
+     <script src="https://js.stripe.com/v3/"></script> here too once
+     that key is set -- not loaded eagerly, since there's no reason to
+     pull in Stripe.js on every page view before it's actually needed. -->
+<script src="payments.js"></script>
 
 <script>
 /* Store-wide operational settings (store_settings table): whether the
@@ -749,6 +756,8 @@ async function submitCustomerOrder(){
     deliveryEtaMins: (orderCtx.orderType === 'delivery' && di && di.minutes != null) ? di.minutes : null,
     phoneOptIn,
     promoCode: orderCtx.promoCode || null,
+    idempotencyKey: orderCtx.idempotencyKey,
+    scheduledFor: orderCtx.scheduledFor || null,
   };
   const db = App.db || await getDb();
   if (!db){
@@ -776,7 +785,7 @@ async function submitCustomerOrder(){
     items: result.items, subtotal: result.subtotal, tax: result.tax, tip: result.tip, total: result.total,
     discountAmount: result.discountAmount, promoCode: result.promoCode,
     deliveryMiles: rpcPayload.deliveryMiles, deliveryEtaMins: rpcPayload.deliveryEtaMins,
-    createdAt: result.createdAt,
+    createdAt: result.createdAt, scheduledFor: result.scheduledFor,
   };
   showOrderConfirmation(result.ticket, confirmedOrder);
 }
@@ -815,6 +824,7 @@ function buildReceiptHTML(ticket, order){
   <div><strong>Ticket:</strong> ${escapeHtml(ticket)}</div>
   <div class="meta">${new Date(order.createdAt || Date.now()).toLocaleString()}</div>
   <div class="meta">${escapeHtml(order.orderType || '')}${order.orderType === 'delivery' ? ' &middot; ' + escapeHtml(order.address || '') : ''}</div>
+  ${order.scheduledFor ? `<div class="meta"><strong>Scheduled:</strong> ${escapeHtml(new Date(order.scheduledFor).toLocaleString())}</div>` : ''}
   ${deliveryLine}
   <div class="meta">${escapeHtml(order.customerName || '')}${order.phone ? ' &middot; ' + escapeHtml(order.phone) : ''}</div>
   <hr>
@@ -860,6 +870,7 @@ function showOrderConfirmation(ticket, order){
         <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);">Order Placed</div>
         <div class="confirm-ticket">${escapeHtml(ticket)}</div>
         <div style="font-size:15px; color:var(--paper-dim); margin-top:6px;">Total due: <span class="mono" style="color:var(--paper); font-weight:700;">${money(order.total)}</span></div>
+        ${order.scheduledFor ? `<div style="font-size:13.5px; color:var(--gold); margin-top:4px;">Scheduled for ${escapeHtml(new Date(order.scheduledFor).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }))}</div>` : ''}
         ${deliveryHtml}
         <div style="text-align:left; margin-top:18px; border-top:1px solid var(--line-on-ink); padding-top:14px;">
           ${itemsHtml}
@@ -1057,8 +1068,17 @@ async function showAccountPanel(){
         <input type="checkbox" id="pref-smsopt" style="width:auto;" ${prefs.smsOptIn ? 'checked' : ''}>
         <label for="pref-smsopt" style="margin:0; text-transform:none; font-size:13px; letter-spacing:normal;">Text me order updates by default</label>
       </div>
+      <div class="field-group" style="display:flex; align-items:center; gap:8px; margin-bottom:0; margin-top:8px;">
+        <input type="checkbox" id="pref-marketingopt" style="width:auto;" ${CustomerAccount.profile && CustomerAccount.profile.marketingOptIn ? 'checked' : ''}>
+        <label for="pref-marketingopt" style="margin:0; text-transform:none; font-size:13px; letter-spacing:normal;">Send me promos and news (separate from order updates -- we don't send anything to this yet)</label>
+      </div>
       <button class="btn btn-outline" id="pref-save" style="margin-top:12px;" type="button">Save Preferences</button>
     </div>
+
+    <div id="acc-loyalty"></div>
+
+    <h3 style="font-size:16px; margin-bottom:10px;">My Favorites</h3>
+    <div id="acc-favorites" style="margin-bottom:22px;">Loading...</div>
 
     <h3 style="font-size:16px; margin-bottom:10px;">Order History</h3>
     <div id="acc-orders">Loading...</div>
@@ -1079,10 +1099,25 @@ async function showAccountPanel(){
       notes: document.getElementById('pref-notes').value.trim(),
       smsOptIn: document.getElementById('pref-smsopt').checked,
     };
-    await db.collection('customers').doc(CustomerAccount.user.id).update({ preferences: newPrefs });
-    if (CustomerAccount.profile) CustomerAccount.profile.preferences = newPrefs;
+    const marketingOptIn = document.getElementById('pref-marketingopt').checked;
+    const wasOptedIn = !!(CustomerAccount.profile && CustomerAccount.profile.marketingOptIn);
+    const patch = { preferences: newPrefs, marketingOptIn };
+    // Only stamp a fresh consent timestamp/source the moment it actually
+    // turns on -- re-saving other preferences with the box already
+    // checked shouldn't keep bumping "when they opted in".
+    if (marketingOptIn && !wasOptedIn){
+      patch.marketingOptInAt = Date.now();
+      patch.marketingOptInSource = 'account_preferences';
+    }
+    await db.collection('customers').doc(CustomerAccount.user.id).update(patch);
+    if (CustomerAccount.profile){
+      CustomerAccount.profile.preferences = newPrefs;
+      CustomerAccount.profile.marketingOptIn = marketingOptIn;
+    }
     showToast('Preferences saved');
   });
+  loadAndRenderFavorites(db);
+  loadAndRenderLoyalty(db);
   const ordersEl = document.getElementById('acc-orders');
   if (!db){ ordersEl.textContent = 'Not connected to the database.'; return; }
   try{
@@ -1092,9 +1127,24 @@ async function showAccountPanel(){
         <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; margin-bottom:8px;">
           <div class="row-between"><span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span><span class="mono">${money(o.total||0)}</span></div>
           <div style="font-size:12px; color:var(--paper-dim); margin-top:4px;">${new Date(o.createdAt||0).toLocaleDateString()} &middot; ${escapeHtml(o.orderType||'')} &middot; ${escapeHtml(o.status||'')}</div>
-          ${(o.items||[]).length ? `<div style="font-size:11.5px; color:var(--paper-dim); margin-top:4px;">${o.items.map(it=>`${it.qty}&times; ${escapeHtml(it.name)}`).join(', ')}</div>` : ''}
-          <button class="btn-ghost" style="padding:4px 0; font-size:12px;" data-reorder='${JSON.stringify(o.items||[]).replace(/'/g,'&#39;')}'>Reorder these items</button>
+          ${(o.items||[]).length ? `<div style="font-size:11.5px; color:var(--paper-dim); margin-top:4px; display:flex; flex-direction:column; gap:2px;">${o.items.map(it=>`<span>${it.qty}&times; ${escapeHtml(it.name)}${it.ref ? ` <a href="#" data-favorite='${JSON.stringify({label:it.name+(it.size?' ('+it.size+')':''), ref:it.ref}).replace(/'/g,'&#39;')}' style="color:var(--gold); text-decoration:underline; margin-left:4px;">save as favorite</a>` : ''}</span>`).join('')}</div>` : ''}
+          <button class="btn-ghost" style="padding:4px 0; font-size:12px; margin-top:4px;" data-reorder='${JSON.stringify(o.items||[]).replace(/'/g,'&#39;')}'>Reorder these items</button>
         </div>`).join('') : '<div class="cart-empty">No past orders on file for this account yet.</div>';
+      ordersEl.querySelectorAll('[data-favorite]').forEach(link => {
+        link.addEventListener('click', async (e) => {
+          e.preventDefault();
+          let fav = null;
+          try{ fav = JSON.parse(link.getAttribute('data-favorite')); }catch(err){}
+          if (!fav || !db || !CustomerAccount.user) return;
+          try{
+            await db.collection('customer_favorites').add({ customerId: CustomerAccount.user.id, label: fav.label, ref: fav.ref });
+            showToast(fav.label + ' saved to favorites');
+            loadAndRenderFavorites(db);
+          }catch(err){
+            showToast('Could not save favorite: ' + (err && err.message ? err.message : 'unknown error'));
+          }
+        });
+      });
       ordersEl.querySelectorAll('[data-reorder]').forEach(btn => {
         btn.addEventListener('click', () => {
           let items = [];
@@ -1135,6 +1185,83 @@ async function showAccountPanel(){
   }catch(e){
     ordersEl.textContent = 'Could not load order history.';
   }
+}
+
+/* Favorites ("My Usual") -- saves a canonical item reference, never a
+   price (see customer_favorites in supabase/schema.sql), so "Add to
+   Cart" always re-resolves against today's actual menu/prices via the
+   same resolveRefToLine() reorder already uses -- a favorited item
+   that's since been removed, marked sold out, or changed toppings gets
+   skipped with a toast the same way a stale reorder line does. */
+/* Loyalty balance (Phase 8) -- stays invisible whenever the program is
+   disabled (loyalty_config.enabled, admin-controlled in Staff Hub >
+   Store Settings), which is the default until the owner picks real
+   rules. Points themselves only ever come from award_loyalty_points()
+   (a database trigger on completed orders) -- nothing client-side ever
+   writes a balance. */
+async function loadAndRenderLoyalty(db){
+  const el = document.getElementById('acc-loyalty');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!db || !CustomerAccount.user) return;
+  try{
+    const configDoc = await db.collection('loyalty_config').doc(1).get();
+    const config = configDoc.data();
+    if (!config || !config.enabled) return;
+    // loyalty_points' real primary key is customerId, not id, so this
+    // uses .where() (not .doc().get(), which assumes a column literally
+    // named `id`) -- see order/db-supabase.js.
+    const pointsSnap = await db.collection('loyalty_points').where('customerId', '==', CustomerAccount.user.id).get();
+    const pointsRow = pointsSnap.docs && pointsSnap.docs[0] && pointsSnap.docs[0].data();
+    const points = (pointsRow && pointsRow.points) || 0;
+    el.innerHTML = `<div class="me-card" style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:14px; margin-bottom:22px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--gold);">Loyalty Points</div>
+      <div style="font-size:28px; font-weight:700; margin-top:4px;">${points}</div>
+      <div style="font-size:12.5px; color:var(--paper-dim); margin-top:4px;">${points >= config.rewardThresholdPoints ? `You've earned a reward: ${escapeHtml(config.rewardDescription)} -- mention it at pickup/delivery.` : `${config.rewardThresholdPoints - points} more to earn: ${escapeHtml(config.rewardDescription)}`}</div>
+    </div>`;
+  }catch(e){ /* loyalty display is a nice-to-have -- just don't show it if this fails */ }
+}
+
+async function loadAndRenderFavorites(db){
+  const el = document.getElementById('acc-favorites');
+  if (!el) return;
+  if (!db || !CustomerAccount.user){ el.textContent = ''; return; }
+  let favorites = [];
+  try{
+    const snap = await db.collection('customer_favorites').orderBy('createdAt','desc').get();
+    favorites = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data()));
+  }catch(e){
+    el.textContent = 'Could not load favorites.';
+    return;
+  }
+  el.innerHTML = favorites.length ? favorites.map(f => `
+    <div class="row-between" style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:10px 14px; margin-bottom:6px;">
+      <span style="font-size:13.5px;">${escapeHtml(f.label)}</span>
+      <span style="display:flex; gap:10px; align-items:center;">
+        <button class="btn-ghost" style="padding:2px 0; font-size:12px;" data-fav-add="${escapeHtml(f.id)}">Add to Cart</button>
+        <button class="btn-ghost" style="padding:2px 0; font-size:12px; color:var(--bad);" data-fav-remove="${escapeHtml(f.id)}">Remove</button>
+      </span>
+    </div>`).join('') : '<div class="cart-empty">No favorites saved yet -- save one from an order below.</div>';
+  favorites.forEach(f => {
+    const addBtn = el.querySelector(`[data-fav-add="${f.id}"]`);
+    if (addBtn) addBtn.addEventListener('click', () => {
+      const resolved = resolveRefToLine(f.ref);
+      if (!resolved){ showToast(`Sorry, "${f.label}" isn't available anymore -- the menu has changed since you saved it.`); return; }
+      addLine({ name: resolved.name, size: resolved.size, unitPrice: resolved.unitPrice, qty: 1, notes: resolved.notes, ref: resolved.ref });
+      document.getElementById('view-account').hidden = true;
+      document.getElementById('view-customer').hidden = false;
+      showToast(resolved.name + ' added to your cart');
+    });
+    const removeBtn = el.querySelector(`[data-fav-remove="${f.id}"]`);
+    if (removeBtn) removeBtn.addEventListener('click', async () => {
+      try{
+        await db.collection('customer_favorites').doc(f.id).delete();
+        loadAndRenderFavorites(db);
+      }catch(e){
+        showToast('Could not remove that favorite: ' + (e && e.message ? e.message : 'unknown error'));
+      }
+    });
+  });
 }
 </script>
 

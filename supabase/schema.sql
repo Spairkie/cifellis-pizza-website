@@ -1106,10 +1106,64 @@ declare
   v_today_special jsonb;
   v_order_id uuid;
   v_customer_id uuid := auth.uid();
+  v_idempotency_key text;
+  v_existing record;
+  v_scheduled_for bigint;
+  v_scheduled_date date;
+  v_scheduled_time time;
+  v_hours record;
+  v_now_ms bigint := (extract(epoch from now()) * 1000)::bigint;
 begin
+  -- Idempotency: if this exact request already went through (same key),
+  -- return that result instead of creating a second order. Checked
+  -- first, before anything else -- a retried request for an order that
+  -- already succeeded should succeed again with the same result, even
+  -- if the store got paused or the menu changed in between.
+  v_idempotency_key := nullif(trim(p_order->>'idempotencyKey'), '');
+  if v_idempotency_key is not null then
+    select id, ticket, subtotal, tax, tip, total, "discountAmount", "promoCode", items, "createdAt"
+      into v_existing
+      from public.orders where "idempotencyKey" = v_idempotency_key;
+    if found then
+      return jsonb_build_object(
+        'ticket', v_existing.ticket, 'orderId', v_existing.id, 'subtotal', v_existing.subtotal,
+        'tax', v_existing.tax, 'tip', v_existing.tip, 'total', v_existing.total,
+        'discountAmount', v_existing."discountAmount", 'discountLabel', coalesce(v_existing."promoCode", ''),
+        'promoCode', v_existing."promoCode", 'items', v_existing.items, 'createdAt', v_existing."createdAt",
+        'idempotentReplay', true
+      );
+    end if;
+  end if;
+
   select "ordersPaused", "pauseMessage" into v_paused, v_pause_message from public.store_settings where id = 1;
   if coalesce(v_paused, false) then
     raise exception '%', coalesce(v_pause_message, 'Online ordering is currently paused. Please call the shop to place your order.');
+  end if;
+
+  -- Scheduled orders: null scheduledFor is today's ASAP behavior,
+  -- completely unchanged. A future time must clear a minimum lead time,
+  -- fall within a real advance-booking window, and land inside actual
+  -- business hours for that date (hours_for_date() -- regular weekly
+  -- hours unless a dated override applies).
+  v_scheduled_for := nullif(p_order->>'scheduledFor', '')::bigint;
+  if v_scheduled_for is not null then
+    if v_scheduled_for < v_now_ms + 30*60*1000 then
+      raise exception 'Scheduled orders need at least 30 minutes'' notice.';
+    end if;
+    if v_scheduled_for > v_now_ms + 14*86400000 then
+      raise exception 'Scheduled orders can only be placed up to 14 days in advance.';
+    end if;
+    v_scheduled_date := (to_timestamp(v_scheduled_for / 1000.0) at time zone 'America/New_York')::date;
+    v_scheduled_time := (to_timestamp(v_scheduled_for / 1000.0) at time zone 'America/New_York')::time;
+    select * into v_hours from public.hours_for_date(v_scheduled_date);
+    if coalesce(v_hours.closed, false) then
+      raise exception 'The shop is closed on that date -- please pick a different time.';
+    end if;
+    if v_hours."openTime" is not null and v_hours."closeTime" is not null
+       and (v_scheduled_time < v_hours."openTime" or v_scheduled_time > v_hours."closeTime") then
+      raise exception 'That time is outside business hours for that date (% - %).',
+        to_char(v_hours."openTime", 'HH12:MI AM'), to_char(v_hours."closeTime", 'HH12:MI AM');
+    end if;
   end if;
 
   select data into v_menu from public.menu_config where id = 1;
@@ -1263,21 +1317,45 @@ begin
   v_total := round((v_subtotal - v_discount) + v_tax + v_tip, 2);
   v_ticket := 'T' || lpad(nextval('public.orders_ticket_seq')::text, 6, '0');
 
-  insert into public.orders (
-    ticket, source, "customerName", phone, address, notes, "orderType", "payMethod",
-    items, subtotal, tax, tip, total, "phoneOptIn", "deliveryMiles", "deliveryEtaMins",
-    "promoCode", "discountAmount", "customerId"
-  ) values (
-    v_ticket, 'customer', v_name, v_phone,
-    case when v_order_type = 'delivery' then v_address else '' end,
-    v_notes, v_order_type, v_pay_method, v_items, v_subtotal, v_tax, v_tip, v_total,
-    v_phone_opt_in, v_delivery_miles, v_delivery_eta_mins, v_promo_code, v_discount, v_customer_id
-  ) returning id into v_order_id;
+  begin
+    insert into public.orders (
+      ticket, source, "customerName", phone, address, notes, "orderType", "payMethod",
+      items, subtotal, tax, tip, total, "phoneOptIn", "deliveryMiles", "deliveryEtaMins",
+      "promoCode", "discountAmount", "customerId", "idempotencyKey", "scheduledFor"
+    ) values (
+      v_ticket, 'customer', v_name, v_phone,
+      case when v_order_type = 'delivery' then v_address else '' end,
+      v_notes, v_order_type, v_pay_method, v_items, v_subtotal, v_tax, v_tip, v_total,
+      v_phone_opt_in, v_delivery_miles, v_delivery_eta_mins, v_promo_code, v_discount, v_customer_id,
+      v_idempotency_key, v_scheduled_for
+    ) returning id into v_order_id;
+  exception when unique_violation then
+    -- Lost a race against another request with the same idempotency
+    -- key (two near-simultaneous submits of the same click). Whichever
+    -- one actually landed is the real order -- return its result rather
+    -- than erroring, which is the whole point of idempotency: the
+    -- caller gets a successful, consistent result either way.
+    if v_idempotency_key is not null then
+      select id, ticket, subtotal, tax, tip, total, "discountAmount", "promoCode", items, "createdAt"
+        into v_existing from public.orders where "idempotencyKey" = v_idempotency_key;
+      if found then
+        return jsonb_build_object(
+          'ticket', v_existing.ticket, 'orderId', v_existing.id, 'subtotal', v_existing.subtotal,
+          'tax', v_existing.tax, 'tip', v_existing.tip, 'total', v_existing.total,
+          'discountAmount', v_existing."discountAmount", 'discountLabel', coalesce(v_existing."promoCode", ''),
+          'promoCode', v_existing."promoCode", 'items', v_existing.items, 'createdAt', v_existing."createdAt",
+          'idempotentReplay', true
+        );
+      end if;
+    end if;
+    raise; -- a ticket collision, not an idempotency-key collision -- a real error, surface it
+  end;
 
   return jsonb_build_object(
     'ticket', v_ticket, 'orderId', v_order_id, 'subtotal', v_subtotal, 'tax', v_tax,
     'tip', v_tip, 'total', v_total, 'discountAmount', v_discount, 'discountLabel', v_discount_label,
-    'promoCode', v_promo_code, 'items', v_items, 'createdAt', (extract(epoch from now())*1000)::bigint
+    'promoCode', v_promo_code, 'items', v_items, 'scheduledFor', v_scheduled_for,
+    'createdAt', (extract(epoch from now())*1000)::bigint
   );
 end;
 $$;
@@ -1755,6 +1833,270 @@ begin
 end;
 $$;
 grant execute on function public.system_health() to authenticated;
+
+-- =========================================================================
+-- Phase 8: Structured hours + scheduled orders + idempotency, 2026-09-08
+-- =========================================================================
+-- Regular weekly hours, moved into the database from where they used to
+-- live: hardcoded HTML in index.html's static hours table. Needed for
+-- real reasons now, not just tidiness -- scheduled orders (below) has
+-- to validate a requested time against real business hours, and a SQL
+-- function can't read a hardcoded HTML table. index.html keeps its own
+-- static table too (unchanged) as the always-available fallback if this
+-- fetch ever fails, same "no hard dependency" pattern as menu_config.
+create table if not exists public.store_hours (
+  -- Named `id` (not `dayOfWeek`) so the Firestore-shaped adapter's
+  -- .doc(id).set() pattern (order/db-supabase.js) works directly here
+  -- -- same reason promo_codes has a surrogate `id` column alongside
+  -- its real business key. 0 = Sunday, matches JS Date.getDay().
+  id smallint primary key check (id between 0 and 6),
+  closed boolean not null default false,
+  "openTime" time,
+  "closeTime" time
+);
+-- Migration: this table briefly shipped with "dayOfWeek" as the primary
+-- key column name before the adapter-compatibility need above was
+-- caught. Renames in place if that's what's already live; a no-op
+-- otherwise (including on a fresh database, where the column is
+-- already named `id` from the create table above).
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_schema='public' and table_name='store_hours' and column_name='dayOfWeek') then
+    alter table public.store_hours rename column "dayOfWeek" to id;
+  end if;
+end $$;
+alter table public.store_hours enable row level security;
+grant select on public.store_hours to anon, authenticated;
+drop policy if exists "store_hours_public_read" on public.store_hours;
+create policy "store_hours_public_read" on public.store_hours
+  for select to anon, authenticated using (true);
+grant insert, update, delete on public.store_hours to authenticated;
+drop policy if exists "store_hours_admin_write" on public.store_hours;
+create policy "store_hours_admin_write" on public.store_hours
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+insert into public.store_hours (id, closed, "openTime", "closeTime") values
+  (0, false, '11:00', '21:00'), (1, false, '11:00', '21:00'),
+  (2, false, '11:00', '21:00'), (3, false, '11:00', '21:00'),
+  (4, false, '11:00', '22:00'), (5, false, '11:00', '22:00'),
+  (6, false, '11:00', '22:00')
+on conflict (id) do nothing;
+
+-- Dated overrides (holidays, one-off early closures, etc.) -- this is
+-- the real upgrade from the old hoursOverrideActive/hoursOverrideNote
+-- pair on store_settings (kept as-is, still just a banner-trigger for
+-- the homepage; this table is the actual structured data behind
+-- ordering availability and scheduling). One row per calendar date.
+create table if not exists public.store_hours_overrides (
+  id date primary key, -- the calendar date this override applies to; named `id` for the same adapter-compatibility reason as store_hours.id above
+  "closedAllDay" boolean not null default false,
+  "openTime" time,
+  "closeTime" time,
+  note text not null default '',
+  "createdAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  "createdBy" uuid references auth.users(id)
+);
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_schema='public' and table_name='store_hours_overrides' and column_name='date') then
+    alter table public.store_hours_overrides rename column date to id;
+  end if;
+end $$;
+alter table public.store_hours_overrides enable row level security;
+grant select on public.store_hours_overrides to anon, authenticated;
+drop policy if exists "store_hours_overrides_public_read" on public.store_hours_overrides;
+create policy "store_hours_overrides_public_read" on public.store_hours_overrides
+  for select to anon, authenticated using (true);
+grant insert, update, delete on public.store_hours_overrides to authenticated;
+drop policy if exists "store_hours_overrides_admin_write" on public.store_hours_overrides;
+create policy "store_hours_overrides_admin_write" on public.store_hours_overrides
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- The one function everything else (create_order's scheduling
+-- validation, and eventually the homepage/kiosk) reads hours through --
+-- an override for a date always wins over that date's regular weekly
+-- hours, field by field.
+create or replace function public.hours_for_date(p_date date)
+returns table(closed boolean, "openTime" time, "closeTime" time, "isOverride" boolean, note text)
+language sql stable
+as $$
+  select
+    coalesce(o."closedAllDay", h.closed, false) as closed,
+    coalesce(o."openTime", h."openTime") as "openTime",
+    coalesce(o."closeTime", h."closeTime") as "closeTime",
+    (o.id is not null) as "isOverride",
+    coalesce(o.note, '') as note
+  from (select p_date as d) x
+  left join public.store_hours h on h.id = extract(dow from p_date)::smallint
+  left join public.store_hours_overrides o on o.id = p_date;
+$$;
+grant execute on function public.hours_for_date(date) to anon, authenticated;
+
+-- Idempotency + scheduling support on orders. idempotencyKey lets a
+-- retried/double-submitted checkout (a slow network prompting a second
+-- click, a retried request) return the SAME order instead of creating
+-- a duplicate -- create_order() checks this first, before anything
+-- else, and returns the original result if it finds a match. Needed
+-- for correctness today (double-submit protection) and is also the
+-- exact mechanism a real payment integration needs later (see
+-- OWNER-TODO.md) to avoid double-charging on a retried webhook.
+-- scheduledFor is null for an ASAP order (all of today's behavior,
+-- unchanged) or a future epoch-ms pickup/delivery time for a scheduled
+-- one, validated in create_order() against hours_for_date() above.
+alter table public.orders add column if not exists "idempotencyKey" text;
+create unique index if not exists orders_idempotency_key_idx on public.orders ("idempotencyKey") where "idempotencyKey" is not null;
+alter table public.orders add column if not exists "scheduledFor" bigint;
+create index if not exists orders_scheduledfor_idx on public.orders ("scheduledFor") where "scheduledFor" is not null;
+
+-- =========================================================================
+-- Phase 8: Favorites, Marketing Opt-In, Loyalty, Catering, 2026-09-08
+-- =========================================================================
+
+-- Favorites ("My Usual"). Saves a canonical item reference (the same
+-- `ref` shape create_order() already validates and reorder already
+-- resolves -- see resolveRefToLine() in order/ordering-core.js), never
+-- a price, so "adding a favorite to cart" always re-prices against the
+-- current menu the exact same way a reorder does. Own-row access only.
+create table if not exists public.customer_favorites (
+  id uuid primary key default gen_random_uuid(),
+  "customerId" uuid not null references auth.users(id) on delete cascade,
+  label text not null,
+  ref jsonb not null,
+  "createdAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+create index if not exists customer_favorites_customer_idx on public.customer_favorites ("customerId");
+alter table public.customer_favorites enable row level security;
+grant select, insert, delete on public.customer_favorites to authenticated;
+drop policy if exists "customer_favorites_own" on public.customer_favorites;
+create policy "customer_favorites_own" on public.customer_favorites
+  for all to authenticated using ("customerId" = auth.uid()) with check ("customerId" = auth.uid());
+
+-- Marketing opt-in, deliberately separate from phoneOptIn on orders
+-- (that one's transactional -- "text me when THIS order's ready" --
+-- and needs no separate consent model). This is promotional consent:
+-- default off, stores channel/timestamp/source the way real opt-in
+-- records should, and nothing sends to it until a real provider is
+-- wired up (same "not configured yet" state as SMS order notifications
+-- -- see OWNER-TODO.md). Lives on customers since it's account-level
+-- preference, not tied to any one order.
+alter table public.customers add column if not exists "marketingOptIn" boolean not null default false;
+alter table public.customers add column if not exists "marketingOptInChannel" text;
+alter table public.customers add column if not exists "marketingOptInAt" bigint;
+alter table public.customers add column if not exists "marketingOptInSource" text;
+
+-- Loyalty: configurable, server-controlled, disabled by default -- the
+-- owner hasn't chosen point/reward rules yet (see OWNER-TODO.md), so
+-- this ships inert. enabled=false means award_loyalty_points() below
+-- is a no-op on every order, and the client-side balance display
+-- (Account panel) only shows up once this reads enabled=true.
+create table if not exists public.loyalty_config (
+  id int primary key default 1,
+  enabled boolean not null default false,
+  "pointsPerDollar" numeric(6,2) not null default 1,
+  "rewardThresholdPoints" int not null default 100,
+  "rewardDescription" text not null default '$5 off your next order',
+  "updatedAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  "updatedBy" uuid references auth.users(id),
+  constraint loyalty_config_singleton check (id = 1)
+);
+alter table public.loyalty_config enable row level security;
+grant select on public.loyalty_config to anon, authenticated;
+drop policy if exists "loyalty_config_public_read" on public.loyalty_config;
+create policy "loyalty_config_public_read" on public.loyalty_config
+  for select to anon, authenticated using (true);
+grant update on public.loyalty_config to authenticated;
+drop policy if exists "loyalty_config_admin_write" on public.loyalty_config;
+create policy "loyalty_config_admin_write" on public.loyalty_config
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+insert into public.loyalty_config (id) values (1) on conflict (id) do nothing;
+
+create table if not exists public.loyalty_points (
+  "customerId" uuid primary key references auth.users(id) on delete cascade,
+  points int not null default 0,
+  "updatedAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+alter table public.loyalty_points enable row level security;
+grant select on public.loyalty_points to authenticated;
+drop policy if exists "loyalty_points_own_select" on public.loyalty_points;
+create policy "loyalty_points_own_select" on public.loyalty_points
+  for select to authenticated using ("customerId" = auth.uid() or (public.is_staff() and not public.is_driver_only()));
+-- No direct insert/update grant to anyone -- only award_loyalty_points()
+-- (security definer, below) ever writes here, so a balance can only
+-- ever come from a real completed order while the program is enabled,
+-- never a client-supplied number.
+
+create or replace function public.award_loyalty_points()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_enabled boolean;
+  v_rate numeric;
+  v_points int;
+begin
+  if new.status = 'completed' and old.status is distinct from 'completed' and new."customerId" is not null then
+    select enabled, "pointsPerDollar" into v_enabled, v_rate from public.loyalty_config where id = 1;
+    if coalesce(v_enabled, false) then
+      v_points := floor(new.total * coalesce(v_rate, 1));
+      if v_points > 0 then
+        insert into public.loyalty_points ("customerId", points, "updatedAt")
+        values (new."customerId", v_points, (extract(epoch from now()) * 1000)::bigint)
+        on conflict ("customerId") do update
+          set points = public.loyalty_points.points + v_points, "updatedAt" = excluded."updatedAt";
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists orders_award_loyalty on public.orders;
+create trigger orders_award_loyalty
+  after update on public.orders
+  for each row execute function public.award_loyalty_points();
+
+-- Catering / large-order inquiries. Deliberately its own table, not the
+-- orders table -- an inquiry is a conversation starter, not a
+-- confirmed, payable order, and must never show up in the kitchen
+-- queue. Public insert (the inquiry form has no login), staff-only
+-- read/update (the review/status workflow lives in Staff Hub), same
+-- driver-scoping as everything else staff-visible (a driver has no
+-- reason to see these).
+create table if not exists public.catering_inquiries (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  phone text not null,
+  email text not null default '',
+  "eventDate" date,
+  "guestCount" int,
+  details text not null default '',
+  status text not null default 'new' check (status in ('new','contacted','quoted','confirmed','declined')),
+  "createdAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  "updatedAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+create index if not exists catering_inquiries_status_idx on public.catering_inquiries (status);
+alter table public.catering_inquiries enable row level security;
+grant insert on public.catering_inquiries to anon, authenticated;
+drop policy if exists "catering_inquiries_insert_public" on public.catering_inquiries;
+create policy "catering_inquiries_insert_public" on public.catering_inquiries
+  for insert to anon, authenticated with check (true);
+grant select, update on public.catering_inquiries to authenticated;
+drop policy if exists "catering_inquiries_staff_select" on public.catering_inquiries;
+create policy "catering_inquiries_staff_select" on public.catering_inquiries
+  for select to authenticated using (public.is_staff() and not public.is_driver_only());
+drop policy if exists "catering_inquiries_staff_update" on public.catering_inquiries;
+create policy "catering_inquiries_staff_update" on public.catering_inquiries
+  for update to authenticated using (public.is_staff() and not public.is_driver_only()) with check (public.is_staff() and not public.is_driver_only());
+
+drop trigger if exists catering_inquiries_set_updated_at on public.catering_inquiries;
+create trigger catering_inquiries_set_updated_at
+  before update on public.catering_inquiries
+  for each row execute function public.set_orders_updated_at();
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'catering_inquiries'
+  ) then
+    alter publication supabase_realtime add table public.catering_inquiries;
+  end if;
+end $$;
 
 insert into public.menu_config (id, data)
 values (1, $json${"TAX_RATE": 0.06625, "PIZZA_SIZES": [{"key": "personal", "label": "Personal Pan (9\")", "base": 8, "perTopping": 1}, {"key": "medium", "label": "Medium (14\")", "base": 14.5, "perTopping": 3}, {"key": "large", "label": "Large (16\")", "base": 15.99, "perTopping": 3.5}, {"key": "sicilian", "label": "Sicilian (16x16\")", "base": 17.99, "perTopping": 4}], "TOPPINGS": ["Pepperoni", "Sausage", "Bacon", "Meatball", "Ham", "Extra Cheese", "Green Pepper", "Onion", "Black Olive", "Mushroom", "Anchovy", "Pineapple", "Spinach", "Broccoli"], "SPECIALTY_PIZZAS": [{"name": "Bacon BBQ Chicken Ranch", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 26}]}, {"name": "Buffalo Chicken", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 26}]}, {"name": "Hawaiian", "sizes": [{"label": "Medium", "price": 20.5}, {"label": "Large", "price": 22.99}, {"label": "Sicilian", "price": 24.99}]}, {"name": "White Pie", "sizes": [{"label": "Medium", "price": 14.5}, {"label": "Large", "price": 15.99}, {"label": "Sicilian", "price": 17.99}]}, {"name": "The Works", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 25.99}, {"label": "Sicilian", "price": 29.99}]}], "CATEGORIES": [{"key": "panzarotti", "label": "Panzarotti", "note": "Deep fried and golden brown", "items": [{"name": "Panzarotti", "price": 8.25, "desc": "Add $0.75 per extra ingredient"}]}, {"key": "stromboli", "label": "Stromboli", "photo": "../images/menu/stromboli.jpg", "placeholder": "../images/menu/stromboli.svg", "items": [{"name": "Cheese Stromboli", "price": 17.99, "desc": "+$2.50 per topping, +$5.00 steak or chicken"}, {"name": "Steak & Onion Stromboli", "price": 24.99}]}, {"key": "calzones", "label": "Calzones", "photo": "../images/menu/calzone.jpg", "placeholder": "../images/menu/calzone.svg", "items": [{"name": "Calzone", "price": 14.99, "desc": "Ham, ricotta, mozzarella and sauce"}]}, {"key": "turnover", "label": "Pizza Turnover", "items": [{"name": "Pizza Turnover", "price": 13.5, "desc": "Mozzarella and pizza sauce, $1 per extra ingredient"}]}, {"key": "wings", "label": "Wings", "note": "All wings come with bread and blue cheese", "photo": "../images/menu/wings.jpg", "placeholder": "../images/menu/wings.svg", "items": [{"name": "Wings", "size": "8 pc", "price": 9.5}, {"name": "Wings", "size": "12 pc", "price": 14.99}, {"name": "Wings", "size": "16 pc", "price": 18.99}, {"name": "Wings", "size": "24 pc", "price": 27.99}]}, {"key": "steaks", "label": "Steaks", "note": "Chicken made with 100% boneless, skinless breast meat", "items": [{"name": "Plain Steak", "price": 11}, {"name": "Cheese Steak", "price": 12}, {"name": "Chicken Cheese Steak", "price": 12}, {"name": "Bacon Cheese Steak", "price": 13}, {"name": "Cheese Steak Sub", "price": 13}, {"name": "Chicken Cheese Steak Sub", "price": 13}, {"name": "Mushroom Cheese Steak", "price": 13}, {"name": "Pepperoni Cheese Steak", "price": 13}, {"name": "Pizza Steak", "price": 13}, {"name": "Buffalo Chicken Cheese Steak", "price": 13}, {"name": "Broccoli Garlic & Oil Chicken Cheese Steak", "price": 13}, {"name": "Cheese Steak Special", "price": 13.75}, {"name": "Cheese Steak Platter", "price": 14.99}]}, {"key": "hoagies", "label": "Hoagies", "note": "All hoagies made with lettuce, tomato, onion and oil", "photo": "../images/menu/hoagie.jpg", "placeholder": "../images/menu/hoagie.svg", "items": [{"name": "Mixed Cheese", "price": 11}, {"name": "American", "price": 11.5}, {"name": "Ham & Cheese", "price": 12}, {"name": "Italian", "price": 12}, {"name": "Turkey & Cheese", "price": 12}, {"name": "Roast Beef, Provolone or American", "price": 13}, {"name": "Fried Fish Hoagie", "price": 13}]}, {"key": "pasta", "label": "Pasta", "note": "Served with soup, salad and garlic bread, spaghetti or ziti", "photo": "../images/menu/pasta.jpg", "placeholder": "../images/menu/pasta.svg", "items": [{"name": "Tomato Sauce", "price": 12.99}, {"name": "Meatballs", "price": 16.99}, {"name": "Sausage", "price": 16.99}]}, {"key": "parm", "label": "Parmigiana Dinners", "note": "Served with salad and garlic bread or a side of spaghetti/ziti", "items": [{"name": "Eggplant Parmigiana", "price": 15.99}, {"name": "Chicken Cutlet Parmigiana", "price": 16.99}]}, {"key": "hotsand", "label": "Hot Sandwiches", "items": [{"name": "Homemade Meatball Sandwich", "price": 11.5}, {"name": "Eggplant Parmigiana", "price": 11}, {"name": "Homemade Meatball Parmigiana", "price": 12.5}, {"name": "Chicken Parmigiana", "price": 12.5}, {"name": "Sausage Parmigiana", "price": 12.5}, {"name": "Hot Roast Beef", "price": 12}, {"name": "Hot Roast Beef with Cheese", "price": 13}, {"name": "Sausage Supreme", "price": 12.99}]}, {"key": "italian", "label": "Italian Specialties", "note": "Served with soup, salad and garlic bread", "items": [{"name": "Baked Ziti", "price": 16.99}, {"name": "Cheese Ravioli", "price": 16.99}, {"name": "Stuffed Shells Parmigiana", "price": 16.99}]}, {"key": "platters", "label": "Platters", "items": [{"name": "BLT Club", "price": 12.99}, {"name": "Chicken Finger Platter", "price": 13.99}, {"name": "Ham & Cheese Club", "price": 13.99}, {"name": "Chicken Club", "price": 14.99}, {"name": "Roast Beef Club", "price": 14.99}, {"name": "Turkey Club", "price": 14.99}, {"name": "Shrimp Platter", "price": 14.99}]}, {"key": "burgers", "label": "Quarter Pound Burgers", "photo": "../images/menu/burger.jpg", "placeholder": "../images/menu/burger.svg", "items": [{"name": "Hamburger", "price": 7}, {"name": "Cheeseburger", "price": 8}, {"name": "Bacon Cheeseburger", "price": 9}, {"name": "Pizza Burger", "price": 9}, {"name": "Cheese Burger Sub", "price": 13}]}, {"key": "sides", "label": "Side Orders", "items": [{"name": "French Fries", "price": 5.75}, {"name": "Onion Rings", "price": 8}, {"name": "Poppers", "size": "Cheddar", "price": 8}, {"name": "Breaded Mushrooms", "price": 8.5}, {"name": "Broccoli Bites", "price": 8.5}, {"name": "Meatballs", "price": 8.5}, {"name": "Mozzarella Sticks", "price": 8.5}, {"name": "Pizza Fries", "size": "Small", "price": 8.5}, {"name": "Pizza Fries", "size": "Large", "price": 10.5}, {"name": "Sausage", "price": 8.5}, {"name": "Fried Tomato", "price": 9}, {"name": "Cheese Fries", "size": "Small", "price": 6.5}, {"name": "Cheese Fries", "size": "Large", "price": 9}, {"name": "Loaded Fries", "size": "Small", "price": 9.5}, {"name": "Loaded Fries", "size": "Large", "price": 10.5}, {"name": "Homemade Cole Slaw", "size": "Pint", "price": 3.5}, {"name": "Homemade Cole Slaw", "size": "Quart", "price": 7}, {"name": "Something Sweet Zeppoli", "size": "Small", "price": 4}, {"name": "Something Sweet Zeppoli", "size": "Large", "price": 8}]}, {"key": "soups", "label": "Soups", "items": [{"name": "Pasta Faggioli", "size": "Small", "price": 4.99}, {"name": "Pasta Faggioli", "size": "Quart", "price": 8.99}, {"name": "Chili", "size": "Small, winter", "price": 6.5}, {"name": "Chili", "size": "Quart, winter", "price": 11.99}]}, {"key": "salads", "label": "Salads", "photo": "../images/menu/salad.jpg", "placeholder": "../images/menu/salad.svg", "items": [{"name": "Tossed Salad", "price": 7.99}, {"name": "Antipasta", "price": 12.99}, {"name": "Chef Salad", "price": 12.99}, {"name": "Chicken Caesar Salad", "price": 12.99}, {"name": "Grilled Chicken Salad", "price": 12.99}]}, {"key": "breakfast", "label": "Breakfast", "items": [{"name": "Grilled Cheese", "price": 7, "desc": "+$1 to add ham or bacon"}, {"name": "Bacon, Lettuce & Tomato", "price": 8}, {"name": "Pepper and Egg", "price": 10}, {"name": "Bacon, Egg and Cheese", "price": 11}, {"name": "Sausage, Egg and Cheese", "price": 11}, {"name": "Pork Roll, Egg and Cheese", "price": 11}]}, {"key": "knots", "label": "Garlic Knots", "items": [{"name": "Garlic Knots", "size": "6 pc", "price": 4.75}]}, {"key": "drinks", "label": "Drinks", "note": "We carry Pepsi products -- names/prices are a starting point, adjust in Staff Hub > Menu Editor to match what you actually stock", "items": [{"name": "Pepsi", "size": "20 oz", "price": 2.75}, {"name": "Diet Pepsi", "size": "20 oz", "price": 2.75}, {"name": "Pepsi Zero Sugar", "size": "20 oz", "price": 2.75}, {"name": "Mountain Dew", "size": "20 oz", "price": 2.75}, {"name": "Starry", "size": "20 oz", "price": 2.75}, {"name": "Mug Root Beer", "size": "20 oz", "price": 2.75}, {"name": "Brisk Iced Tea", "size": "20 oz", "price": 2.75}, {"name": "Aquafina Water", "size": "20 oz", "price": 2.0}, {"name": "Pepsi", "size": "2 Liter", "price": 4.5}, {"name": "Diet Pepsi", "size": "2 Liter", "price": 4.5}, {"name": "Mountain Dew", "size": "2 Liter", "price": 4.5}, {"name": "Starry", "size": "2 Liter", "price": 4.5}]}], "SPECIALS_BY_DAY": {"0": {"name": "4 Original Panzarotti", "price": 25.99}, "1": {"name": "2 Cheese Steaks", "price": 20.99}, "2": {"name": "Large Pizza", "price": 13.99}, "3": {"name": "Sicilian Pie", "price": 15.99}, "4": {"name": "2 Chicken Finger Platters", "price": 22.99}, "5": {"name": "Stromboli + 2 Liter Soda", "price": 18.5}, "6": {"name": "Cheese Steak Platter", "price": 13.99}}}$json$::jsonb)

@@ -434,6 +434,11 @@
           <div class="t">System Health</div>
           <div class="d">Database, realtime, ordering, and integration status at a glance. For managers.</div>
         </button>
+        <button class="role-card" data-role="catering" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11h18M5 11V9a7 7 0 0 1 14 0v2M4 11l1 8h14l1-8"/><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none"/></svg>
+          <div class="t">Catering Inquiries</div>
+          <div class="d">Large-order requests from the public inquiry form -- not real orders yet. For managers.</div>
+        </button>
       </div>
     </div>
   </div>
@@ -465,6 +470,7 @@
     <div class="view" id="view-bugreports" hidden></div>
     <div class="view" id="view-promocodes" hidden></div>
     <div class="view" id="view-systemhealth" hidden></div>
+    <div class="view" id="view-catering" hidden></div>
   </main>
 </div>
 
@@ -718,7 +724,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till', bugreports:'Bug Reports', promocodes:'Promo Codes', drivermap:'Driver Map', systemhealth:'System Health' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till', bugreports:'Bug Reports', promocodes:'Promo Codes', drivermap:'Driver Map', systemhealth:'System Health', catering:'Catering Inquiries' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -758,6 +764,7 @@ function computeRolePermissions(){
     bugreports: isAdmin,
     promocodes: isAdmin,
     systemhealth: isAdmin,
+    catering: isAdmin,
     drivermap: isAdmin || !isDriver,
   };
 }
@@ -947,6 +954,7 @@ function goToRole(role){
   if (role === 'bugreports'){ document.getElementById('view-bugreports').hidden = false; initBugReportsView(); }
   if (role === 'promocodes'){ document.getElementById('view-promocodes').hidden = false; initPromoCodesView(); }
   if (role === 'systemhealth'){ document.getElementById('view-systemhealth').hidden = false; initSystemHealthView(); }
+  if (role === 'catering'){ document.getElementById('view-catering').hidden = false; initCateringView(); }
   if (role === 'drivermap'){ document.getElementById('view-drivermap').hidden = false; initDriverMapView(); }
 }
 
@@ -1285,6 +1293,7 @@ function renderQueueRow(o){
    KITCHEN BOARD (live current-orders view)
    ========================================================================= */
 const KITCHEN_STATUSES = ['new','preparing','ready','out_for_delivery'];
+const SCHEDULED_KITCHEN_WINDOW_MS = 45 * 60 * 1000; // a scheduled order joins the live queue 45 min out
 const KITCHEN_COL_LABELS = { new:'New', preparing:'Preparing', ready:'Ready', out_for_delivery:'Out for Delivery' };
 
 function statusName(s){
@@ -1387,6 +1396,7 @@ function initKitchenView(){
         <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--paper-dim);">Updates live</span>
       </div>
     </div>
+    <div id="upcoming-scheduled-root"></div>
     <div class="kanban" id="kanban-root"></div>`;
   document.getElementById('kitchen-new-badge').addEventListener('click', clearKitchenBadge);
   if (App.db) loadStoreSettings(App.db).then(renderKitchenPauseBadge);
@@ -1412,6 +1422,13 @@ function initKitchenView(){
     }).catch(() => { kitchenActiveDrivers = []; });
   }
   let latestOrders = [];
+  let kitchenEligibleAll = []; // unfiltered by the scheduled-order split -- re-split every tick below, not just on a new snapshot
+  const isFarOutScheduled = (o) => o.scheduledFor && o.scheduledFor > Date.now() + SCHEDULED_KITCHEN_WINDOW_MS;
+  function splitAndRenderKitchen(){
+    latestOrders = kitchenEligibleAll.filter(o => !isFarOutScheduled(o));
+    renderKanban(latestOrders);
+    renderUpcomingScheduled(kitchenEligibleAll.filter(isFarOutScheduled));
+  }
   try{
     const unsub = App.db.collection('orders').orderBy('createdAt','asc').onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
@@ -1419,8 +1436,12 @@ function initKitchenView(){
       // last snapshot -- not on the first fetch (everything already
       // sitting in 'new' when you open Kitchen Board isn't "new"), and
       // not on every status change (advancing a ticket yourself
-      // shouldn't ring the new-order bell).
-      const freshlyNew = docs.filter(o => o.status === 'new' && !kitchenSeenOrderIds.has(o.id));
+      // shouldn't ring the new-order bell). A scheduled order (Phase 8)
+      // that's still well out from its requested time doesn't ring the
+      // chime the moment it's placed the way a real right-now order
+      // does -- see splitAndRenderKitchen above for where it actually
+      // joins the live queue.
+      const freshlyNew = docs.filter(o => o.status === 'new' && !kitchenSeenOrderIds.has(o.id) && !isFarOutScheduled(o));
       docs.forEach(o => kitchenSeenOrderIds.add(o.id));
       if (!kitchenFirstSnapshot && freshlyNew.length){
         playNewOrderChime();
@@ -1428,8 +1449,8 @@ function initKitchenView(){
         updateKitchenBadge();
       }
       kitchenFirstSnapshot = false;
-      latestOrders = docs.filter(o => KITCHEN_STATUSES.includes(o.status));
-      renderKanban(latestOrders);
+      kitchenEligibleAll = docs.filter(o => KITCHEN_STATUSES.includes(o.status));
+      splitAndRenderKitchen();
       // See the same pattern in renderPosQueue -- buildRegularsIndex()
       // is fire-and-forget, so redraw once it actually resolves rather
       // than only showing Regular badges correctly starting on
@@ -1443,8 +1464,33 @@ function initKitchenView(){
     document.getElementById('kanban-root').innerHTML = '<div class="kanban-empty">Could not load live orders.</div>';
     return;
   }
-  const ageInterval = setInterval(() => renderKanban(latestOrders), 30000);
+  // Also re-splits (not just re-renders) on every tick -- a scheduled
+  // order crossing the 45-minute threshold needs to move from
+  // "Upcoming" into the live queue purely because time passed, which a
+  // Realtime subscription (fires only on actual row changes) would
+  // never trigger on its own.
+  const ageInterval = setInterval(splitAndRenderKitchen, 30000);
   App.unsub.push(() => clearInterval(ageInterval));
+}
+
+/* Read-only -- no advance/assign/cancel actions here on purpose. These
+   orders don't need kitchen attention yet; they just shouldn't be a
+   total surprise when they do. Sorted soonest-first. */
+function renderUpcomingScheduled(orders){
+  const root = document.getElementById('upcoming-scheduled-root');
+  if (!root) return;
+  if (!orders.length){ root.innerHTML = ''; return; }
+  const sorted = [...orders].sort((a,b) => (a.scheduledFor||0) - (b.scheduledFor||0));
+  root.innerHTML = `
+    <div class="me-card" style="margin-bottom:18px;">
+      <div class="me-card-title">Upcoming Scheduled Orders (${sorted.length})</div>
+      <div style="font-size:12px; color:var(--paper-dim); margin-bottom:10px;">Not in the queue yet -- each joins it automatically 45 minutes before its time.</div>
+      ${sorted.map(o => `
+        <div class="row-between" style="padding:7px 0; border-bottom:1px solid var(--line-on-ink); font-size:13px;">
+          <span><span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span> ${escapeHtml(o.customerName||'')}</span>
+          <span class="mono" style="color:var(--gold);">${escapeHtml(new Date(o.scheduledFor).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }))}</span>
+        </div>`).join('')}
+    </div>`;
 }
 
 function renderKanban(orders){
@@ -1503,6 +1549,7 @@ function renderTicket(o){
     <div class="top">
       <span class="num">${escapeHtml(o.ticket||'')}</span>
       <span class="type type-${o.orderType==='delivery'?'delivery':'pickup'}">${escapeHtml(o.orderType||'')}</span>
+      ${o.scheduledFor ? `<span class="type" style="background:var(--gold); color:var(--ink);" title="Scheduled order">${escapeHtml(new Date(o.scheduledFor).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }))}</span>` : ''}
     </div>
     <div class="age">${ageMin} min old</div>
     <ul>${(o.items||[]).map(it => `<li><b>${it.qty}&times;</b> ${escapeHtml(lineLabel(it))}${it.notes ? ` &mdash; <i>${escapeHtml(it.notes)}</i>` : ''}</li>`).join('')}</ul>
@@ -2559,6 +2606,215 @@ async function initStoreSettingsView(){
   if (!db){ view.innerHTML = '<p style="color:var(--bad);">Not connected to the database.</p>'; return; }
   await loadStoreSettings(db);
   renderStoreSettings();
+  loadAndRenderHours(db);
+  loadAndRenderLoyalty(db);
+}
+
+/* Loyalty (Phase 8: Growth Features) -- configurable, server-controlled,
+   disabled by default (loyalty_config.enabled starts false) until the
+   owner has actually chosen point/reward rules (see OWNER-TODO.md).
+   Points are only ever awarded by award_loyalty_points() (a database
+   trigger, supabase/schema.sql) when a real order's status becomes
+   'completed' -- nothing here writes a balance directly. */
+async function loadAndRenderLoyalty(db){
+  const root = document.getElementById('view-storesettings');
+  if (!root) return;
+  let container = document.getElementById('loyalty-section-root');
+  if (!container){
+    container = document.createElement('div');
+    container.id = 'loyalty-section-root';
+    root.appendChild(container);
+  }
+  container.innerHTML = '<p style="color:var(--paper-dim);">Loading loyalty settings...</p>';
+  let config = null;
+  try{
+    const doc = await db.collection('loyalty_config').doc(1).get();
+    config = doc.data() || { enabled: false, pointsPerDollar: 1, rewardThresholdPoints: 100, rewardDescription: '$5 off your next order' };
+  }catch(e){
+    container.innerHTML = '<p style="color:var(--bad);">Could not load loyalty settings.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="me-card" style="margin-bottom:20px; max-width:460px;">
+      <div class="me-card-title">Loyalty Program</div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13.5px;">
+        <input type="checkbox" id="loy-enabled" ${config.enabled ? 'checked' : ''}>
+        Enabled -- signed-in customers earn points on completed orders
+      </label>
+      <label style="display:block; margin-top:12px; font-size:13.5px;">Points per dollar spent
+        <input type="number" id="loy-rate" step="0.1" min="0" value="${config.pointsPerDollar}" style="width:100%; margin-top:6px;">
+      </label>
+      <label style="display:block; margin-top:12px; font-size:13.5px;">Points needed for a reward
+        <input type="number" id="loy-threshold" step="1" min="1" value="${config.rewardThresholdPoints}" style="width:100%; margin-top:6px;">
+      </label>
+      <label style="display:block; margin-top:12px; font-size:13.5px;">Reward description (shown to the customer)
+        <input id="loy-reward-desc" value="${escapeHtml(config.rewardDescription)}" style="width:100%; margin-top:6px;">
+      </label>
+      <div style="font-size:12px; color:var(--paper-dim); margin-top:10px;">Points are awarded automatically when an order's status is marked Completed -- no separate redemption flow yet, this is the accrual side only.</div>
+      <button class="btn btn-sauce" id="loy-save" type="button" style="margin-top:14px;">Save Loyalty Settings</button>
+      <span id="loy-save-status" style="margin-left:10px; font-size:13px; color:var(--paper-dim);"></span>
+    </div>`;
+  document.getElementById('loy-save').addEventListener('click', async () => {
+    const statusEl = document.getElementById('loy-save-status');
+    const btn = document.getElementById('loy-save');
+    btn.disabled = true;
+    statusEl.textContent = 'Saving...';
+    try{
+      await db.collection('loyalty_config').doc(1).update({
+        enabled: document.getElementById('loy-enabled').checked,
+        pointsPerDollar: Number(document.getElementById('loy-rate').value) || 0,
+        rewardThresholdPoints: Number(document.getElementById('loy-threshold').value) || 0,
+        rewardDescription: document.getElementById('loy-reward-desc').value.trim(),
+      });
+      statusEl.textContent = 'Saved.';
+    }catch(e){
+      statusEl.textContent = 'Could not save: ' + (e && e.message ? e.message : 'unknown error');
+    }
+    btn.disabled = false;
+  });
+}
+
+const HOURS_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+/* Regular weekly hours + dated overrides (Phase 8: Structured Holiday/
+   Special Hours). Separate from the Holiday/Special Hours card above
+   -- that one is still just a homepage banner toggle (unchanged); this
+   is the real structured data behind ordering availability and
+   Scheduled Orders (see create_order()'s hours validation,
+   supabase/schema.sql). Rendered into its own container appended after
+   the existing Store Settings cards, loaded/saved independently of
+   saveStoreSettings() since store_hours/store_hours_overrides are
+   separate tables. */
+async function loadAndRenderHours(db){
+  const root = document.getElementById('view-storesettings');
+  if (!root) return;
+  // Reuse the existing container if this is a reload (after Save/Add/
+  // Remove) rather than appending a second one -- appending unconditionally
+  // left a stale, never-updated duplicate #hours-section-root sitting
+  // earlier in the DOM every time this ran again, and
+  // getElementById()-based lookups elsewhere in this section would keep
+  // finding that first (stale) copy instead of the freshly rendered one.
+  let container = document.getElementById('hours-section-root');
+  if (!container){
+    container = document.createElement('div');
+    container.id = 'hours-section-root';
+    root.appendChild(container);
+  }
+  container.innerHTML = '<p style="color:var(--paper-dim);">Loading hours...</p>';
+  let weekly = [], overrides = [];
+  try{
+    const weeklySnap = await db.collection('store_hours').get();
+    weekly = (weeklySnap.docs || []).map(d => d.data()).sort((a,b) => a.id - b.id);
+    const overridesSnap = await db.collection('store_hours_overrides').orderBy('id','asc').get();
+    overrides = (overridesSnap.docs || []).map(d => d.data());
+  }catch(e){
+    container.innerHTML = '<p style="color:var(--bad);">Could not load hours.</p>';
+    return;
+  }
+  renderHoursSection(container, weekly, overrides);
+}
+
+function renderHoursSection(container, weekly, overrides){
+  container.innerHTML = `
+    <div class="me-card" style="margin-bottom:20px;">
+      <div class="me-card-title">Regular Weekly Hours</div>
+      <div style="font-size:12px; color:var(--paper-dim); margin-bottom:10px;">Used to validate Scheduled Orders (a customer can't schedule outside these hours) -- the homepage's own hours table is still separate static text, unaffected by this.</div>
+      ${HOURS_DAY_NAMES.map((name, dow) => {
+        const row = weekly.find(w => w.id === dow) || { closed: false, openTime: '11:00', closeTime: '21:00' };
+        return `<div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--line-on-ink); flex-wrap:wrap;">
+          <span style="width:90px; font-size:13.5px;">${name}</span>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12.5px;"><input type="checkbox" class="hrs-closed" data-dow="${dow}" ${row.closed?'checked':''}> Closed</label>
+          <input type="time" class="hrs-open" data-dow="${dow}" value="${(row.openTime||'11:00').slice(0,5)}" style="width:110px;" ${row.closed?'disabled':''}>
+          <span style="font-size:12px; color:var(--paper-dim);">to</span>
+          <input type="time" class="hrs-close" data-dow="${dow}" value="${(row.closeTime||'21:00').slice(0,5)}" style="width:110px;" ${row.closed?'disabled':''}>
+        </div>`;
+      }).join('')}
+      <button class="btn btn-sauce" id="hrs-save-weekly" type="button" style="margin-top:14px;">Save Weekly Hours</button>
+      <span id="hrs-weekly-status" style="margin-left:10px; font-size:13px; color:var(--paper-dim);"></span>
+    </div>
+
+    <div class="me-card" style="margin-bottom:20px;">
+      <div class="me-card-title">Dated Overrides (holidays, one-off closures/hours)</div>
+      <div id="hrs-overrides-list" style="margin-bottom:14px;">
+        ${overrides.length ? overrides.map(o => `
+          <div class="row-between" style="padding:8px 0; border-bottom:1px solid var(--line-on-ink); font-size:13px; flex-wrap:wrap; gap:6px;">
+            <span><span class="mono" style="font-weight:700;">${escapeHtml(o.id)}</span> &mdash; ${o.closedAllDay ? 'Closed' : `${(o.openTime||'').slice(0,5)}–${(o.closeTime||'').slice(0,5)}`}${o.note ? ' &mdash; ' + escapeHtml(o.note) : ''}</span>
+            <button class="btn-ghost" data-remove-override="${escapeHtml(o.id)}" type="button">Remove</button>
+          </div>`).join('') : '<div class="cart-empty">No overrides set.</div>'}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+        <label style="font-size:12.5px;">Date<input type="date" id="hrs-new-date" style="display:block; margin-top:4px;"></label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12.5px;"><input type="checkbox" id="hrs-new-closed"> Closed all day</label>
+        <label style="font-size:12.5px;">Open<input type="time" id="hrs-new-open" value="11:00" style="display:block; margin-top:4px;"></label>
+        <label style="font-size:12.5px;">Close<input type="time" id="hrs-new-close" value="21:00" style="display:block; margin-top:4px;"></label>
+        <label style="font-size:12.5px; flex:1; min-width:160px;">Note<input id="hrs-new-note" placeholder="e.g. Christmas Day" style="display:block; margin-top:4px; width:100%;"></label>
+        <button class="btn btn-outline" id="hrs-add-override" type="button">Add</button>
+      </div>
+      <span id="hrs-override-status" style="display:block; margin-top:8px; font-size:13px; color:var(--paper-dim);"></span>
+    </div>
+  `;
+
+  container.querySelectorAll('.hrs-closed').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const dow = cb.getAttribute('data-dow');
+      container.querySelector(`.hrs-open[data-dow="${dow}"]`).disabled = cb.checked;
+      container.querySelector(`.hrs-close[data-dow="${dow}"]`).disabled = cb.checked;
+    });
+  });
+
+  document.getElementById('hrs-save-weekly').addEventListener('click', async () => {
+    const statusEl = document.getElementById('hrs-weekly-status');
+    const btn = document.getElementById('hrs-save-weekly');
+    btn.disabled = true;
+    statusEl.textContent = 'Saving...';
+    const db = App.db || await getDb();
+    if (!db){ statusEl.textContent = 'Not connected.'; btn.disabled = false; return; }
+    try{
+      for (let dow = 0; dow < 7; dow++){
+        const closed = container.querySelector(`.hrs-closed[data-dow="${dow}"]`).checked;
+        const openTime = container.querySelector(`.hrs-open[data-dow="${dow}"]`).value;
+        const closeTime = container.querySelector(`.hrs-close[data-dow="${dow}"]`).value;
+        await db.collection('store_hours').doc(dow).set({ closed, openTime, closeTime });
+      }
+      statusEl.textContent = 'Saved.';
+    }catch(e){
+      statusEl.textContent = 'Could not save: ' + (e && e.message ? e.message : 'unknown error');
+    }
+    btn.disabled = false;
+  });
+
+  document.getElementById('hrs-add-override').addEventListener('click', async () => {
+    const statusEl = document.getElementById('hrs-override-status');
+    const date = document.getElementById('hrs-new-date').value;
+    if (!date){ statusEl.textContent = 'Pick a date first.'; return; }
+    const closedAllDay = document.getElementById('hrs-new-closed').checked;
+    const openTime = document.getElementById('hrs-new-open').value;
+    const closeTime = document.getElementById('hrs-new-close').value;
+    const note = document.getElementById('hrs-new-note').value.trim();
+    const db = App.db || await getDb();
+    if (!db){ statusEl.textContent = 'Not connected.'; return; }
+    try{
+      await db.collection('store_hours_overrides').doc(date).set({ closedAllDay, openTime, closeTime, note });
+      statusEl.textContent = 'Added.';
+      loadAndRenderHours(db);
+    }catch(e){
+      statusEl.textContent = 'Could not add: ' + (e && e.message ? e.message : 'unknown error');
+    }
+  });
+
+  container.querySelectorAll('[data-remove-override]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const date = btn.getAttribute('data-remove-override');
+      const db = App.db || await getDb();
+      if (!db) return;
+      try{
+        await db.collection('store_hours_overrides').doc(date).delete();
+        loadAndRenderHours(db);
+      }catch(e){
+        showToast('Could not remove that override: ' + (e && e.message ? e.message : 'unknown error'));
+      }
+    });
+  });
 }
 
 function renderStoreSettings(){
@@ -3012,6 +3268,78 @@ async function resolveBugReport(id){
     });
   }catch(e){
     showToast('Could not mark resolved: ' + (e && e.message ? e.message : 'unknown error'));
+  }
+}
+</script>
+
+<script>
+/* =========================================================================
+   CATERING INQUIRIES (Phase 8: Growth Features), admin-only
+   ========================================================================= */
+/* Fed by the public inquiry form (order/catering.html) -- catering_
+   inquiries is deliberately its own table, never orders, so nothing
+   submitted here can ever land in the kitchen queue by accident. Status
+   is a simple manual workflow (new -> contacted -> quoted -> confirmed/
+   declined); nothing here creates a real order automatically -- staff
+   still ring one up through POS once terms are actually agreed. */
+const CATERING_STATUS_LABELS = { new:'New', contacted:'Contacted', quoted:'Quoted', confirmed:'Confirmed', declined:'Declined' };
+
+async function initCateringView(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-catering');
+  view.innerHTML = '<p style="color:var(--paper-dim);">Loading catering inquiries...</p>';
+  const db = App.db || await getDb();
+  if (!db){ view.innerHTML = '<p style="color:var(--bad);">Not connected to the database.</p>'; return; }
+  try{
+    const unsub = db.collection('catering_inquiries').orderBy('createdAt','desc').onSnapshot(snap => {
+      const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data()));
+      renderCateringInquiries(docs);
+    }, () => { view.innerHTML = '<div class="cart-empty">Could not load catering inquiries.</div>'; });
+    App.unsub.push(unsub);
+  }catch(e){
+    view.innerHTML = '<div class="cart-empty">Could not load catering inquiries.</div>';
+  }
+}
+
+function renderCateringInquiries(inquiries){
+  const view = document.getElementById('view-catering');
+  const active = inquiries.filter(i => i.status !== 'confirmed' && i.status !== 'declined');
+  const closed = inquiries.filter(i => i.status === 'confirmed' || i.status === 'declined').slice(0, 20);
+
+  const row = (i) => `
+    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; margin-bottom:8px;">
+      <div class="row-between" style="align-items:flex-start; gap:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:220px;">
+          <div style="font-weight:700; font-size:14px;">${escapeHtml(i.name)} <span class="mono" style="color:var(--paper-dim); font-weight:400; font-size:12px;">${escapeHtml(i.phone)}</span></div>
+          ${i.email ? `<div style="font-size:12px; color:var(--paper-dim);">${escapeHtml(i.email)}</div>` : ''}
+          <div style="font-size:12.5px; margin-top:6px;">${escapeHtml(i.details || '')}</div>
+          <div style="font-size:11.5px; color:var(--paper-dim); margin-top:6px;">${i.eventDate ? 'Event: ' + escapeHtml(i.eventDate) + ' &middot; ' : ''}${i.guestCount ? i.guestCount + ' guests &middot; ' : ''}Received ${new Date(i.createdAt).toLocaleString()}</div>
+        </div>
+        <select data-status-select="${i.id}" style="font-size:12.5px; padding:6px;">
+          ${Object.entries(CATERING_STATUS_LABELS).map(([v,label]) => `<option value="${v}" ${i.status===v?'selected':''}>${label}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+
+  view.innerHTML = `
+    <div class="view-header"><h2>Catering Inquiries</h2></div>
+    <h3 style="font-size:17px; margin-bottom:10px;">Active (${active.length})</h3>
+    ${active.length ? active.map(row).join('') : '<div class="cart-empty">Nothing open right now.</div>'}
+    <h3 style="font-size:17px; margin:24px 0 10px;">Recently Closed</h3>
+    ${closed.length ? closed.map(row).join('') : '<div class="cart-empty">Nothing closed yet.</div>'}`;
+
+  view.querySelectorAll('[data-status-select]').forEach(sel => {
+    sel.addEventListener('change', () => updateCateringStatus(sel.getAttribute('data-status-select'), sel.value));
+  });
+}
+
+async function updateCateringStatus(id, status){
+  const db = App.db || await getDb();
+  if (!db) return;
+  try{
+    await db.collection('catering_inquiries').doc(id).update({ status });
+  }catch(e){
+    showToast('Could not update status: ' + (e && e.message ? e.message : 'unknown error'));
   }
 }
 </script>
