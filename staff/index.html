@@ -2802,7 +2802,13 @@ function subscribeTillReport(shift){
   const root = document.getElementById('till-report-root');
   if (!App.db || !root) return;
   try{
-    const unsub = App.db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
+    // Bounded to this shift's own window -- same reasoning as
+    // Analytics' 8-day bound (see initAnalyticsView): a register shift
+    // is realistically hours, not days, so this was never as exposed to
+    // the 1000-row cap as Analytics' old unbounded lifetime fetch was,
+    // but there's no reason to leave the same pattern sitting here now
+    // that .where() exists for exactly this.
+    const unsub = App.db.collection('orders').orderBy('createdAt','desc').where('createdAt', '>=', shift.openedAt).onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => d.data());
       const report = computeTillReport(docs, shift.openedAt, Date.now());
       const el = document.getElementById('till-report-root');

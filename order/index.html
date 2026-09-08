@@ -621,8 +621,10 @@ async function applyPromoCode(mode){
     orderCtx.promoPhone = phone; // if the phone field changes before submit, the discount no longer applies -- see submitCustomerOrder
     orderCtx.discountAmount = Math.min(discountAmt, subtotal);
     orderCtx.discountLabel = result.label || result.code;
-    statusEl.textContent = `Applied: ${result.label || result.code} (-${money(orderCtx.discountAmount)})`;
+    statusEl.innerHTML = `Applied: ${escapeHtml(result.label || result.code)} (-${money(orderCtx.discountAmount)}) &middot; <a href="#" id="promoremove-${mode}" style="color:inherit; text-decoration:underline;">Remove</a>`;
     statusEl.style.color = 'var(--ok)';
+    const removeLink = document.getElementById(`promoremove-${mode}`);
+    if (removeLink) removeLink.addEventListener('click', (e) => { e.preventDefault(); removeAppliedPromo(mode); });
     codeInput.disabled = true;
     btn.disabled = true;
     btn.textContent = 'Applied';
@@ -632,6 +634,26 @@ async function applyPromoCode(mode){
     statusEl.style.color = 'var(--bad)';
     btn.disabled = false;
   }
+}
+
+/* The one path that needed this and didn't have it: a promo validated
+   fine at "Apply" time but fails for real at final submit (someone else
+   redeemed it in the few minutes since, or an admin deactivated it) --
+   create_order() correctly rejects the whole order, but the promo
+   widget was disabled/locked with no way to clear it and retry without
+   the code short of reloading the page. */
+function removeAppliedPromo(mode){
+  orderCtx.promoCode = null;
+  orderCtx.promoPhone = null;
+  orderCtx.discountAmount = 0;
+  orderCtx.discountLabel = '';
+  const codeInput = document.getElementById(`promocode-${mode}`);
+  const btn = document.getElementById(`promoapply-${mode}`);
+  const statusEl = document.getElementById(`promostatus-${mode}`);
+  if (codeInput){ codeInput.disabled = false; codeInput.value = ''; }
+  if (btn){ btn.disabled = false; btn.textContent = 'Apply'; }
+  if (statusEl){ statusEl.textContent = ''; }
+  renderCart(mode);
 }
 
 const ORDER_MIN_FORM_TIME_MS = 3000; // faster than this and it's not a human filling out the form
@@ -699,17 +721,8 @@ async function submitCustomerOrder(){
   // number was entered at "Apply" time -- if it's changed since, the
   // redemption no longer matches who's actually placing this order.
   if (orderCtx.promoCode && orderCtx.promoPhone !== phone){
-    orderCtx.promoCode = null; orderCtx.discountAmount = 0; orderCtx.discountLabel = '';
-    // Reset just the promo widget in place, not the whole form (a full
-    // renderOrderLayout() here would wipe name/address/notes too).
-    const promoInput = document.getElementById('promocode-customer');
-    const promoBtn = document.getElementById('promoapply-customer');
-    const promoStatus = document.getElementById('promostatus-customer');
-    if (promoInput){ promoInput.disabled = false; promoInput.value = ''; }
-    if (promoBtn){ promoBtn.disabled = false; promoBtn.textContent = 'Apply'; }
-    if (promoStatus){ promoStatus.textContent = ''; }
+    removeAppliedPromo('customer');
     showToast('Phone number changed since applying your promo code — please re-apply it.');
-    renderCart('customer');
     return;
   }
   const submitBtn = document.getElementById('submit-customer');
