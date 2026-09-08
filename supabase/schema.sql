@@ -960,6 +960,539 @@ insert into public.store_settings (id)
 values (1)
 on conflict (id) do nothing;
 
+-- =========================================================================
+-- Server-authoritative checkout, 2026-09-08 (review-finding fixes)
+-- =========================================================================
+-- Everything below closes the gap where a customer order's dollar
+-- amounts (and, before this, its ownership boundary, its ticket number,
+-- and its promo-code redemption) were entirely client-trusted. See the
+-- dated ROADMAP.md entry for the full writeup; this comment covers only
+-- what each piece does and why.
+
+-- Canonical phone form used everywhere a phone number is compared:
+-- digits only, and the US country-code "1" stripped off an 11-digit
+-- number so "(856) 555-0100", "18565550100" and "856-555-0100" are all
+-- the same key for rate limiting, promo one-per-phone enforcement, and
+-- CRM/regulars matching. Immutable (pure function of its input) so it's
+-- safe to use directly in comparisons without an expression index.
+create or replace function public.normalize_phone(p text)
+returns text language sql immutable as $$
+  select case
+    when length(regexp_replace(coalesce(p, ''), '\D', '', 'g')) = 11
+      and left(regexp_replace(coalesce(p, ''), '\D', '', 'g'), 1) = '1'
+    then right(regexp_replace(coalesce(p, ''), '\D', '', 'g'), 10)
+    else regexp_replace(coalesce(p, ''), '\D', '', 'g')
+  end;
+$$;
+
+-- Backfill existing stored phone numbers to their normalized form. Safe
+-- to re-run (idempotent -- normalizing an already-normalized number is a
+-- no-op). Wrapped per-table so one table's constraint conflict (e.g. two
+-- differently-formatted numbers for the same person colliding once
+-- normalized) can't abort the others.
+do $$ begin
+  update public.orders set phone = public.normalize_phone(phone) where phone <> public.normalize_phone(phone);
+exception when others then null;
+end $$;
+do $$ begin
+  update public.customers set phone = public.normalize_phone(phone) where phone <> public.normalize_phone(phone);
+exception when others then null;
+end $$;
+do $$ begin
+  update public.promo_redemptions set phone = public.normalize_phone(phone) where phone <> public.normalize_phone(phone);
+exception when others then null;
+end $$;
+
+-- Rate limiting now normalizes both sides of the comparison, so
+-- "8565550100" and "(856) 555-0100" placed back to back count against
+-- the same limit instead of looking like two different phone numbers.
+create or replace function public.enforce_order_rate_limit()
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
+declare
+  recent_count int;
+begin
+  if new.source = 'customer' then
+    select count(*) into recent_count
+    from public.orders
+    where public.normalize_phone(phone) = public.normalize_phone(new.phone)
+      and source = 'customer'
+      and "createdAt" >= (extract(epoch from now()) * 1000)::bigint - 15 * 60 * 1000;
+    if recent_count >= 5 then
+      raise exception 'Too many orders placed from this phone number recently. Please call the shop directly at (856) 435-8799.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+-- Real account ownership for signed-in customers, instead of an
+-- unverified phone number. A customer's `customers.phone` field is
+-- self-entered at signup -- anyone can type any phone number there, so
+-- using "phone matches" as the boundary for "which orders can this
+-- account read" let one customer read another's full order history
+-- (address, items, notes) just by knowing or guessing their phone
+-- number. New orders placed while signed in now record customerId
+-- directly (set server-side from auth.uid() in create_order() below,
+-- never client-supplied); a signed-in customer can only ever read
+-- orders that carry their own id here. Pre-existing anonymous orders
+-- (customerId null, phone only) are no longer claimable by anyone
+-- through this policy -- correct, since phone-matching was never a real
+-- ownership proof to begin with.
+alter table public.orders add column if not exists "customerId" uuid references auth.users(id);
+create index if not exists orders_customerid_idx on public.orders ("customerId");
+
+-- Every dollar amount on a customer order (subtotal/tax/tip/total/
+-- discount, and every line's unitPrice) is now computed here, from
+-- menu_config, never trusted from the client. A cart line only ever
+-- carries a *reference* to what it claims to be (ref.kind + enough to
+-- look it up: category+name for a catalog item, pizza+size for a
+-- specialty, size+toppings for a build-your-own, nothing extra for
+-- today's special since that's resolved fresh server-side regardless of
+-- what day the client thinks it is) -- this function resolves that
+-- reference against the live menu and prices the line itself. Anything
+-- that doesn't resolve (removed item, sold-out item, changed toppings
+-- list, malformed/missing ref) fails the whole order with a clear
+-- message rather than silently accepting a guessed price. Promo
+-- redemption is consumed atomically in here too (see
+-- _consume_promo_code below) -- if anything else in this function
+-- raises, the whole transaction (including that insert) rolls back, so
+-- a promo code is never burned by an order that didn't actually go
+-- through.
+create or replace function public.create_order(p_order jsonb)
+returns jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_menu jsonb;
+  v_paused boolean;
+  v_pause_message text;
+  v_categories jsonb;
+  v_specialty jsonb;
+  v_sizes jsonb;
+  v_toppings jsonb;
+  v_specials jsonb;
+  v_tax_rate numeric;
+  v_name text;
+  v_phone text;
+  v_address text;
+  v_notes text;
+  v_order_type text;
+  v_pay_method text;
+  v_phone_opt_in boolean;
+  v_tip numeric;
+  v_promo_code text;
+  v_delivery_miles numeric;
+  v_delivery_eta_mins integer;
+  v_item jsonb;
+  v_ref jsonb;
+  v_kind text;
+  v_unit_price numeric;
+  v_qty int;
+  v_line_name text;
+  v_line_size text;
+  v_line_notes text;
+  v_items jsonb := '[]'::jsonb;
+  v_subtotal numeric := 0;
+  v_discount numeric := 0;
+  v_discount_label text := '';
+  v_promo_row public.promo_codes%rowtype;
+  v_tax numeric;
+  v_total numeric;
+  v_ticket text;
+  v_today_dow int;
+  v_today_special jsonb;
+  v_order_id uuid;
+  v_customer_id uuid := auth.uid();
+begin
+  select "ordersPaused", "pauseMessage" into v_paused, v_pause_message from public.store_settings where id = 1;
+  if coalesce(v_paused, false) then
+    raise exception '%', coalesce(v_pause_message, 'Online ordering is currently paused. Please call the shop to place your order.');
+  end if;
+
+  select data into v_menu from public.menu_config where id = 1;
+  if v_menu is null then
+    raise exception 'The menu is not available right now. Please call the shop to place your order.';
+  end if;
+  v_categories := v_menu->'CATEGORIES';
+  v_specialty := v_menu->'SPECIALTY_PIZZAS';
+  v_sizes := v_menu->'PIZZA_SIZES';
+  v_toppings := v_menu->'TOPPINGS';
+  v_specials := v_menu->'SPECIALS_BY_DAY';
+  v_tax_rate := coalesce((v_menu->>'TAX_RATE')::numeric, 0.06625);
+
+  v_name := left(trim(coalesce(p_order->>'customerName', '')), 200);
+  v_phone := public.normalize_phone(coalesce(p_order->>'phone', ''));
+  v_address := left(trim(coalesce(p_order->>'address', '')), 500);
+  v_notes := left(trim(coalesce(p_order->>'notes', '')), 500);
+  v_order_type := coalesce(p_order->>'orderType', 'pickup');
+  v_pay_method := coalesce(p_order->>'payMethod', 'cash');
+  v_phone_opt_in := coalesce((p_order->>'phoneOptIn')::boolean, false);
+  v_tip := greatest(coalesce((p_order->>'tip')::numeric, 0), 0);
+  v_promo_code := nullif(upper(trim(coalesce(p_order->>'promoCode', ''))), '');
+  v_delivery_miles := nullif(p_order->>'deliveryMiles','')::numeric;
+  v_delivery_eta_mins := nullif(p_order->>'deliveryEtaMins','')::integer;
+
+  if v_name = '' or v_phone = '' then
+    raise exception 'Name and phone number are required.';
+  end if;
+  if v_order_type not in ('pickup','delivery') then
+    raise exception 'Invalid order type.';
+  end if;
+  if v_order_type = 'delivery' and v_address = '' then
+    raise exception 'A delivery address is required.';
+  end if;
+  if v_pay_method not in ('cash','card') then
+    raise exception 'Invalid payment method.';
+  end if;
+  if jsonb_typeof(p_order->'items') <> 'array' or jsonb_array_length(p_order->'items') = 0 then
+    raise exception 'Your order is empty.';
+  end if;
+  if jsonb_array_length(p_order->'items') > 100 then
+    raise exception 'That''s too many items for one order -- please call the shop directly.';
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_order->'items') loop
+    v_ref := v_item->'ref';
+    v_kind := v_ref->>'kind';
+    v_qty := greatest(1, least(50, coalesce((v_item->>'qty')::int, 1)));
+    v_unit_price := null;
+    v_line_notes := '';
+
+    if v_kind = 'catalog' then
+      declare
+        v_cat jsonb;
+        v_it jsonb;
+      begin
+        select c into v_cat from jsonb_array_elements(v_categories) c where c->>'key' = v_ref->>'categoryKey' limit 1;
+        if v_cat is null then raise exception 'One of the items in your order is no longer on the menu -- please refresh and try again.'; end if;
+        select it into v_it from jsonb_array_elements(v_cat->'items') it where it->>'name' = v_ref->>'itemName' limit 1;
+        if v_it is null then raise exception 'One of the items in your order is no longer on the menu -- please refresh and try again.'; end if;
+        if coalesce((v_it->>'soldOut')::boolean, false) then
+          raise exception '% is sold out right now -- please remove it from your cart.', v_it->>'name';
+        end if;
+        v_unit_price := (v_it->>'price')::numeric;
+        v_line_name := v_it->>'name';
+        v_line_size := coalesce(v_it->>'size', '');
+      end;
+    elsif v_kind = 'specialty' then
+      declare
+        v_p jsonb;
+        v_s jsonb;
+      begin
+        select p into v_p from jsonb_array_elements(v_specialty) p where p->>'name' = v_ref->>'pizzaName' limit 1;
+        if v_p is null then raise exception 'One of the specialty pizzas in your order is no longer available -- please refresh and try again.'; end if;
+        select s into v_s from jsonb_array_elements(v_p->'sizes') s where s->>'label' = v_ref->>'sizeLabel' limit 1;
+        if v_s is null then raise exception 'One of the specialty pizzas in your order is no longer available in that size -- please refresh and try again.'; end if;
+        v_unit_price := (v_s->>'price')::numeric;
+        v_line_name := v_p->>'name';
+        v_line_size := v_s->>'label';
+      end;
+    elsif v_kind = 'custom' then
+      declare
+        v_size jsonb;
+        v_topping text;
+        v_count int := 0;
+        v_valid_toppings text[];
+      begin
+        select sz into v_size from jsonb_array_elements(v_sizes) sz where sz->>'key' = v_ref->>'sizeKey' limit 1;
+        if v_size is null then raise exception 'That pizza size is no longer available -- please refresh and try again.'; end if;
+        select array_agg(t) into v_valid_toppings from jsonb_array_elements_text(v_toppings) t;
+        for v_topping in select jsonb_array_elements_text(coalesce(v_ref->'toppings','[]'::jsonb)) loop
+          if v_valid_toppings is null or not (v_topping = any(v_valid_toppings)) then
+            raise exception 'One of the toppings on your pizza is no longer available -- please rebuild it and try again.';
+          end if;
+          v_count := v_count + 1;
+        end loop;
+        if v_count > 20 then raise exception 'Too many toppings on one pizza.'; end if;
+        v_unit_price := (v_size->>'base')::numeric + (v_size->>'perTopping')::numeric * v_count;
+        v_line_name := regexp_replace(v_size->>'label', '\s*\(.+\)$', '') || ' Pizza';
+        v_line_size := v_size->>'label';
+        select string_agg(t, ', ') into v_line_notes from jsonb_array_elements_text(coalesce(v_ref->'toppings','[]'::jsonb)) t;
+        v_line_notes := coalesce(v_line_notes, '');
+      end;
+    elsif v_kind = 'special' then
+      v_today_dow := extract(dow from (now() at time zone 'America/New_York'))::int;
+      v_today_special := v_specials->(v_today_dow::text);
+      if v_today_special is null then raise exception 'Today''s special is not available right now -- please remove it from your cart.'; end if;
+      v_unit_price := (v_today_special->>'price')::numeric;
+      v_line_name := v_today_special->>'name';
+      v_line_size := '';
+      v_line_notes := 'Daily special';
+    else
+      raise exception 'One of the items in your order could not be verified -- please refresh the page and try again.';
+    end if;
+
+    v_subtotal := v_subtotal + v_unit_price * v_qty;
+    v_items := v_items || jsonb_build_object(
+      'name', v_line_name, 'size', v_line_size, 'unitPrice', v_unit_price,
+      'qty', v_qty, 'notes', coalesce(nullif(v_line_notes,''), v_item->>'notes'),
+      -- Stored (not just validated against) so a later "Reorder these
+      -- items" can re-resolve current pricing/availability the same way
+      -- this order itself was priced, instead of trusting a stale
+      -- unitPrice from whenever this order was placed -- see the
+      -- reorder handler in order/index.html.
+      'ref', v_ref
+    );
+  end loop;
+
+  if v_promo_code is not null then
+    select * into v_promo_row from public.promo_codes where code = v_promo_code;
+    if v_promo_row is null then
+      raise exception 'That promo code doesn''t exist.';
+    end if;
+    if not v_promo_row.active then
+      raise exception 'That promo code is no longer active.';
+    end if;
+    if v_promo_row."expiresAt" is not null and v_promo_row."expiresAt" < (extract(epoch from now())*1000)::bigint then
+      raise exception 'That promo code has expired.';
+    end if;
+    perform public._consume_promo_code(v_promo_code, v_phone);
+    if v_promo_row."discountType" = 'percent' then
+      v_discount := v_subtotal * (v_promo_row.amount / 100);
+    else
+      v_discount := v_promo_row.amount;
+    end if;
+    v_discount := least(v_discount, v_subtotal);
+    v_discount_label := coalesce(nullif(v_promo_row.label, ''), v_promo_code);
+  end if;
+
+  v_tax := round((v_subtotal - v_discount) * v_tax_rate, 2);
+  v_total := round((v_subtotal - v_discount) + v_tax + v_tip, 2);
+  v_ticket := 'T' || lpad(nextval('public.orders_ticket_seq')::text, 6, '0');
+
+  insert into public.orders (
+    ticket, source, "customerName", phone, address, notes, "orderType", "payMethod",
+    items, subtotal, tax, tip, total, "phoneOptIn", "deliveryMiles", "deliveryEtaMins",
+    "promoCode", "discountAmount", "customerId"
+  ) values (
+    v_ticket, 'customer', v_name, v_phone,
+    case when v_order_type = 'delivery' then v_address else '' end,
+    v_notes, v_order_type, v_pay_method, v_items, v_subtotal, v_tax, v_tip, v_total,
+    v_phone_opt_in, v_delivery_miles, v_delivery_eta_mins, v_promo_code, v_discount, v_customer_id
+  ) returning id into v_order_id;
+
+  return jsonb_build_object(
+    'ticket', v_ticket, 'orderId', v_order_id, 'subtotal', v_subtotal, 'tax', v_tax,
+    'tip', v_tip, 'total', v_total, 'discountAmount', v_discount, 'discountLabel', v_discount_label,
+    'promoCode', v_promo_code, 'items', v_items, 'createdAt', (extract(epoch from now())*1000)::bigint
+  );
+end;
+$$;
+grant execute on function public.create_order(jsonb) to anon, authenticated;
+
+-- Real, database-enforced ticket uniqueness (there was none before --
+-- the client picked the last 6 digits of Date.now(), which repeats
+-- every ~16.7 minutes and had no constraint stopping a collision from
+-- silently producing two orders with the same ticket). create_order()
+-- above generates every customer-facing ticket from this sequence; POS
+-- (staff, already trusted for direct order inserts -- see
+-- orders_insert_staff_only below) still suggests one client-side the
+-- same way it always has, but this constraint means a collision now
+-- fails the insert loudly instead of silently duplicating a ticket.
+create sequence if not exists public.orders_ticket_seq;
+do $$ begin
+  alter table public.orders add constraint orders_ticket_unique unique (ticket);
+exception when duplicate_object or duplicate_table then null;
+end $$;
+
+-- Promo codes: applying/validating one must not consume it -- only
+-- creating the order that actually uses it should. validate_promo_code
+-- replaces the old redeem_promo_code as the function checkout's "Apply"
+-- button calls: same checks (exists / active / not expired / not
+-- already used by this phone), but read-only. The actual consuming
+-- insert now only ever happens inside create_order() above, via
+-- _consume_promo_code below, which has no execute grant to anon/
+-- authenticated -- so a code can only be burned by an order that
+-- actually goes through, atomically, in the same transaction (if
+-- anything else in create_order() fails, this insert rolls back with
+-- it). The previous behavior (redeem_promo_code inserting immediately
+-- at "Apply" time, before the order existed) meant a code could be
+-- permanently burned by someone who applied it and then abandoned
+-- checkout, or by anyone just calling the RPC directly, without ever
+-- placing an order.
+create or replace function public._consume_promo_code(p_code text, p_phone text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.promo_redemptions (code, phone) values (p_code, public.normalize_phone(p_phone));
+exception when unique_violation then
+  raise exception 'This phone number has already used that code.';
+end;
+$$;
+
+create or replace function public.validate_promo_code(p_code text, p_phone text)
+returns jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_code text := upper(trim(p_code));
+  v_phone text := public.normalize_phone(p_phone);
+  v_row public.promo_codes%rowtype;
+begin
+  if v_code = '' then
+    raise exception 'Enter a promo code';
+  end if;
+  if v_phone = '' then
+    raise exception 'A phone number is required to apply a promo code';
+  end if;
+  select * into v_row from public.promo_codes where code = v_code;
+  if not found then
+    raise exception 'That promo code doesn''t exist';
+  end if;
+  if not v_row.active then
+    raise exception 'That promo code is no longer active';
+  end if;
+  if v_row."expiresAt" is not null and v_row."expiresAt" < (extract(epoch from now()) * 1000)::bigint then
+    raise exception 'That promo code has expired';
+  end if;
+  if exists (select 1 from public.promo_redemptions where code = v_code and phone = v_phone) then
+    raise exception 'This phone number has already used that code';
+  end if;
+  return jsonb_build_object('code', v_code, 'discountType', v_row."discountType", 'amount', v_row.amount, 'label', v_row.label);
+end;
+$$;
+grant execute on function public.validate_promo_code(text, text) to anon, authenticated;
+
+-- The old consuming RPC is fully replaced by validate_promo_code above
+-- (apply-time check) + _consume_promo_code (order-creation-time, internal
+-- only) -- drop it so nothing can call the old immediate-consume path.
+drop function if exists public.redeem_promo_code(text, text);
+
+-- Direct INSERT on orders is now staff-only. Every customer-sourced
+-- order (signed in or not) must go through create_order() above, which
+-- is the only place dollar amounts get computed -- there is no longer
+-- any path for a request built by hand against the REST endpoint (using
+-- the same public anon key already embedded in the page) to insert an
+-- order with a manipulated price, since anon/authenticated no longer
+-- have INSERT on this table at all, only EXECUTE on create_order().
+-- Staff (POS) keep inserting directly, same as before -- they're
+-- already trusted with full order UPDATE access, and POS legitimately
+-- needs to ring up off-menu items, manual comps, etc. that a strict
+-- menu-config validator would reject.
+drop policy if exists "orders_insert_public" on public.orders;
+drop policy if exists "orders_insert_staff_only" on public.orders;
+create policy "orders_insert_staff_only" on public.orders
+  for insert to authenticated
+  with check (public.is_staff());
+revoke insert on public.orders from anon;
+
+-- Driver-only accounts (isDriver, not isAdmin) no longer get the same
+-- broad order/CRM/till/roster visibility plain staff and admins get,
+-- just because the Staff Hub UI happens to hide those screens for them
+-- -- RLS is the actual boundary, not which buttons the UI shows. A
+-- driver-only account can now only ever see delivery orders that are
+-- either unclaimed and ready to grab, or already assigned to them
+-- (matched through drivers.authUserId, not anything client-supplied).
+create or replace function public.is_driver_only()
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.staff where id = auth.uid() and active and "isDriver" and not "isAdmin");
+$$;
+
+drop policy if exists "orders_select_staff_or_own" on public.orders;
+create policy "orders_select_staff_or_own" on public.orders
+  for select to authenticated
+  using (
+    (public.is_staff() and not public.is_driver_only())
+    or (
+      public.is_driver_only() and "orderType" = 'delivery' and (
+        (status = 'ready' and "driverId" is null)
+        or "driverId" = (select id from public.drivers where "authUserId" = auth.uid())
+      )
+    )
+    or ("customerId" is not null and "customerId" = auth.uid())
+  );
+
+drop policy if exists "orders_update_staff" on public.orders;
+create policy "orders_update_staff" on public.orders
+  for update to authenticated
+  using (
+    (public.is_staff() and not public.is_driver_only())
+    or (
+      public.is_driver_only() and "orderType" = 'delivery' and (
+        (status = 'ready' and "driverId" is null)
+        or "driverId" = (select id from public.drivers where "authUserId" = auth.uid())
+      )
+    )
+  )
+  with check (
+    (public.is_staff() and not public.is_driver_only())
+    or (
+      public.is_driver_only() and "orderType" = 'delivery' and (
+        (status = 'ready' and "driverId" is null)
+        or "driverId" = (select id from public.drivers where "authUserId" = auth.uid())
+      )
+    )
+  );
+
+-- Same driver-scoping for customer profiles (a driver has no legitimate
+-- reason to browse every customer's saved address/email/preferences)
+-- and the till (nothing about register shifts concerns a driver role).
+-- Own-row access is untouched either way.
+drop policy if exists "customers_self" on public.customers;
+create policy "customers_self" on public.customers
+  for all to authenticated
+  using (id = auth.uid() or (public.is_staff() and not public.is_driver_only()))
+  with check (id = auth.uid());
+
+drop policy if exists "register_shifts_staff_all" on public.register_shifts;
+create policy "register_shifts_staff_all" on public.register_shifts
+  for all to authenticated
+  using (public.is_staff() and not public.is_driver_only())
+  with check (public.is_staff() and not public.is_driver_only());
+
+-- Staff roster: a driver-only account can still read its own row
+-- (needed for the app's own role bootstrap -- see App.isDriverStaff in
+-- staff/index.html) but can no longer browse the full staff list
+-- (everyone else's admin/driver flags) the way any authenticated staff
+-- row could before.
+drop policy if exists "staff_select_staff" on public.staff;
+create policy "staff_select_staff" on public.staff
+  for select to authenticated
+  using (id = auth.uid() or (public.is_staff() and not public.is_driver_only()));
+
+-- =========================================================================
+-- Regulars summary (repeat-customer aggregate), 2026-09-08
+-- =========================================================================
+-- Both the "Regular" badge (POS Queue, Kitchen Board) and Analytics'
+-- "Regulars" list used to be computed client-side from whatever the
+-- current orders subscription happened to have fetched -- for the
+-- Kitchen Board/POS Queue that's the whole orders table with no limit
+-- at all (risking PostgREST's default row cap silently truncating
+-- older orders once lifetime history grew past it, systematically
+-- undercounting anyone whose repeat visits span that boundary), and
+-- Analytics' own version now only sees an 8-day window (see
+-- initAnalyticsView), which would make its "$X lifetime" label actively
+-- wrong for a genuine regular whose visits are spread out further than
+-- that. This aggregates server-side instead -- one row per distinct
+-- phone number, not per order, so the result stays small regardless of
+-- how large the orders table grows -- and is the one source both
+-- screens now read from. Not security definer: relies on the same RLS
+-- a raw select already would (full history for staff, only their own
+-- scoped deliveries for a driver-only account, only their own orders
+-- for a signed-in customer), so it never exposes more than that caller
+-- could already see directly.
+create or replace function public.regulars_summary()
+returns table(phone text, order_count bigint, total_spent numeric, last_order_at bigint, customer_name text)
+language sql stable
+as $$
+  select
+    o.phone,
+    count(*) as order_count,
+    sum(o.total) as total_spent,
+    max(o."createdAt") as last_order_at,
+    (array_agg(o."customerName" order by o."createdAt" desc))[1] as customer_name
+  from public.orders o
+  where o.phone <> '' and o.status <> 'cancelled'
+  group by o.phone;
+$$;
+grant execute on function public.regulars_summary() to authenticated;
+
 insert into public.menu_config (id, data)
 values (1, $json${"TAX_RATE": 0.06625, "PIZZA_SIZES": [{"key": "personal", "label": "Personal Pan (9\")", "base": 8, "perTopping": 1}, {"key": "medium", "label": "Medium (14\")", "base": 14.5, "perTopping": 3}, {"key": "large", "label": "Large (16\")", "base": 15.99, "perTopping": 3.5}, {"key": "sicilian", "label": "Sicilian (16x16\")", "base": 17.99, "perTopping": 4}], "TOPPINGS": ["Pepperoni", "Sausage", "Bacon", "Meatball", "Ham", "Extra Cheese", "Green Pepper", "Onion", "Black Olive", "Mushroom", "Anchovy", "Pineapple", "Spinach", "Broccoli"], "SPECIALTY_PIZZAS": [{"name": "Bacon BBQ Chicken Ranch", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 26}]}, {"name": "Buffalo Chicken", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 26}]}, {"name": "Hawaiian", "sizes": [{"label": "Medium", "price": 20.5}, {"label": "Large", "price": 22.99}, {"label": "Sicilian", "price": 24.99}]}, {"name": "White Pie", "sizes": [{"label": "Medium", "price": 14.5}, {"label": "Large", "price": 15.99}, {"label": "Sicilian", "price": 17.99}]}, {"name": "The Works", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 25.99}, {"label": "Sicilian", "price": 29.99}]}], "CATEGORIES": [{"key": "panzarotti", "label": "Panzarotti", "note": "Deep fried and golden brown", "items": [{"name": "Panzarotti", "price": 8.25, "desc": "Add $0.75 per extra ingredient"}]}, {"key": "stromboli", "label": "Stromboli", "photo": "../images/menu/stromboli.jpg", "placeholder": "../images/menu/stromboli.svg", "items": [{"name": "Cheese Stromboli", "price": 17.99, "desc": "+$2.50 per topping, +$5.00 steak or chicken"}, {"name": "Steak & Onion Stromboli", "price": 24.99}]}, {"key": "calzones", "label": "Calzones", "photo": "../images/menu/calzone.jpg", "placeholder": "../images/menu/calzone.svg", "items": [{"name": "Calzone", "price": 14.99, "desc": "Ham, ricotta, mozzarella and sauce"}]}, {"key": "turnover", "label": "Pizza Turnover", "items": [{"name": "Pizza Turnover", "price": 13.5, "desc": "Mozzarella and pizza sauce, $1 per extra ingredient"}]}, {"key": "wings", "label": "Wings", "note": "All wings come with bread and blue cheese", "photo": "../images/menu/wings.jpg", "placeholder": "../images/menu/wings.svg", "items": [{"name": "Wings", "size": "8 pc", "price": 9.5}, {"name": "Wings", "size": "12 pc", "price": 14.99}, {"name": "Wings", "size": "16 pc", "price": 18.99}, {"name": "Wings", "size": "24 pc", "price": 27.99}]}, {"key": "steaks", "label": "Steaks", "note": "Chicken made with 100% boneless, skinless breast meat", "items": [{"name": "Plain Steak", "price": 11}, {"name": "Cheese Steak", "price": 12}, {"name": "Chicken Cheese Steak", "price": 12}, {"name": "Bacon Cheese Steak", "price": 13}, {"name": "Cheese Steak Sub", "price": 13}, {"name": "Chicken Cheese Steak Sub", "price": 13}, {"name": "Mushroom Cheese Steak", "price": 13}, {"name": "Pepperoni Cheese Steak", "price": 13}, {"name": "Pizza Steak", "price": 13}, {"name": "Buffalo Chicken Cheese Steak", "price": 13}, {"name": "Broccoli Garlic & Oil Chicken Cheese Steak", "price": 13}, {"name": "Cheese Steak Special", "price": 13.75}, {"name": "Cheese Steak Platter", "price": 14.99}]}, {"key": "hoagies", "label": "Hoagies", "note": "All hoagies made with lettuce, tomato, onion and oil", "photo": "../images/menu/hoagie.jpg", "placeholder": "../images/menu/hoagie.svg", "items": [{"name": "Mixed Cheese", "price": 11}, {"name": "American", "price": 11.5}, {"name": "Ham & Cheese", "price": 12}, {"name": "Italian", "price": 12}, {"name": "Turkey & Cheese", "price": 12}, {"name": "Roast Beef, Provolone or American", "price": 13}, {"name": "Fried Fish Hoagie", "price": 13}]}, {"key": "pasta", "label": "Pasta", "note": "Served with soup, salad and garlic bread, spaghetti or ziti", "photo": "../images/menu/pasta.jpg", "placeholder": "../images/menu/pasta.svg", "items": [{"name": "Tomato Sauce", "price": 12.99}, {"name": "Meatballs", "price": 16.99}, {"name": "Sausage", "price": 16.99}]}, {"key": "parm", "label": "Parmigiana Dinners", "note": "Served with salad and garlic bread or a side of spaghetti/ziti", "items": [{"name": "Eggplant Parmigiana", "price": 15.99}, {"name": "Chicken Cutlet Parmigiana", "price": 16.99}]}, {"key": "hotsand", "label": "Hot Sandwiches", "items": [{"name": "Homemade Meatball Sandwich", "price": 11.5}, {"name": "Eggplant Parmigiana", "price": 11}, {"name": "Homemade Meatball Parmigiana", "price": 12.5}, {"name": "Chicken Parmigiana", "price": 12.5}, {"name": "Sausage Parmigiana", "price": 12.5}, {"name": "Hot Roast Beef", "price": 12}, {"name": "Hot Roast Beef with Cheese", "price": 13}, {"name": "Sausage Supreme", "price": 12.99}]}, {"key": "italian", "label": "Italian Specialties", "note": "Served with soup, salad and garlic bread", "items": [{"name": "Baked Ziti", "price": 16.99}, {"name": "Cheese Ravioli", "price": 16.99}, {"name": "Stuffed Shells Parmigiana", "price": 16.99}]}, {"key": "platters", "label": "Platters", "items": [{"name": "BLT Club", "price": 12.99}, {"name": "Chicken Finger Platter", "price": 13.99}, {"name": "Ham & Cheese Club", "price": 13.99}, {"name": "Chicken Club", "price": 14.99}, {"name": "Roast Beef Club", "price": 14.99}, {"name": "Turkey Club", "price": 14.99}, {"name": "Shrimp Platter", "price": 14.99}]}, {"key": "burgers", "label": "Quarter Pound Burgers", "photo": "../images/menu/burger.jpg", "placeholder": "../images/menu/burger.svg", "items": [{"name": "Hamburger", "price": 7}, {"name": "Cheeseburger", "price": 8}, {"name": "Bacon Cheeseburger", "price": 9}, {"name": "Pizza Burger", "price": 9}, {"name": "Cheese Burger Sub", "price": 13}]}, {"key": "sides", "label": "Side Orders", "items": [{"name": "French Fries", "price": 5.75}, {"name": "Onion Rings", "price": 8}, {"name": "Poppers", "size": "Cheddar", "price": 8}, {"name": "Breaded Mushrooms", "price": 8.5}, {"name": "Broccoli Bites", "price": 8.5}, {"name": "Meatballs", "price": 8.5}, {"name": "Mozzarella Sticks", "price": 8.5}, {"name": "Pizza Fries", "size": "Small", "price": 8.5}, {"name": "Pizza Fries", "size": "Large", "price": 10.5}, {"name": "Sausage", "price": 8.5}, {"name": "Fried Tomato", "price": 9}, {"name": "Cheese Fries", "size": "Small", "price": 6.5}, {"name": "Cheese Fries", "size": "Large", "price": 9}, {"name": "Loaded Fries", "size": "Small", "price": 9.5}, {"name": "Loaded Fries", "size": "Large", "price": 10.5}, {"name": "Homemade Cole Slaw", "size": "Pint", "price": 3.5}, {"name": "Homemade Cole Slaw", "size": "Quart", "price": 7}, {"name": "Something Sweet Zeppoli", "size": "Small", "price": 4}, {"name": "Something Sweet Zeppoli", "size": "Large", "price": 8}]}, {"key": "soups", "label": "Soups", "items": [{"name": "Pasta Faggioli", "size": "Small", "price": 4.99}, {"name": "Pasta Faggioli", "size": "Quart", "price": 8.99}, {"name": "Chili", "size": "Small, winter", "price": 6.5}, {"name": "Chili", "size": "Quart, winter", "price": 11.99}]}, {"key": "salads", "label": "Salads", "photo": "../images/menu/salad.jpg", "placeholder": "../images/menu/salad.svg", "items": [{"name": "Tossed Salad", "price": 7.99}, {"name": "Antipasta", "price": 12.99}, {"name": "Chef Salad", "price": 12.99}, {"name": "Chicken Caesar Salad", "price": 12.99}, {"name": "Grilled Chicken Salad", "price": 12.99}]}, {"key": "breakfast", "label": "Breakfast", "items": [{"name": "Grilled Cheese", "price": 7, "desc": "+$1 to add ham or bacon"}, {"name": "Bacon, Lettuce & Tomato", "price": 8}, {"name": "Pepper and Egg", "price": 10}, {"name": "Bacon, Egg and Cheese", "price": 11}, {"name": "Sausage, Egg and Cheese", "price": 11}, {"name": "Pork Roll, Egg and Cheese", "price": 11}]}, {"key": "knots", "label": "Garlic Knots", "items": [{"name": "Garlic Knots", "size": "6 pc", "price": 4.75}]}, {"key": "drinks", "label": "Drinks", "note": "We carry Pepsi products -- names/prices are a starting point, adjust in Staff Hub > Menu Editor to match what you actually stock", "items": [{"name": "Pepsi", "size": "20 oz", "price": 2.75}, {"name": "Diet Pepsi", "size": "20 oz", "price": 2.75}, {"name": "Pepsi Zero Sugar", "size": "20 oz", "price": 2.75}, {"name": "Mountain Dew", "size": "20 oz", "price": 2.75}, {"name": "Starry", "size": "20 oz", "price": 2.75}, {"name": "Mug Root Beer", "size": "20 oz", "price": 2.75}, {"name": "Brisk Iced Tea", "size": "20 oz", "price": 2.75}, {"name": "Aquafina Water", "size": "20 oz", "price": 2.0}, {"name": "Pepsi", "size": "2 Liter", "price": 4.5}, {"name": "Diet Pepsi", "size": "2 Liter", "price": 4.5}, {"name": "Mountain Dew", "size": "2 Liter", "price": 4.5}, {"name": "Starry", "size": "2 Liter", "price": 4.5}]}], "SPECIALS_BY_DAY": {"0": {"name": "4 Original Panzarotti", "price": 25.99}, "1": {"name": "2 Cheese Steaks", "price": 20.99}, "2": {"name": "Large Pizza", "price": 13.99}, "3": {"name": "Sicilian Pie", "price": 15.99}, "4": {"name": "2 Chicken Finger Platters", "price": 22.99}, "5": {"name": "Stromboli + 2 Liter Soda", "price": 18.5}, "6": {"name": "Cheese Steak Platter", "price": 13.99}}}$json$::jsonb)
 on conflict (id) do nothing;

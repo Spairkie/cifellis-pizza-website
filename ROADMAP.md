@@ -7,6 +7,59 @@ Where the project stands, and what's left. Last reviewed 2026-09-08.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Review findings + Phase 4/8 plan, added 2026-09-08 by the owner
+
+A batch review (external to this session's own code-review pass, which
+had already caught and fixed the order rate limiter below) came back
+with a findings list plus two phases of new feature work, sequenced
+explicitly: fix the findings first, test them, *then* Phase 4/8 — not
+in parallel. All of Part 1 below is now done and tested. Phase 4/8 are
+real feature work (a whole health-monitoring surface, a loyalty
+program, scheduled orders, catering intake, payments) and are
+deliberately **not started** — see the dated entry below for detail and
+why this is a natural stopping point to check in before continuing.
+
+**Part 1 — fix the review findings**
+- [x] Customer order authorization no longer trusts an unverified phone
+  number as the ownership boundary — `orders.customerId`, set from
+  `auth.uid()` server-side in `create_order()`, never client-supplied
+- [x] Server-authoritative checkout/pricing — `create_order()` recomputes
+  every dollar amount from `menu_config`, never trusts what the client
+  sends; direct anon INSERT on `orders` is now structurally impossible
+- [x] Phone numbers normalized server-side (`normalize_phone()`), used
+  for rate limiting, promo one-per-phone, and CRM/regulars matching
+- [x] Promo codes validated without consuming (`validate_promo_code`);
+  consumed atomically only inside a successful `create_order()` call
+- [x] Ticket numbers unique and enforced (`orders_ticket_unique`
+  constraint + a real sequence backing every customer-path ticket)
+- [x] RLS aligned with Staff Hub roles — a driver-only account is now
+  actually scoped to its own/unclaimed deliveries at the database
+  level, not just hidden from in the UI (orders, staff roster,
+  customers, till all affected)
+- [x] Reorder now re-resolves current menu/prices/availability instead
+  of reusing a historical order's stored `unitPrice`
+- [x] Homepage menu/specials prices sync from `menu_config` instead of
+  drifting from whatever's hardcoded in `index.html`
+- [x] Explicit URL hashes beat the repeat-visitor auto-scroll
+- [x] 3D hero auto-rotation respects `prefers-reduced-motion`
+- [x] Driver applications got the same minimum-time-on-page anti-bot
+  check the customer checkout form already had
+- [x] Critical write failures (order status updates, driver approval,
+  clock in/out, driver profile saves) no longer fail completely
+  silently — surfaced with a toast instead of an uncaught rejection or
+  a swallowed error
+- [x] The 1000-row analytics/regulars truncation risk fixed — Analytics'
+  own queries bounded to a real window instead of unbounded, and
+  "Regulars" (both the badge and Analytics' own list) now backed by a
+  real SQL aggregate (`regulars_summary()`) instead of whatever a
+  live snapshot happened to have fetched
+
+**Part 2 — Phase 4 (Operational Monitoring) and Phase 8 (Growth
+Features)**
+- [ ] Not started — awaiting the owner's go-ahead on scope/sequencing.
+  See "Part 1 fixes shipped and tested" below for status and what's
+  next.
+
 ## Next Development Roadmap, added 2026-09-07 by the owner
 
 The active backlog as of this writing — supersedes the older "Feature
@@ -54,6 +107,159 @@ already-shipped items unless something here specifically asks for it.**
 - [x] Prepare menu/order UI for more real food photography (owner is
   sourcing photos separately) — responsive layouts, stronger visual
   prominence for the Original Panzarotti/specialty pies/signature items
+
+## Part 1 fixes shipped and tested: server-authoritative checkout, RLS role alignment, and more, 2026-09-08 (Claude Code)
+
+The full findings list from "Review findings + Phase 4/8 plan" above.
+Biggest piece by far: `orders` could no longer be inserted directly by
+anyone but staff (`revoke insert ... from anon`, plus narrowing the
+policy to `is_staff()`) — every customer-sourced order now goes through
+a new `create_order()` RPC (security definer) that recomputes pricing
+from `menu_config` itself rather than trusting anything the client
+sends. That required a real data-model change first: a cart line now
+carries a `ref` (`{kind, ...}` — `catalog`/`specialty`/`custom`/
+`special`, enough to look the item back up) alongside its display
+fields, set by `addLine`'s callers in `order/ordering-core.js` and
+resolved server-side in `create_order()` (catalog items by category+
+name, specialty pizzas by name+size, build-your-own by size+toppings
+validated against current `TOPPINGS`, daily specials resolved to
+*today's* actual special server-side regardless of what day the client
+thinks it is). Sold-out items and a paused store are rejected inside
+the same function, same source of truth the kiosk UI already reads.
+
+That `ref` turned out to solve a second finding for free: reorder
+("Order History" in the customer account panel) now resolves each
+historical item's `ref` against the *current* menu
+(`resolveRefToLine()`) instead of reusing whatever `unitPrice` was
+stored on the old order — an item that's been removed, marked sold
+out, or had a topping discontinued gets skipped with a toast rather
+than silently coming back at a stale price.
+
+Promo codes: `redeem_promo_code()` used to consume a code (insert into
+`promo_redemptions`) the moment "Apply" was clicked, before the order
+existed — meaning a code could be permanently burned by someone who
+applied it and abandoned checkout, or by anyone just calling the RPC
+directly with no order at all. Replaced with `validate_promo_code()`
+(read-only, what "Apply" calls now) and `_consume_promo_code()`
+(internal only, called from inside `create_order()` — so a code is only
+ever actually spent atomically, as part of a successful order, and
+rolls back with everything else in that transaction if anything after
+it fails).
+
+Ticket numbers: there was no uniqueness constraint at all before this
+— the client picked the last 6 digits of `Date.now()`, which repeats
+every ~16.7 minutes with nothing stopping a collision. Added a real
+sequence + a unique constraint; `create_order()` generates every
+customer-path ticket from it. POS still suggests one client-side (staff
+are already trusted for direct order inserts, and the unique
+constraint makes a collision fail loudly — an auto-retry via re-submit
+— instead of silently duplicating).
+
+Phone numbers: added `normalize_phone()` (digits only, US country-code
+"1" stripped off an 11-digit number) and used it everywhere a phone
+comparison actually matters — rate limiting, promo one-per-phone,
+CRM/regulars. Existing `orders`/`customers`/`promo_redemptions` rows
+backfilled to the normalized form.
+
+RLS role alignment: added `is_driver_only()` (isDriver, not isAdmin —
+matches the existing `is_staff()`/`is_admin()` pattern) and rewrote the
+`orders` SELECT/UPDATE policies so a driver-only account is scoped to
+delivery orders that are either unclaimed-and-ready or already theirs
+(matched through `drivers.authUserId`, not anything client-supplied) --
+previously `is_staff()` alone gave every staff account, driver-only or
+not, full read/write on every order regardless of what the UI happened
+to show them. Same tightening on `customers` (a driver has no reason to
+browse every customer's saved address/email), `register_shifts` (the
+till), and the `staff` table (a driver-only account can still read its
+own row — needed for the app's own role bootstrap — but can no longer
+browse the full roster). This is also where the customer-ownership fix
+lives: added `orders.customerId` (set from `auth.uid()` in
+`create_order()`, never client-supplied) and dropped the old
+phone-matching SELECT policy entirely — a customer's `customers.phone`
+is self-entered at signup, so "phone matches" was never real proof of
+ownership; anyone could've created an account claiming someone else's
+phone number and read their full order history. New orders are owned
+by real account identity now; pre-existing anonymous orders are
+correctly no longer claimable by anyone through this policy.
+
+Homepage menu drift: `index.html`'s menu and "This Week's Specials"
+sections are still static HTML (a full dynamic rebuild felt like more
+layout risk than this was worth), but a new script syncs their prices
+and daily-special text from `menu_config` in place, right after load —
+matched by (name, size) against each section's own `data-cat`, not
+array position, so reordering items in Menu Editor can't apply the
+wrong price to the wrong row. An item added or removed in Menu Editor
+still needs a manual homepage edit (a structural page change, not price
+drift on an item that exists in both places) — deliberately out of
+scope.
+
+Small fixes: an explicit URL hash (`#menu`, `#specials`, etc.) no
+longer gets overridden by the repeat-visitor auto-scroll-to-header;
+the hero 3D model's `auto-rotate` is now set from
+`prefers-reduced-motion` (and stays live if that OS setting changes
+mid-visit) instead of being a static always-on attribute; the driver
+application form (`staff/apply.html`) got the same minimum-time-on-page
+anti-bot check the customer checkout form already had, next to its
+existing honeypot; and several write paths that used to fail
+completely silently — `updateOrder()` in both apps (order status
+changes, driver claims — more reachable now that driver RLS is
+actually scoped and can legitimately deny a stale click), driver
+approval, clock in/out, and the driver profile editor — now surface a
+toast on failure instead of either doing nothing with no explanation or
+throwing an uncaught rejection. Also found and removed one fully dead
+`updateOrder()` definition in `order/index.html` (never called from
+anywhere in that file) while fixing its `staff/index.html` counterpart.
+
+The 1000-row truncation risk: Analytics used to fetch the *entire*
+orders table with no bound at all for "today"/"7-day trend"/"top
+items," which risked PostgREST's default row cap silently truncating
+older orders out of those numbers once lifetime history grew past it.
+Bounded that query to the last 8 days (everything it actually needs)
+via a new `.where(field, op, value)` method added to the Firestore-
+shaped adapter (`order/db-supabase.js`). "Regulars" (2+ orders on a
+phone number) genuinely needs full lifetime history to mean anything —
+that's now backed by `regulars_summary()`, a real server-side
+aggregate (one row per distinct phone, not per order, so the result
+stays small regardless of table size) used by both the "Regular" badge
+(POS Queue, Kitchen Board) and Analytics' own Regulars list, replacing
+what both used to compute client-side from the same unbounded fetch.
+Caught one bug of my own making this: `buildRegularsIndex()` moved from
+a synchronous local computation to an async RPC call, and the first
+version of this fix fired it without waiting, so the very first badge
+render after opening Kitchen Board or POS Queue always checked against
+a stale/empty index — fixed by redrawing once the RPC actually
+resolves, caught by testing before it shipped, not after.
+
+**Tested against production directly** (not just the UI): a scripted
+attempt to submit a real menu item at a smuggled `unitPrice: 0.01`
+confirmed `create_order()` ignores it and charges the real price; an
+unresolvable item ref, a sold-out item, and a paused store were all
+correctly rejected; promo validate-vs-consume confirmed non-consuming
+then atomic-on-real-order then correctly blocking reuse; 6 rapid
+`create_order()` calls for one phone confirmed the rate limiter (now
+fixed below) still works through the RPC; RLS confirmed directly with
+the `claude-test-driver`/`claude-test-staff`/`claude-test` accounts —
+driver-only saw exactly one seeded delivery (not a pickup order, not
+another driver's delivery), couldn't browse the staff roster or
+customers table, while plain staff and the admin-who's-also-a-driver
+both retained full access. Also a full real end-to-end pass through the
+actual UI: a kiosk order (specialty pizza + build-your-own, tip, real
+ticket, correct total), account sign-up → order → reorder (skipping/
+re-pricing correctly), and a POS order confirming zero regression on
+the staff-trusted direct-insert path. `regulars_summary()` verified
+against a seeded customer with one order pushed 20 days back — Analytics
+(8-day-bounded) and the Kitchen Board badge (RPC-backed) both correctly
+showed all 3 lifetime visits, not just the 2 within the bounded window.
+All test data deleted after every pass; nothing live left behind.
+
+**Deferred items from the same request, added to backlog rather than
+implemented now** (per explicit instruction not to build these yet):
+full production QA/regression suite, a separate staging environment/
+database, a customer order-status page, and conversion/funnel
+analytics — added to the Tier 3 backlog further down this file, since
+none of these are owner-blocked the way `OWNER-TODO.md`'s items are.
+SMS, receipt printing, real photography, and domain migration were
+already tracked there from before this request.
 
 ## Fixed: order rate limiter was completely inert, 2026-09-08 (Claude Code)
 
@@ -1068,6 +1274,28 @@ about before starting.
   work than writing code (can't fabricate copyright-clear audio the
   way text/code gets written), scope this down to what's actually
   needed rather than building a "library" speculatively.
+- [ ] **Full production QA / regression suite**, added 2026-09-08. This
+  session has been testing every change directly against production
+  (Playwright + real accounts, cleaned up after each pass) rather than
+  a standing suite that runs itself. Worth formalizing once there's a
+  staging environment (next item) to run it against instead of prod.
+- [ ] **Separate staging environment/database**, added 2026-09-08. Every
+  test this session has run directly against the live Supabase project
+  (with careful cleanup every time) since there's no second project to
+  point at instead. A real staging setup means a second Supabase
+  project + a way to point either app at it (env-style config swap) —
+  worth doing before the review's Phase 4/8 feature work if that work
+  is substantial enough to want a safer place to build and test it.
+- [ ] **Customer order-status page**, added 2026-09-08. A link a
+  customer could check (ticket/phone, like `order/rate.html`'s pattern)
+  to see "preparing / ready / out for delivery" without calling the
+  shop. Real value, no owner input needed to build it — just hasn't
+  been asked for yet.
+- [ ] **Conversion/funnel analytics**, added 2026-09-08. How many kiosk
+  sessions actually place an order, where people drop off in checkout,
+  etc. — genuinely useful, but a different kind of instrumentation than
+  anything Analytics already does (that's all post-order reporting);
+  worth scoping deliberately rather than bolting on ad hoc.
 
 ### Research notes
 

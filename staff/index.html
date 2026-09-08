@@ -538,14 +538,28 @@ function timeAgo(ts){
    two screens is currently open; "regular" mirrors Analytics' own bar
    of 2+ orders on file under the same phone number. */
 let RegularsIndex = new Map();
-function buildRegularsIndex(allDocs){
-  const map = new Map();
-  allDocs.forEach(o => {
-    const phone = (o.phone||'').trim();
-    if (!phone) return;
-    map.set(phone, (map.get(phone)||0) + 1);
-  });
-  RegularsIndex = map;
+let regularsIndexInFlight = false;
+// Backed by regulars_summary() (supabase/schema.sql) -- a server-side
+// aggregate over the FULL orders table, not whatever a live snapshot
+// happened to have fetched. That used to be counted from the same
+// unbounded "fetch every order" queries the POS Queue/Kitchen Board
+// already run, which risked PostgREST's default row cap silently
+// truncating older orders out of the count once lifetime order history
+// grew past it -- undercounting exactly the customers this badge exists
+// to recognize. Called from those same two live subscriptions (throttled
+// with regularsIndexInFlight below so a burst of snapshot ticks doesn't
+// fire a burst of redundant RPC calls); failing quietly just means the
+// Regular badge doesn't show up for a tick, not that anything broke.
+async function buildRegularsIndex(){
+  if (regularsIndexInFlight || !App.db) return;
+  regularsIndexInFlight = true;
+  try{
+    const rows = await App.db.rpc('regulars_summary', {});
+    const map = new Map();
+    (rows || []).forEach(r => { if (r.phone) map.set(r.phone, Number(r.order_count) || 0); });
+    RegularsIndex = map;
+  }catch(e){ /* Regular badges just skip this refresh -- not critical */ }
+  regularsIndexInFlight = false;
 }
 function isRegular(phone){
   const p = (phone||'').trim();
@@ -674,10 +688,22 @@ async function submitOrder(order){
 
 async function updateOrder(docId, patch){
   const db = await getDb();
-  if (!db) return;
+  if (!db){ showToast('Offline: change not saved (no database connection)'); return false; }
   patch = Object.assign({ updatedAt: Date.now() }, patch);
-  try{ await db.collection('orders').doc(docId).update(patch); }
-  catch(e){ /* last-writer-wins; ignore transient errors */ }
+  try{
+    await db.collection('orders').doc(docId).update(patch);
+    return true;
+  }catch(e){
+    // Not actually a "two staff clicked at once" race -- Postgres has no
+    // such failure mode for a plain UPDATE, it just applies both in
+    // order. Every error here is a real one (RLS denial -- more
+    // reachable now that driver accounts are RLS-scoped to their own
+    // deliveries -- a dropped connection, bad data) that used to fail
+    // completely silently: the button click did nothing, and nothing on
+    // screen said why.
+    showToast('Could not save that change: ' + (e && e.message ? e.message : 'unknown error'));
+    return false;
+  }
 }
 </script>
 
@@ -1146,33 +1172,43 @@ function renderPosQueue(){
   try{
     const unsub = App.db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
-      buildRegularsIndex(docs);
       const active = docs.filter(o => o.status !== 'completed' && o.status !== 'cancelled');
-      list.innerHTML = active.length ? active.map(renderQueueRow).join('') : '<div class="cart-empty">No active orders right now.</div>';
-      active.forEach(o => {
-        const advanceBtn = document.getElementById(`queue-advance-${o.id}`);
-        if (advanceBtn) advanceBtn.addEventListener('click', () => {
-          const next = nextStatus(o);
-          if (next) updateOrder(o.id, { status: next });
-        });
-        const editBtn = document.getElementById(`queue-edit-${o.id}`);
-        if (editBtn) editBtn.addEventListener('click', () => editOrderInPos(o));
-        const cancelBtn = document.getElementById(`queue-cancel-${o.id}`);
-        if (cancelBtn) cancelBtn.addEventListener('click', () => {
-          showConfirmModal({
-            title: `Cancel order ${o.ticket || ''}?`,
-            body: `This marks the order cancelled for ${o.customerName || 'this customer'} (${money(o.total||0)}). This can't be undone from here.`,
-            confirmLabel: 'Cancel Order',
-            danger: true,
-            withReason: true,
-            reasonPlaceholder: 'Why is this being cancelled? (optional, shown in order history)',
-            onConfirm: (reason) => {
-              updateOrder(o.id, { status:'cancelled', cancelReason: reason || null });
-              showToast(`Order ${o.ticket || ''} cancelled`);
-            },
+      function draw(){
+        list.innerHTML = active.length ? active.map(renderQueueRow).join('') : '<div class="cart-empty">No active orders right now.</div>';
+        active.forEach(o => {
+          const advanceBtn = document.getElementById(`queue-advance-${o.id}`);
+          if (advanceBtn) advanceBtn.addEventListener('click', () => {
+            const next = nextStatus(o);
+            if (next) updateOrder(o.id, { status: next });
+          });
+          const editBtn = document.getElementById(`queue-edit-${o.id}`);
+          if (editBtn) editBtn.addEventListener('click', () => editOrderInPos(o));
+          const cancelBtn = document.getElementById(`queue-cancel-${o.id}`);
+          if (cancelBtn) cancelBtn.addEventListener('click', () => {
+            showConfirmModal({
+              title: `Cancel order ${o.ticket || ''}?`,
+              body: `This marks the order cancelled for ${o.customerName || 'this customer'} (${money(o.total||0)}). This can't be undone from here.`,
+              confirmLabel: 'Cancel Order',
+              danger: true,
+              withReason: true,
+              reasonPlaceholder: 'Why is this being cancelled? (optional, shown in order history)',
+              onConfirm: (reason) => {
+                updateOrder(o.id, { status:'cancelled', cancelReason: reason || null });
+                showToast(`Order ${o.ticket || ''} cancelled`);
+              },
+            });
           });
         });
-      });
+      }
+      draw();
+      // Regulars badges draw once immediately against whatever
+      // RegularsIndex already has (usually already warm from a previous
+      // tick), then again once this tick's RPC actually resolves --
+      // buildRegularsIndex() is fire-and-forget, so without this the
+      // very first draw after a fresh sign-in would always show against
+      // an empty index and never correct itself until the next order
+      // change happened to trigger another snapshot tick.
+      buildRegularsIndex().then(draw);
     }, () => { list.innerHTML = '<div class="cart-empty">Could not load live orders.</div>'; });
     App.unsub.push(unsub);
   }catch(e){
@@ -1375,7 +1411,6 @@ function initKitchenView(){
       // sitting in 'new' when you open Kitchen Board isn't "new"), and
       // not on every status change (advancing a ticket yourself
       // shouldn't ring the new-order bell).
-      buildRegularsIndex(docs);
       const freshlyNew = docs.filter(o => o.status === 'new' && !kitchenSeenOrderIds.has(o.id));
       docs.forEach(o => kitchenSeenOrderIds.add(o.id));
       if (!kitchenFirstSnapshot && freshlyNew.length){
@@ -1386,6 +1421,11 @@ function initKitchenView(){
       kitchenFirstSnapshot = false;
       latestOrders = docs.filter(o => KITCHEN_STATUSES.includes(o.status));
       renderKanban(latestOrders);
+      // See the same pattern in renderPosQueue -- buildRegularsIndex()
+      // is fire-and-forget, so redraw once it actually resolves rather
+      // than only showing Regular badges correctly starting on
+      // whichever later snapshot tick happens to come along next.
+      buildRegularsIndex().then(() => renderKanban(latestOrders));
     }, () => {
       document.getElementById('kanban-root').innerHTML = '<div class="kanban-empty">Could not load live orders.</div>';
     });
@@ -1469,23 +1509,23 @@ function renderTicket(o){
 /* =========================================================================
    ANALYTICS (today's numbers, top items, regular customers)
    ========================================================================= */
-/* Everything here is computed client-side from the same live orders feed
-   the other screens use — no separate reporting backend. That's fine at
-   the order volumes a single pizza shop generates, but two limits are
-   worth knowing:
-     1. Supabase caps a plain select() at 1000 rows by default, so once
-        lifetime order history passes that, the oldest orders silently
-        drop out of these numbers. Today's stats are unaffected (there
-        won't be 1000 orders in one day); "top items" and "regulars"
-        will start under-counting history at that point.
-     2. This recomputes from scratch on every order change, which is
-        fine for hundreds of orders but would need a real SQL aggregate
-        (a Postgres view, or a scheduled rollup table) if this ever
-        needs to report over thousands of orders quickly.
-   The fix for both, when it's needed: a Postgres function that does the
-   aggregation in the database and returns just the summary numbers,
-   called via Supabase's .rpc(). Worth doing once there's real volume;
-   not worth the complexity before then. */
+/* Today's stats, the 7-day trend, the timeline, and "top items" are
+   computed client-side, but from a query bounded to the last 8 days
+   (initAnalyticsView) rather than the whole orders table -- this used
+   to fetch with no bound at all, which meant that once lifetime order
+   history passed Supabase's default 1000-row select() cap, the oldest
+   orders would silently drop out of every one of these numbers with no
+   indication anything was wrong. An 8-day window will essentially never
+   hit that cap for a single shop's order volume, so this makes the risk
+   a non-issue instead of something that quietly got worse over time.
+   "Regulars" needs real lifetime history to mean anything (a repeat
+   customer's visits are often spread out well past 8 days), so that one
+   genuinely can't be derived from this bounded fetch -- it's backed by
+   regulars_summary() instead, a real SQL aggregate in
+   supabase/schema.sql, called via .rpc(). Everything else here stays a
+   client-side recompute on every order change, which is fine at the
+   order volumes a single pizza shop generates; a real rollup would only
+   be worth the added complexity at a much higher volume than this. */
 
 function startOfTodayMs(){
   const d = new Date();
@@ -1493,7 +1533,7 @@ function startOfTodayMs(){
   return d.getTime();
 }
 
-function initAnalyticsView(){
+async function initAnalyticsView(){
   stopAllSubscriptions();
   const view = document.getElementById('view-analytics');
   view.innerHTML = `
@@ -1507,10 +1547,26 @@ function initAnalyticsView(){
     root.innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>';
     return;
   }
+  // Full-history regulars, fetched once (not a live subscription --
+  // this doesn't need to update mid-view the way the order list does).
+  // See regulars_summary() in supabase/schema.sql for why this can't
+  // just be derived from whatever orders this view happens to fetch.
+  let regularsRows = [];
+  try{ regularsRows = await App.db.rpc('regulars_summary', {}); }catch(e){ /* Regulars section just shows nothing rather than stale/wrong data */ }
   try{
-    const unsub = App.db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
+    // Bounded to the last 8 days (today's stats + the 7-day trend
+    // below need no more than that) rather than fetching the entire
+    // lifetime orders table -- this used to fetch everything with no
+    // filter at all, which risked PostgREST's default row-count cap
+    // silently truncating older rows out of the result once total
+    // order history grew past it. A single shop's order volume will
+    // essentially never hit that cap within an 8-day window, so this
+    // makes the truncation risk a non-issue here rather than something
+    // that quietly gets worse as the shop's history grows.
+    const eightDaysAgo = Date.now() - 8 * 86400000;
+    const unsub = App.db.collection('orders').orderBy('createdAt','desc').where('createdAt', '>=', eightDaysAgo).onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
-      renderAnalytics(docs, root);
+      renderAnalytics(docs, root, regularsRows);
     }, () => { root.innerHTML = '<div class="cart-empty">Could not load order history.</div>'; });
     App.unsub.push(unsub);
   }catch(e){
@@ -1518,7 +1574,7 @@ function initAnalyticsView(){
   }
 }
 
-function renderAnalytics(allOrders, root){
+function renderAnalytics(allOrders, root, regularsRows){
   const live = allOrders.filter(o => o.status !== 'cancelled');
   const today0 = startOfTodayMs();
   const todayOrders = live.filter(o => (o.createdAt||0) >= today0);
@@ -1527,9 +1583,12 @@ function renderAnalytics(allOrders, root){
   const avgTicket = todayOrders.length ? todayRevenue / todayOrders.length : 0;
 
   // Last 7 days (including today), oldest first, for the stat card
-  // sparklines below -- same 1000-row-select caveat noted at the top of
-  // this file applies once lifetime history passes that, same as
-  // everything else computed here.
+  // sparklines below. allOrders is bounded to the last 8 days by
+  // initAnalyticsView's query, which is exactly the window this needs --
+  // see that function for why (this used to fetch the entire orders
+  // table with no bound at all, which risked PostgREST's default
+  // row-count cap silently truncating older rows once lifetime history
+  // grew past it).
   const dayMs = 86400000;
   const last7Starts = Array.from({length:7}, (_,i) => today0 - (6-i)*dayMs);
   const ordersPerDay = last7Starts.map(start => live.filter(o => (o.createdAt||0) >= start && (o.createdAt||0) < start+dayMs).length);
@@ -1552,24 +1611,16 @@ function renderAnalytics(allOrders, root){
   }));
   const topItems = [...itemStats.entries()].sort((a,b) => b[1].qty - a[1].qty).slice(0, 8);
 
-  // Regulars: group by phone number, the standard low-friction way small
-  // restaurants identify repeat customers (no loyalty signup needed —
-  // everyone already gives a phone number to order).
-  const byPhone = new Map();
-  live.forEach(o => {
-    const phone = (o.phone||'').trim();
-    if (!phone) return;
-    const cur = byPhone.get(phone) || { name:o.customerName||'', visits:0, spent:0, lastOrder:0 };
-    cur.visits += 1;
-    cur.spent += o.total || 0;
-    cur.lastOrder = Math.max(cur.lastOrder, o.createdAt || 0);
-    if (o.customerName) cur.name = o.customerName; // keep the most recent name on file
-    byPhone.set(phone, cur);
-  });
-  const regulars = [...byPhone.entries()]
-    .filter(([, v]) => v.visits >= 2)
-    .sort((a,b) => b[1].visits - a[1].visits)
-    .slice(0, 15);
+  // Regulars: from regulars_summary() (see initAnalyticsView), a
+  // full-history server-side aggregate by phone number -- not derived
+  // from allOrders above, which is deliberately bounded to 8 days and
+  // would make "$X lifetime" below actively wrong for a genuine regular
+  // whose visits are spread out further than that.
+  const regulars = (regularsRows || [])
+    .filter(r => (Number(r.order_count) || 0) >= 2)
+    .sort((a,b) => (Number(b.order_count)||0) - (Number(a.order_count)||0))
+    .slice(0, 15)
+    .map(r => [r.phone, { name: r.customer_name || '', visits: Number(r.order_count) || 0, spent: Number(r.total_spent) || 0, lastOrder: Number(r.last_order_at) || 0 }]);
 
   root.innerHTML = `
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:26px;">
@@ -1712,13 +1763,20 @@ async function getOpenShift(driverId){
 async function toggleShift(){
   const driver = App.driver;
   if (!driver) return;
-  const open = await getOpenShift(driver.id);
-  if (open){
-    await App.db.collection('driver_shifts').doc(open.id).update({ clockOut: Date.now() });
-    showToast('Shift ended');
-  } else {
-    await App.db.collection('driver_shifts').add({ driverId: driver.id, clockIn: Date.now(), clockOut: null });
-    showToast('Shift started');
+  try{
+    const open = await getOpenShift(driver.id);
+    if (open){
+      await App.db.collection('driver_shifts').doc(open.id).update({ clockOut: Date.now() });
+      showToast('Shift ended');
+    } else {
+      await App.db.collection('driver_shifts').add({ driverId: driver.id, clockIn: Date.now(), clockOut: null });
+      showToast('Shift started');
+    }
+  }catch(e){
+    // This used to have no error handling -- a failed clock-in/out threw
+    // uncaught, and the driver had no way to tell from the screen
+    // whether they were actually on the clock or not.
+    showToast('Could not update your shift: ' + (e && e.message ? e.message : 'unknown error'));
   }
   renderDriverLists();
 }
@@ -2028,8 +2086,12 @@ function initDriverRosterView(){
             confirmLabel: 'Reject',
             danger: true,
             onConfirm: async () => {
-              await App.db.collection('drivers').doc(d.id).delete();
-              showToast('Application rejected');
+              try{
+                await App.db.collection('drivers').doc(d.id).delete();
+                showToast('Application rejected');
+              }catch(e){
+                showToast('Could not reject that application: ' + (e && e.message ? e.message : 'unknown error'));
+              }
             },
           });
         });
@@ -2062,9 +2124,20 @@ function renderPendingRow(d){
 async function approveDriver(d){
   if (!App.isAdmin){ showToast('Only an admin can approve drivers'); return; }
   if (!d.authUserId){ showToast('This application has no linked sign-in — approve manually in the SQL Editor'); return; }
-  await App.db.collection('staff').doc(d.authUserId).set({ isDriver: true, active: true });
-  await App.db.collection('drivers').doc(d.id).update({ approved: true, active: true });
-  showToast(`${d.name || 'Driver'} approved — they can sign in now`);
+  try{
+    await App.db.collection('staff').doc(d.authUserId).set({ isDriver: true, active: true });
+    await App.db.collection('drivers').doc(d.id).update({ approved: true, active: true });
+    showToast(`${d.name || 'Driver'} approved — they can sign in now`);
+  }catch(e){
+    // This used to have no error handling at all -- a failed write here
+    // (network blip, RLS denial) threw an uncaught rejection with
+    // nothing on screen to say so, and the button just looked like it
+    // did nothing. If the first write above succeeded but the second
+    // failed, this account now has staff access with isDriver=true but
+    // drivers.approved is still false -- re-clicking Approve is safe
+    // and will finish the second write without redoing the first.
+    showToast('Could not finish approving that driver: ' + (e && e.message ? e.message : 'unknown error'));
+  }
 }
 
 function renderDriverRosterRow(d){
@@ -2128,10 +2201,17 @@ function showDriverEditor(driver){
       active: document.getElementById('drv-active').checked,
     };
     if (!payload.name || !payload.email){ showToast('Name and email are required'); return; }
-    if (driver){ await App.db.collection('drivers').doc(driver.id).update(payload); }
-    else{ await App.db.collection('drivers').add(payload); }
-    document.getElementById('confirmModalBackdrop').remove();
-    showToast(driver ? 'Driver updated' : 'Driver added');
+    try{
+      if (driver){ await App.db.collection('drivers').doc(driver.id).update(payload); }
+      else{ await App.db.collection('drivers').add(payload); }
+      document.getElementById('confirmModalBackdrop').remove();
+      showToast(driver ? 'Driver updated' : 'Driver added');
+    }catch(e){
+      // Used to have no error handling -- a failed save here left the
+      // modal open with no feedback at all, and no indication anything
+      // had gone wrong.
+      showToast('Could not save that driver: ' + (e && e.message ? e.message : 'unknown error'));
+    }
   });
 }
 </script>

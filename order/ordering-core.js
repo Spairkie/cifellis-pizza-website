@@ -197,6 +197,58 @@ function isSignatureItem(cat, it){
   return cat.key === 'panzarotti';
 }
 
+/* Resolves a stored cart-line `ref` (see addLine's callers below --
+   catalog/specialty/custom/special) against the CURRENT in-memory menu
+   data, for "Reorder these items" (order/index.html). Mirrors the same
+   resolution create_order() does server-side, but this copy is only
+   ever used to build a fresh cart line for display/editing before
+   submit -- the server re-validates everything for real at checkout, so
+   this doesn't need to be a security boundary, just accurate enough
+   that reordering shows today's real price/availability instead of
+   whatever was true when the original order was placed. Returns null
+   for anything that no longer resolves (item removed, sold out, a
+   topping discontinued, size changed) so the caller can skip it and
+   tell the customer, rather than silently reordering at a stale price
+   the way this used to work. */
+function resolveRefToLine(ref){
+  if (!ref || !ref.kind) return null;
+  if (ref.kind === 'catalog'){
+    const cat = CATEGORIES.find(c => c.key === ref.categoryKey);
+    if (!cat) return null;
+    const it = cat.items.find(i => i.name === ref.itemName);
+    if (!it || it.soldOut) return null;
+    return { name: it.name, size: it.size || '', unitPrice: it.price, notes: '', ref: { kind:'catalog', categoryKey: cat.key, itemName: it.name } };
+  }
+  if (ref.kind === 'specialty'){
+    const p = SPECIALTY_PIZZAS.find(x => x.name === ref.pizzaName);
+    if (!p) return null;
+    const s = p.sizes.find(x => x.label === ref.sizeLabel);
+    if (!s) return null;
+    return { name: p.name, size: s.label, unitPrice: s.price, notes: '', ref: { kind:'specialty', pizzaName: p.name, sizeLabel: s.label } };
+  }
+  if (ref.kind === 'custom'){
+    const sizeObj = PIZZA_SIZES.find(s => s.key === ref.sizeKey);
+    if (!sizeObj) return null;
+    const requested = ref.toppings || [];
+    const stillValid = requested.filter(t => TOPPINGS.includes(t));
+    if (stillValid.length !== requested.length) return null; // a topping was discontinued -- don't silently rebuild without it
+    const unitPrice = sizeObj.base + sizeObj.perTopping * stillValid.length;
+    return {
+      name: sizeObj.label.replace(/\s*\(.+\)$/,'') + ' Pizza', size: sizeObj.label, unitPrice,
+      notes: stillValid.join(', '), ref: { kind:'custom', sizeKey: sizeObj.key, toppings: stillValid },
+    };
+  }
+  if (ref.kind === 'special'){
+    // Daily specials are date-bound by design -- always resolves to
+    // TODAY's actual special, never whatever day the original order
+    // happened to be placed on.
+    const today = SPECIALS_BY_DAY[new Date().getDay()];
+    if (!today) return null;
+    return { name: today.name, size: '', unitPrice: today.price, notes: 'Daily special', ref: { kind:'special' } };
+  }
+  return null;
+}
+
 function resetOrderCtx(mode){
   orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null, promoCode:null, discountAmount:0, discountLabel:'', formLoadedAt:Date.now(), editingOrderId:null };
 }
@@ -440,7 +492,7 @@ function wireItemButtons(mode){
         showToast(mode === 'customer' ? it.name+' is sold out right now' : it.name+' is marked sold out — clear it in Menu Editor to sell it');
         return;
       }
-      addLine({ name: it.name, size: it.size||'', unitPrice: it.price, qty:1, notes:'' });
+      addLine({ name: it.name, size: it.size||'', unitPrice: it.price, qty:1, notes:'', ref: { kind:'catalog', categoryKey: cat.key, itemName: it.name } });
       showToast(it.name+' added');
     });
   });
@@ -464,7 +516,7 @@ function wireSpecialtyButtons(mode){
     btn.addEventListener('click', ()=>{
       const p = SPECIALTY_PIZZAS[+btn.getAttribute('data-sp')];
       const s = p.sizes[+btn.getAttribute('data-ss')];
-      addLine({ name:p.name, size:s.label, unitPrice:s.price, qty:1, notes:'' });
+      addLine({ name:p.name, size:s.label, unitPrice:s.price, qty:1, notes:'', ref: { kind:'specialty', pizzaName: p.name, sizeLabel: s.label } });
       showToast(p.name+' added');
     });
   });
@@ -495,6 +547,7 @@ function renderPizzaBuilder(mode){
       unitPrice: total,
       qty: 1,
       notes: toppingsArr.length ? toppingsArr.join(', ') : '',
+      ref: { kind:'custom', sizeKey: sizeObj.key, toppings: toppingsArr },
     });
     orderCtx.pizzaToppings = new Set();
     renderPizzaBuilder(mode);
@@ -695,7 +748,7 @@ function renderOrderLayout(mode){
   if (banner){
     banner.addEventListener('click', () => {
       const today = SPECIALS_BY_DAY[new Date().getDay()];
-      addLine({ name: today.name, size:'', unitPrice: today.price, qty:1, notes:'Daily special' });
+      addLine({ name: today.name, size:'', unitPrice: today.price, qty:1, notes:'Daily special', ref: { kind:'special' } });
       showToast(today.name + ' added');
     });
   }

@@ -510,13 +510,6 @@ async function submitOrder(order){
   return ticket;
 }
 
-async function updateOrder(docId, patch){
-  const db = await getDb();
-  if (!db) return;
-  patch = Object.assign({ updatedAt: Date.now() }, patch);
-  try{ await db.collection('orders').doc(docId).update(patch); }
-  catch(e){ /* last-writer-wins; ignore transient errors */ }
-}
 </script>
 <script>
 /* =========================================================================
@@ -615,7 +608,13 @@ async function applyPromoCode(mode){
   statusEl.textContent = 'Checking...';
   statusEl.style.color = 'var(--paper-dim)';
   try{
-    const result = await db.rpc('redeem_promo_code', { p_code: code, p_phone: phone });
+    // Validate-only -- does not consume the code. It's only actually
+    // redeemed atomically inside create_order(), at the moment an order
+    // built with it successfully goes through (see submitCustomerOrder).
+    // The discount shown here is a preview computed the same way the
+    // server will compute it for real at submit time; that server
+    // number, not this one, is what actually gets charged.
+    const result = await db.rpc('validate_promo_code', { p_code: code, p_phone: phone });
     const subtotal = orderCtx.cart.reduce((s,it)=> s + it.unitPrice*it.qty, 0);
     const discountAmt = result.discountType === 'percent' ? subtotal * (result.amount / 100) : Number(result.amount);
     orderCtx.promoCode = result.code;
@@ -713,35 +712,59 @@ async function submitCustomerOrder(){
     renderCart('customer');
     return;
   }
-  const totals = computeTotals(orderCtx.cart, orderCtx.tip, orderCtx.discountAmount);
   const submitBtn = document.getElementById('submit-customer');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Placing order...';
   const di = orderCtx.deliveryInfo;
-  const orderPayload = {
-    source: 'customer',
+  // Deliberately NOT sending subtotal/tax/total/unitPrice here -- every
+  // dollar amount is computed server-side in create_order() from
+  // menu_config, using each line's `ref` (set by addLine's callers in
+  // ordering-core.js) to look up the real current price. What this
+  // client sends for a line's name/size/unitPrice/notes is a display
+  // hint only; the server's response below is what's actually trusted
+  // for the confirmation screen and receipt.
+  const rpcPayload = {
     customerName: name,
     phone,
     address: orderCtx.orderType === 'delivery' ? addr : '',
     notes,
     orderType: orderCtx.orderType,
     payMethod: orderCtx.payMethod,
-    items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', unitPrice:l.unitPrice, qty:l.qty, notes:l.notes||'' })),
-    subtotal: totals.subtotal, tax: totals.tax, tip: totals.tip, total: totals.total,
+    items: orderCtx.cart.map(l => ({ name:l.name, size:l.size||'', qty:l.qty, notes:l.notes||'', ref: l.ref || null })),
+    tip: orderCtx.tip,
     deliveryMiles: (orderCtx.orderType === 'delivery' && di && di.miles != null) ? di.miles : null,
     deliveryEtaMins: (orderCtx.orderType === 'delivery' && di && di.minutes != null) ? di.minutes : null,
     phoneOptIn,
     promoCode: orderCtx.promoCode || null,
-    discountAmount: totals.discount,
   };
-  const ticket = await submitOrder(orderPayload);
-  if (!ticket){
+  const db = App.db || await getDb();
+  if (!db){
+    showToast('Offline: order not saved (no database connection)');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Place Order';
+    return;
+  }
+  let result;
+  try{
+    result = await db.rpc('create_order', { p_order: rpcPayload });
+  }catch(e){
+    console.error('Order save failed:', e);
+    showToast((e && e.message) ? e.message : 'Could not place your order. Please call (856) 435-8799 to order instead.');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Place Order';
     return;
   }
   try{ localStorage.removeItem(CART_STORAGE_KEY); }catch(e){}
-  showOrderConfirmation(ticket, orderPayload);
+  const confirmedOrder = {
+    customerName: name, phone,
+    address: rpcPayload.address, notes,
+    orderType: orderCtx.orderType, payMethod: orderCtx.payMethod,
+    items: result.items, subtotal: result.subtotal, tax: result.tax, tip: result.tip, total: result.total,
+    discountAmount: result.discountAmount, promoCode: result.promoCode,
+    deliveryMiles: rpcPayload.deliveryMiles, deliveryEtaMins: rpcPayload.deliveryEtaMins,
+    createdAt: result.createdAt,
+  };
+  showOrderConfirmation(result.ticket, confirmedOrder);
 }
 
 function buildReceiptHTML(ticket, order){
@@ -1062,10 +1085,33 @@ async function showAccountPanel(){
         btn.addEventListener('click', () => {
           let items = [];
           try{ items = JSON.parse(btn.getAttribute('data-reorder')); }catch(e){}
-          items.forEach(it => addLine({ name:it.name, size:it.size||'', unitPrice:it.unitPrice, qty:it.qty||1, notes:it.notes||'' }));
+          // Re-resolve each item against today's menu/prices/availability
+          // (resolveRefToLine, in ordering-core.js) rather than reusing
+          // this old order's stored unitPrice -- an order placed weeks
+          // ago shouldn't reorder at a stale price, and an item that's
+          // since been removed, marked sold out, or had a topping
+          // discontinued shouldn't silently come back either. Orders
+          // placed before this existed have no `ref` at all and are
+          // skipped the same way.
+          let added = 0, skipped = 0;
+          items.forEach(it => {
+            const resolved = resolveRefToLine(it.ref);
+            if (resolved){
+              addLine({ name: resolved.name, size: resolved.size, unitPrice: resolved.unitPrice, qty: it.qty||1, notes: resolved.notes, ref: resolved.ref });
+              added++;
+            } else {
+              skipped++;
+            }
+          });
           view.hidden = true;
           customerView.hidden = false;
-          showToast(items.length + ' item(s) added to your cart');
+          if (added && skipped){
+            showToast(`${added} item(s) added to your cart -- ${skipped} could not be reordered (the menu has changed since then)`);
+          } else if (skipped){
+            showToast(`Sorry, none of these items could be reordered -- the menu has changed since this order.`);
+          } else {
+            showToast(added + ' item(s) added to your cart');
+          }
         });
       });
     }, () => { ordersEl.textContent = 'Could not load order history.'; });

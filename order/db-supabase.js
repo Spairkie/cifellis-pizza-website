@@ -20,11 +20,37 @@
     function collection(name) {
       let orderField = null;
       let orderDir = 'asc';
+      const whereClauses = [];
+
+      function applyWhere(q) {
+        whereClauses.forEach(({ field, op, value }) => {
+          if (op === '>=') q = q.gte(field, value);
+          else if (op === '<=') q = q.lte(field, value);
+          else if (op === '>') q = q.gt(field, value);
+          else if (op === '<') q = q.lt(field, value);
+          else if (op === '==') q = q.eq(field, value);
+        });
+        return q;
+      }
 
       const api = {
         orderBy(field, dir) {
           orderField = field;
           orderDir = dir === 'desc' ? 'desc' : 'asc';
+          return api;
+        },
+
+        // Firestore-shaped: where(field, '>=', value). Only the
+        // operators actually used anywhere in this app are implemented
+        // -- extend as needed, same minimal-surface approach as the rest
+        // of this adapter. Added specifically so a view that only needs
+        // a recent window (Analytics' trend charts) doesn't have to
+        // fetch/filter the entire table client-side, which is what used
+        // to risk PostgREST's default row cap silently truncating older
+        // data out of results that had no reason to need it in the
+        // first place.
+        where(field, op, value) {
+          whereClauses.push({ field, op, value });
           return api;
         },
 
@@ -74,6 +100,7 @@
           // channel.
           let q = client.from(name).select('*');
           if (orderField) q = q.order(orderField, { ascending: orderDir === 'asc' });
+          q = applyWhere(q);
           const { data, error } = await q;
           if (error) throw error;
           const docs = (data || []).map((row) => ({ id: row.id, exists: true, data: () => row }));
@@ -87,6 +114,7 @@
             if (closed) return;
             let q = client.from(name).select('*');
             if (orderField) q = q.order(orderField, { ascending: orderDir === 'asc' });
+            q = applyWhere(q);
             const { data, error: qErr } = await q;
             if (qErr) {
               if (error) error({ code: qErr.code || 'unavailable', message: qErr.message });

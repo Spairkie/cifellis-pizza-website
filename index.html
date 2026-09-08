@@ -835,7 +835,7 @@
         </g>
       </svg>
       <model-viewer id="heroModel" alt="A fresh pepperoni pizza"
-        loading="eager" auto-rotate camera-controls interaction-prompt="none" shadow-intensity="1.2" exposure="1"
+        loading="eager" camera-controls interaction-prompt="none" shadow-intensity="1.2" exposure="1"
         camera-orbit="45deg 60deg 1.6m" field-of-view="25deg" min-camera-orbit="auto 40deg auto" max-camera-orbit="auto 80deg auto">
       </model-viewer>
     </div>
@@ -1445,7 +1445,12 @@
   try{
     var introSeenKey = 'cifellisIntroSeen';
     var hasSeenIntro = window.localStorage && localStorage.getItem(introSeenKey);
-    if (hasSeenIntro){
+    // An explicit URL hash (someone followed a link straight to #menu,
+    // #specials, an order-confirmation deep link, etc.) means they're
+    // headed somewhere specific -- this auto-scroll shouldn't yank them
+    // back up to the header and stomp on that. Only kicks in with no
+    // hash, i.e. a plain repeat visit to the bare homepage.
+    if (hasSeenIntro && !window.location.hash){
       setTimeout(function(){
         var header = document.getElementById('siteHeader');
         var target = header || document.getElementById('home');
@@ -1521,6 +1526,105 @@
 })();
 </script>
 
+<!-- Homepage menu/specials price sync: this page's menu and "This
+     Week's Specials" sections below are still static HTML (kept that
+     way rather than a full dynamic rebuild, to avoid risking this
+     page's layout on every load), but their prices and the daily-
+     special text are corrected in place from menu_config right after
+     the page loads -- the same source of truth the ordering kiosk and
+     POS already read from, so a price changed in Staff Hub > Menu
+     Editor shows up here too instead of silently staying stale until
+     someone hand-edits this file to match. Matching is by (name, size)
+     against each section's data-cat, not array position, so reordering
+     items in Menu Editor doesn't risk applying the wrong price to the
+     wrong row. An item added or removed in Menu Editor still needs a
+     manual edit here -- deliberately out of scope, since that's a
+     structural page change, not drift on an item that exists in both
+     places. If this fetch fails for any reason the page is left
+     exactly as it is today, same as the hours-override banner above. -->
+<script>
+(async function syncMenuFromConfig(){
+  try{
+    if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY || typeof window.supabase === 'undefined') return;
+    const client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    const { data, error } = await client.from('menu_config').select('data').eq('id', 1).maybeSingle();
+    if (error || !data || !data.data) return;
+    const cfg = data.data;
+    const money2 = (n) => (Math.round(n * 100) / 100).toFixed(2);
+    const itemNameOf = (nameEl) => (nameEl.childNodes[0] ? nameEl.childNodes[0].textContent : '').trim();
+
+    if (cfg.SPECIALS_BY_DAY){
+      const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      document.querySelectorAll('#specials .special-card').forEach(card => {
+        const dayEl = card.querySelector('.day');
+        if (!dayEl) return;
+        const dow = dayNames.indexOf(dayEl.textContent.trim());
+        const special = dow >= 0 ? cfg.SPECIALS_BY_DAY[String(dow)] : null;
+        if (!special) return;
+        const nameEl = card.querySelector('.name');
+        const priceEl = card.querySelector('.price');
+        if (nameEl && special.name) nameEl.textContent = special.name;
+        if (priceEl && special.price != null) priceEl.textContent = money2(special.price);
+      });
+    }
+
+    if (Array.isArray(cfg.PIZZA_SIZES)){
+      document.querySelectorAll('#menu .build-table tbody tr').forEach((row, i) => {
+        const size = cfg.PIZZA_SIZES[i];
+        if (!size) return;
+        const cells = row.querySelectorAll('td');
+        if (cells[1]) cells[1].textContent = '$' + money2(size.base);
+        if (cells[2]) cells[2].textContent = '+$' + money2(size.perTopping);
+      });
+    }
+
+    if (Array.isArray(cfg.TOPPINGS)){
+      const chipRow = document.querySelector('#menu .chip-row');
+      if (chipRow){
+        chipRow.textContent = '';
+        cfg.TOPPINGS.forEach(t => {
+          const span = document.createElement('span');
+          span.className = 'chip';
+          span.textContent = t;
+          chipRow.appendChild(span);
+        });
+      }
+    }
+
+    if (Array.isArray(cfg.SPECIALTY_PIZZAS)){
+      const specialtyList = document.querySelector('#menu [data-cat="pizza"] .menu-items');
+      if (specialtyList){
+        specialtyList.querySelectorAll('.menu-item').forEach(li => {
+          const nameEl = li.querySelector('.name');
+          const sizeEl = li.querySelector('.size');
+          const priceEl = li.querySelector('.price');
+          if (!nameEl || !priceEl) return;
+          const pizza = cfg.SPECIALTY_PIZZAS.find(p => p.name === itemNameOf(nameEl));
+          const size = pizza && pizza.sizes.find(s => s.label === (sizeEl ? sizeEl.textContent.trim() : ''));
+          if (size && size.price != null) priceEl.textContent = money2(size.price);
+        });
+      }
+    }
+
+    if (Array.isArray(cfg.CATEGORIES)){
+      document.querySelectorAll('#menu .menu-cat[data-cat]').forEach(section => {
+        const cat = cfg.CATEGORIES.find(c => c.key === section.getAttribute('data-cat'));
+        if (!cat) return;
+        section.querySelectorAll('.menu-items .menu-item').forEach(li => {
+          const nameEl = li.querySelector('.name');
+          const sizeEl = li.querySelector('.size');
+          const priceEl = li.querySelector('.price');
+          if (!nameEl || !priceEl) return;
+          const sizeLabel = sizeEl ? sizeEl.textContent.trim() : '';
+          const item = cat.items.find(it => it.name === itemNameOf(nameEl) && (it.size || '') === sizeLabel);
+          if (item && item.price != null) priceEl.textContent = money2(item.price);
+        });
+      });
+    }
+  }catch(e){ /* homepage stays exactly as it is today either way */ }
+})();
+</script>
+
 <!-- Hero 3D pizza: the SVG illustration is the real fallback and is
      shown immediately (it's inline, no load time at all); this swaps in
      a rotating 3D model once it's actually ready. If the model-viewer
@@ -1536,6 +1640,21 @@
     heroModel.classList.add('is-loaded');
     heroSvg.classList.add('is-hidden');
   });
+
+  // auto-rotate is set here rather than as a static attribute so a
+  // visitor with "reduce motion" on (OS-level setting, not something
+  // this site asks about) never gets an endlessly-spinning pizza --
+  // live too, via the change listener, in case they flip that setting
+  // while the page is already open rather than only checking it once
+  // at load.
+  var motionQuery = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+  var applyMotionPref = function(){ heroModel.autoRotate = !(motionQuery && motionQuery.matches); };
+  applyMotionPref();
+  if (motionQuery){
+    if (motionQuery.addEventListener) motionQuery.addEventListener('change', applyMotionPref);
+    else if (motionQuery.addListener) motionQuery.addListener(applyMotionPref); // older Safari
+  }
+
   // No 'error' handler needed -- doing nothing is exactly correct here,
   // the SVG (shown by default) just stays visible.
 

@@ -101,6 +101,16 @@
   const msg = document.getElementById('msg');
   const formStep = document.getElementById('formStep');
 
+  // Same pairing as the customer checkout form (order/index.html): a
+  // honeypot field alone catches simple bots that fill in every field,
+  // but not one written specifically against this form. A minimum
+  // time-on-page check closes that gap the same way it does there —
+  // neither is a real security boundary by itself, but a script
+  // targeting this exact form would need to deliberately wait this out
+  // too, not just skip a field it can already tell to leave blank.
+  const APPLY_MIN_FORM_TIME_MS = 3000;
+  const formLoadedAt = Date.now();
+
   function client(){
     return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
   }
@@ -123,6 +133,11 @@
   document.getElementById('submitBtn').addEventListener('click', async () => {
     const honeypot = document.getElementById('apl-hp');
     if (honeypot && honeypot.value.trim()) return; // real applicants never fill this in
+    if (Date.now() - formLoadedAt < APPLY_MIN_FORM_TIME_MS){
+      msg.textContent = 'Please review your application and try again.';
+      msg.className = 'msg error';
+      return;
+    }
     const name = document.getElementById('apl-name').value.trim();
     const phone = document.getElementById('apl-phone').value.trim();
     const email = document.getElementById('apl-email').value.trim();

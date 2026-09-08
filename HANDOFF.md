@@ -40,14 +40,16 @@ anything that touches the live database.
 - `supabase/README.md` — setup instructions, written for whoever's
   running this project (not just for an AI session).
 
-**Important:** `order/index.html` and `staff/index.html` duplicate a
-fair amount of logic (menu rendering, item cards, the pizza builder,
-cart line editing). This is a known, deliberate tradeoff from before
-the customer/staff split, not an oversight — but it means **a menu- or
-ordering-related change usually needs to be made in both files**, and
-it's easy to fix a bug in one and forget the other exists. Always grep
-for the function/pattern name in both files before considering an
-ordering-flow change done.
+**Update (Claude Code, 2026-09-07/08):** the duplication the paragraph
+above used to warn about is fixed — cart state, the menu/cart-pane
+builders, and their wiring (`resetOrderCtx`, `addLine`, `buildMenuPaneHTML`,
+`buildCartPaneHTML`, `renderCart`, `renderOrderLayout`, and the rest)
+now live once in `order/ordering-core.js`, loaded by both pages. Only
+each page's own submit/receipt/queue logic (genuinely different between
+a customer placing an order and staff ringing one up) stays separate.
+Still always grep both files before considering an ordering-flow change
+done — mode-specific behavior can still diverge — but there's no longer
+a second copy of the shared pieces to forget about.
 
 ## Database
 
@@ -66,9 +68,21 @@ HTTPS, so every schema change this session had to be done by asking
 the site owner to paste SQL into the dashboard by hand. **You very
 likely don't have this limitation** running locally — if you have (or
 can get) a Postgres connection string (Supabase dashboard → Project
-Settings → Database → Connection string), use `psql` directly and this
-whole dance goes away. Confirm this actually works before relying on
-it, rather than assuming.
+Settings → Database → Connection string), use `psql` (or the `pg`
+Node package) directly and this whole dance goes away. Confirm this
+actually works before relying on it, rather than assuming.
+
+**Update (Claude Code, 2026-09-08):** the direct connection string
+(`db.<ref>.supabase.co:5432`) is IPv6-only, and this environment's
+network stack couldn't route to it at all (`ENETUNREACH`, even though
+DNS resolved fine via a different path) — looked like a Supabase
+problem at first but wasn't. Supabase's session pooler is the IPv4-
+compatible fix: same password, but the host is
+`aws-0-<region>.pooler.supabase.com:5432` and the username becomes
+`postgres.<project-ref>` instead of plain `postgres` (this project's
+region is `us-east-1`). Worth trying the pooler form first if the plain
+`db.<ref>.supabase.co` connection ever mysteriously fails to resolve —
+it's a fast, easy alternative, not a last resort.
 
 ## Credentials
 
@@ -121,25 +135,35 @@ meantime — just don't forget they're there.
   don't assume instant) — poll for the actual pushed content to appear
   before concluding a live check failed.
 - **A quiet failure is still a failure.** `db-supabase.js`'s adapter
-  swallows some errors by design (documented inline where it does) —
-  don't assume "no error thrown" means "worked as intended."
+  itself doesn't swallow errors (it throws) — but plenty of call sites
+  used to catch and discard them anyway, including several genuinely
+  critical ones (`updateOrder`, driver approval, clock in/out) fixed
+  2026-09-08 after a review caught them. Where a catch block truly is
+  intentional (display-only data, not a write), it's commented inline
+  saying why. Don't assume "no error thrown" means "worked as intended"
+  without checking which kind you're looking at.
 
 ## Current state / what's next
 
 Read `ROADMAP.md` top to bottom — it's the real project history, kept
-current on purpose, most recent entries first. In short: a full code
-review pass, several real bugs found and fixed (an RLS infinite-
-recursion bug that broke every staff-admin check, a menu-config
-loading bug that meant live menu edits never reached the kiosk, a
-broken customer/driver signup flow, a mobile ordering bug), a Menu
-Editor was built, least-privilege role-based screen access was added,
-and a large feature backlog was captured but mostly not yet built.
+current on purpose, most recent entries first. This file (`HANDOFF.md`)
+is orientation, not a live status tracker — if the two ever disagree,
+`ROADMAP.md` is right.
 
-**The feature backlog (prioritized, with reasoning) is the "what's
-next" — see the "Feature backlog" section of `ROADMAP.md`.** Tier 1 is
-where to start: pause/throttle online orders and a Store Settings
-screen are the next-highest-value items after the Sold Out toggle that
-already shipped.
+**As of 2026-09-08:** the original claude.ai handoff's feature backlog
+is done (Tier 1/2/3, checked off in `ROADMAP.md`'s "Feature backlog"
+section), the 2026-09-07 "Next Development Roadmap" (5 priorities from
+the owner) is done, the cart-state/pizza-builder duplication this file
+used to warn about is fixed, and a review-findings pass fixed a real
+set of production-security issues — most notably, customer orders
+could previously be inserted directly with client-supplied (i.e.
+attacker-controlled) prices; that's now structurally impossible (see
+"Part 1 fixes shipped..." in `ROADMAP.md`, 2026-09-08). Two new phases
+from that same review (Phase 4: operational health monitoring, Phase 8:
+growth features — loyalty, scheduled orders, catering, real payments)
+are written up but **deliberately not started**, awaiting the owner's
+go-ahead on scope. Check `ROADMAP.md`'s top section for whether that's
+moved since this was written.
 
 ## One ask
 
