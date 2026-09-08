@@ -70,7 +70,7 @@ and a **five-minute one-time setup step**: run
 put the same value in the bridge's `.env` — see `print-bridge/README.md`
 for the exact steps. Nothing else to build.
 
-Full detail: `ROADMAP.md` → "3. Receipt printing."
+Full detail: `ROADMAP.md` → "3. Receipt printing + cash drawer."
 
 ## 3. What to run the Staff Hub on
 
@@ -91,6 +91,46 @@ proprietary software — it would run a second, redundant system next to
 this one, not power it.
 
 **Decide:** how many screens, tablet vs. rugged, budget.
+
+## 3b. Kitchen Board on a TV (optional)
+
+Any TV works as a display — it just needs an HDMI input. The real
+decision is what you plug into it to drive a browser full-screen, and
+one of the obvious cheap answers turned out to have a landmine in it.
+
+**Skip the Fire TV Stick, or be very specific about which model.**
+Amazon is mid-transition to a new OS called Vega OS, which **cannot run
+a kiosk browser at all** — no sideloading, no exceptions. The two newest
+Fire TV Stick models (4K Select, late 2025; Fire TV Stick HD, April
+2026) already run Vega OS. Only the older **4K Plus / 4K Max** models
+are Android-based and can actually do this — and Amazon's own listings
+don't always make the OS obvious, so confirm before buying.
+[Fire TV Stick 4K Max (confirm Android-based before relying on it for this)](https://www.amazon.com/fire-tv-stick-4k-max-with-alexa-voice-remote/dp/B08MQZXN1X)
+
+**Better cheap option, same trick, no OS-roulette:**
+[Chromecast with Google TV (4K), ~$40–50](https://www.amazon.com/Chromecast-Google-Streaming-Entertainment-Search/dp/B0CMZRRBJT) —
+plain Android TV throughout, not caught in any vendor platform
+migration. Sideload [Fully Kiosk Browser](https://www.fully-kiosk.com)
+via the "Downloader" app (same install method on either device), point
+it at the Staff Hub URL, set it to auto-launch on boot with the
+screensaver off.
+
+**Most control, matches what you're already doing for the receipt
+printer:** a Raspberry Pi or cheap mini PC running Chrome/Chromium with
+the `--kiosk` flag — no app-store gatekeeping ever, and no dependency on
+a streaming-stick vendor's OS choices. Same
+[Raspberry Pi 5 starter kit](https://www.amazon.com/CanaKit-Raspberry-Essentials-Starter-Kit/dp/B0CVQT445P)
+linked above works fine for this too (a second one — don't share it with
+print-bridge, keep that one headless).
+
+**Setup either way:** sign in once with a dedicated low-privilege staff
+account (not admin — you don't want admin credentials sitting on a TV),
+pick Kitchen Board as its role. The Staff Hub remembers a device's
+chosen role and stays signed in, so a reboot goes straight back to
+Kitchen Board with no re-login. Turn off the TV's screensaver/sleep
+settings; if it's specifically an OLED TV, worth knowing static
+dashboard content running 10+ hours a day has a long-run burn-in risk —
+a regular LCD/LED TV doesn't have this issue.
 
 ## 4. SMS order notifications
 

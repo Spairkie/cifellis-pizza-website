@@ -129,12 +129,15 @@ left to do:
   with the Twilio integration steps documented; the Customer Kiosk
   already has a "text me when it's ready" opt-in checkbox that stores
   consent (`phoneOptIn` on the order), nothing sends a text yet.
-- **Receipt printing** — partially works. `print-bridge/` is a separate
-  Node.js service (run on a mini PC near the printer) that turns an
-  order into a real ESC/POS receipt and can send it to a network
-  printer today. USB printer support and the Staff Hub's "send this to
-  the bridge" call are both stubbed with exact next steps. See
-  `print-bridge/README.md`.
+- **Receipt printing & cash drawer** — fully built, waiting on hardware.
+  `print-bridge/` is a separate Node.js service (run on a mini PC near
+  the printer) that turns a Staff Hub "Print" click into a real ESC/POS
+  receipt on a network printer, and can kick a cash drawer plugged into
+  it. The Staff Hub already has the buttons (POS's "Print", Till's "Open
+  Drawer", and a ticket-number "Reprint an Order" lookup) — just needs
+  the printer/drawer bought and a one-time setup step. USB printer
+  support is the one remaining stub. See `print-bridge/README.md` and
+  `OWNER-TODO.md`.
 - **Analytics & SEO** — `index.html` has Open Graph/Twitter meta tags and
   Restaurant structured data (JSON-LD) for search engines, plus
   `robots.txt` and `sitemap.xml` at the repo root. Cloudflare Web

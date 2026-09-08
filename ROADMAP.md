@@ -1,6 +1,6 @@
 # Roadmap
 
-Where the project stands, and what's left. Last reviewed 2026-09-08.
+Where the project stands, and what's left. Last reviewed 2026-09-09.
 
 **This is a real business's live ordering system, not a sandbox.** Real
 customers can place real orders against it right now. Treat every change
@@ -37,9 +37,9 @@ short, prioritized version of every open decision below:
 
 1. [Real card payments](#1-real-card-payments)
 2. [SMS order notifications](#2-sms-order-notifications)
-3. [Receipt printing](#3-receipt-printing)
+3. Receipt printing + cash drawer — search this file for "## 3." (built, waiting on hardware)
 4. [SEO](#4-seo--deferred-until-the-custom-domain-is-live) / [4b. Custom domain migration](#4b-custom-domain-migration-spairkiegithubio--cifellicom)
-6. [POS/kitchen screens (hardware)](#6-poskitchen-screens-hardware)
+6. [POS/kitchen screens (hardware)](#6-poskitchen-screens-hardware) — including putting Kitchen Board on a TV, `OWNER-TODO.md` → "3b."
 
 ## Backlog
 
