@@ -723,16 +723,19 @@ async function updateOrder(docId, patch){
    see print-bridge/README.md for the full picture. Cash orders also
    kick the drawer as part of the same print job (openDrawer), so a
    till-side "no sale" is the only time drawerOnly is used on its own.
-   Fire-and-forget by design: this only ever queues the job, it doesn't
-   wait to confirm the bridge actually printed it (that machine might be
-   off, or a few seconds behind) -- Staff Hub > System Health is where
-   to check the bridge itself is alive. */
+   The id is generated here (not left to the column's default) purely so
+   watchPrintJob() below has something to watch -- the adapter's add()
+   deliberately never selects a freshly-inserted row back (see its own
+   comment in order/db-supabase.js), so this is the one clean way to get
+   an id in hand immediately without changing that shared behavior. */
 async function requestPrint(order, { drawerOnly = false } = {}){
   const db = await getDb();
   if (!db){ showToast('Offline: nothing queued (no database connection)'); return; }
+  const id = crypto.randomUUID();
   const body = drawerOnly
-    ? { kind: 'drawer_kick', ticket: '', requestedByEmail: App.myEmail || '' }
+    ? { id, kind: 'drawer_kick', ticket: '', requestedByEmail: App.myEmail || '' }
     : {
+        id,
         kind: 'receipt',
         ticket: order.ticket || '',
         orderId: order.id || null,
@@ -748,9 +751,65 @@ async function requestPrint(order, { drawerOnly = false } = {}){
   try{
     await db.collection('print_jobs').add(body);
     showToast(drawerOnly ? 'Drawer open queued' : `Receipt for ${order.ticket || 'this order'} sent to the printer`);
+    watchPrintJob(id, drawerOnly ? 'Drawer' : (order.ticket || 'Receipt'));
   }catch(e){
     showToast('Could not queue that: ' + (e && e.message ? e.message : 'unknown error'));
   }
+}
+
+/* Polls one print_jobs row (every 1.5s, up to ~15s) so the person who
+   clicked Print finds out whether it actually happened, instead of
+   guessing. Deliberately a short-lived poll, not a live subscription --
+   this is a one-off "did that work" check, not a screen anyone's
+   expected to leave open and watch. Times out silently past 15s (the
+   Recent Print Activity panel below stays the source of truth for
+   anything that takes longer, e.g. the bridge machine being off). */
+function watchPrintJob(id, label){
+  const startedAt = Date.now();
+  const timer = setInterval(async () => {
+    if (Date.now() - startedAt > 15000){ clearInterval(timer); return; }
+    const db = App.db;
+    if (!db) return;
+    try{
+      const snap = await db.collection('print_jobs').where('id', '==', id).get();
+      const job = (snap.docs || [])[0];
+      const status = job && job.data().status;
+      if (status === 'printed'){
+        clearInterval(timer);
+        showToast(`${label}: printed`);
+      } else if (status === 'failed'){
+        clearInterval(timer);
+        const err = job.data().error;
+        showToast(`${label}: print failed${err ? ' — ' + err : ''}`);
+      }
+    }catch(e){ /* a transient check failing isn't worth surfacing -- the next tick tries again */ }
+  }, 1500);
+}
+
+const PRINT_JOB_STATUS_LABELS = { pending:'Queued', claimed:'Printing…', printed:'Printed', failed:'Failed' };
+const PRINT_JOB_STATUS_COLORS = { pending:'var(--paper-dim)', claimed:'var(--gold)', printed:'var(--ok)', failed:'var(--bad)' };
+
+/* POS > "Recent Print Activity" -- a live-updating log of the last 24h
+   of print/drawer jobs, most recent first. This is the troubleshooting
+   answer to "is the printer actually working" without walking over to
+   check the bridge machine: a growing pile of jobs stuck on "Queued"
+   means the bridge isn't running or can't reach Supabase; "Failed"
+   entries carry the bridge's own error (a jammed printer, wrong
+   PRINTER_HOST, etc). */
+function renderPrintActivity(jobs){
+  const root = document.getElementById('print-activity-list');
+  if (!root) return;
+  if (!jobs.length){ root.innerHTML = '<div style="color:var(--paper-dim);">Nothing printed in the last 24 hours.</div>'; return; }
+  root.innerHTML = jobs.slice(0, 8).map(j => {
+    const who = (j.requestedByEmail || '').split('@')[0] || 'unknown';
+    const label = j.kind === 'drawer_kick' ? 'Drawer' : (j.ticket || 'Receipt');
+    const status = PRINT_JOB_STATUS_LABELS[j.status] || j.status;
+    const color = PRINT_JOB_STATUS_COLORS[j.status] || 'var(--paper-dim)';
+    return `<div class="row-between" style="padding:6px 0; border-bottom:1px solid var(--line-on-ink);">
+      <span>${escapeHtml(label)} &middot; ${escapeHtml(who)} &middot; ${timeAgo(j.createdAt)}</span>
+      <span style="color:${color}; font-weight:600;">${escapeHtml(status)}${j.status === 'failed' && j.error ? ' — ' + escapeHtml(j.error) : ''}</span>
+    </div>`;
+  }).join('');
 }
 
 /* POS > "Reprint an Order" -- finds any order (active or long since
@@ -1256,6 +1315,11 @@ function renderPosQueue(){
         </div>
         <div id="reprint-result" style="margin-top:10px;"></div>
       </div>
+      <div class="me-card" style="margin-bottom:18px; max-width:460px;">
+        <div class="me-card-title">Recent Print Activity</div>
+        <div style="font-size:12px; color:var(--paper-dim); margin-bottom:8px;">Last 24 hours -- what to check first if the printer seems to have gone quiet.</div>
+        <div id="print-activity-list" style="font-size:12.5px;">Loading...</div>
+      </div>
       <div id="pos-queue-list" style="display:flex; flex-direction:column; gap:10px;"></div>
     </div>`;
   document.getElementById('newOrderFromQueue').addEventListener('click', initPosView);
@@ -1267,6 +1331,19 @@ function renderPosQueue(){
     list.innerHTML = '<div class="cart-empty">Not connected to the live order database.</div>';
     return;
   }
+  try{
+    const unsubPrint = App.db.collection('print_jobs')
+      .where('createdAt', '>=', Date.now() - 24 * 60 * 60 * 1000)
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(snap => {
+        const jobs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
+        renderPrintActivity(jobs);
+      }, () => {
+        const root = document.getElementById('print-activity-list');
+        if (root) root.innerHTML = '<div style="color:var(--paper-dim);">Could not load print activity.</div>';
+      });
+    App.unsub.push(unsubPrint);
+  }catch(e){}
   try{
     const unsub = App.db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => Object.assign({ id: d.id }, d.data() || {}));
