@@ -559,6 +559,34 @@ end;
 $$;
 grant execute on function public.order_status_lookup(text, text) to anon, authenticated;
 
+-- POS > "Reprint an Order" (staff/index.html). One query, three ways to
+-- match, since a staff member searching usually only has one of these on
+-- hand: the exact ticket (with or without the "T" prefix -- typing just
+-- the digits from a busy counter is common enough to be worth handling),
+-- or the phone number on the order. Deliberately plain SQL, not security
+-- definer -- orders_select_staff_or_own already scopes what a given
+-- signed-in staff member can see (general staff vs. driver-only), and
+-- this should respect exactly that, not bypass it. Uses normalize_phone()
+-- on both sides of the phone comparison for the same reason
+-- order_status_lookup() does above: a POS-entered order's phone isn't
+-- guaranteed to already be stored normalized.
+create or replace function public.staff_search_orders(p_query text)
+returns setof public.orders
+language sql stable
+set search_path = public
+as $$
+  select * from public.orders
+  where trim(coalesce(p_query, '')) <> ''
+    and (
+      upper(ticket) = upper(trim(p_query))
+      or (trim(p_query) ~ '^[0-9]{1,6}$' and upper(ticket) = 'T' || lpad(trim(p_query), 6, '0'))
+      or (length(public.normalize_phone(p_query)) >= 7 and public.normalize_phone(phone) = public.normalize_phone(p_query))
+    )
+  order by "createdAt" desc
+  limit 15;
+$$;
+grant execute on function public.staff_search_orders(text) to authenticated;
+
 
 -- =========================================================================
 -- Register shifts (Till / End-of-day management, Staff Hub > Till)

@@ -60,10 +60,16 @@ forwards bytes to the printer, nothing demanding.
 
 **What's built and ready (2026-09-09):** the print-and-drawer-kick
 pipeline is fully implemented — a "Print" button on every POS order, an
-"Open Drawer" button in Till, and a "Reprint an Order" ticket-number
-search on the POS Queue screen that works for any order, not just
-today's. All three queue a job Supabase-side; the bridge polls for it
-and prints (kicking the drawer too, automatically, on any cash order).
+"Open Drawer" button in Till, and a "Reprint an Order" search on the POS
+Queue screen that finds any order at all, not just today's, by ticket
+number *or* phone (a partial ticket like "4821" works too — no need to
+remember the "T00" prefix), showing what's in the order before you
+commit to printing it. Every request now reports back whether it
+actually printed instead of leaving you guessing, and a live "Recent
+Print Activity" log shows the last 24 hours — your first stop if the
+printer's gone quiet. All of this queues a job Supabase-side; the bridge
+polls for it and prints (kicking the drawer too, automatically, on any
+cash order).
 The only things left are buying the hardware above
 and a **five-minute one-time setup step**: run
 `select set_print_bridge_token('...');` in the Supabase SQL Editor and

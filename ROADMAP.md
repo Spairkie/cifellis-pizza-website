@@ -147,11 +147,27 @@ standalone Node.js service — ESC/POS receipt formatting, sending to a
 Health (`service_heartbeats`), so the Staff Hub shows it as Healthy/
 Down rather than a guess. The Staff Hub side is wired up too: a "Print"
 button on every POS order (`renderQueueRow` → `requestPrint()`,
-`staff/index.html`), an "Open Drawer (No Sale)" button in Till, and a
-"Reprint an Order" ticket-number lookup on the POS Queue screen
-(`reprintLookup()`) that works for any order at all, not just what's
-still active — a completed order from last week reprints exactly the
-same way as one still in the live queue.
+`staff/index.html`), an "Open Drawer (No Sale)" button in Till, a
+"Reprint an Order" lookup on the POS Queue screen (`reprintLookup()`)
+that works for any order at all (not just what's still active), a
+per-request print-status readout (`watchPrintJob()` — polls the
+specific job for ~15s and reports "Printed" or "Failed: <reason>"
+instead of a fire-and-forget guess), and a live "Recent Print Activity"
+panel (last 24h — the first place to look if the printer's gone quiet).
+
+**Reprint search matches on ticket *or* phone, not just an exact
+ticket** (`staff_search_orders()`, `supabase/schema.sql`, added
+2026-09-09) — a plain (not security-definer) SQL function, since
+`orders_select_staff_or_own`'s existing RLS already scopes what a
+signed-in staff member can see and this should respect that exactly,
+not bypass it. One query tries three things at once: the ticket as
+typed, the ticket with a "T" + zero-padding assumed (so a busy counter
+can type just "4821" instead of "T004821"), and the phone number
+(normalized on both sides, same reasoning as `order_status_lookup()`
+above — a POS-entered order's stored phone isn't guaranteed already
+normalized). A phone match can return more than one order, so the UI
+always renders a list, most recent first, each with its own item
+summary and Print button.
 
 **Architecture changed from the original design, and why:** the Staff
 Hub used to be meant to push a print job to the bridge directly over a
