@@ -39,8 +39,7 @@ short, prioritized version of every open decision below:
 2. [SMS order notifications](#2-sms-order-notifications)
 3. [Receipt printing](#3-receipt-printing)
 4. [SEO](#4-seo--deferred-until-the-custom-domain-is-live) / [4b. Custom domain migration](#4b-custom-domain-migration-spairkiegithubio--cifellicom)
-6. [Staff badge sign-in (NFC/RFID)](#6-staff-badge-sign-in-nfcrfid) — not started, design only
-7. [POS/kitchen screens (hardware)](#7-poskitchen-screens-hardware)
+6. [POS/kitchen screens (hardware)](#6-poskitchen-screens-hardware)
 
 ## Backlog
 
@@ -219,26 +218,7 @@ sits alongside it if funnel-level detail (e.g. "what fraction of menu
 visitors complete checkout") is ever worth the added complexity — an
 addition on top of Cloudflare, not a replacement.
 
-## 6. Staff badge sign-in (NFC/RFID)
-
-**Status:** not started — design only, written up 2026-09-08 in response
-to the owner already owning an Identiv uTrust 3700 F contactless smart
-card reader and asking whether staff could sign in with a tap instead of
-typing credentials every time.
-
-**The short version:** yes, but it needs a small local bridge service
-(the same pattern `print-bridge/` already uses for the receipt printer),
-not a browser API — see why, and the full design, in `OWNER-TODO.md`'s
-"Staff badge sign-in" section. That's the right place to read this since
-it's a real decision (card type, PIN-pairing) before any of it gets
-built, not just an implementation note.
-
-**What it needs:** the reader is already owned. Building it needs a
-decision on card type (cheap MIFARE Classic vs. the safer MIFARE DESFire
-EV1, both readable by the same device) and whether a tap alone is enough
-or should pair with a PIN for anything sensitive — see `OWNER-TODO.md`.
-
-## 7. POS/kitchen screens (hardware)
+## 6. POS/kitchen screens (hardware)
 
 **Status:** research only, written up 2026-09-08. This project's Staff
 Hub is already a browser-based PWA — POS, Kitchen Board, and Driver App
@@ -249,7 +229,7 @@ system) — the short version is a bundled system would mean paying for,
 and partially rebuilding onto, hardware and software this project
 doesn't need.
 
-## 8. Smaller polish items
+## 7. Smaller polish items
 
 - **Driver preferences** are free-text notes today, not structured data.
   Worth breaking out (max delivery radius, preferred shift times) if the

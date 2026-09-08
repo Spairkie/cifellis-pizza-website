@@ -86,41 +86,7 @@ the `phoneOptIn` column, and the Edge Function itself
 
 Full detail: `ROADMAP.md` → "2. SMS order notifications."
 
-## 5. Staff badge sign-in (NFC/RFID) — new idea, not started
-
-**What you asked:** can staff sign in (or otherwise use) your Identiv
-uTrust 3700 F card reader instead of typing credentials every time?
-
-**Short answer: yes, but it needs one more small local service, same
-idea as the receipt printer.** A browser can't talk to that reader
-directly — Web NFC (the browser API that could) only works in Chrome on
-Android phones, never on a desktop, and the uTrust is a USB desktop
-reader. So this needs a small always-on Node service (same pattern as
-`print-bridge/`) that reads a tapped card and tells the Staff Hub who it
-belongs to; the real Supabase Auth login stays exactly as secure as it
-is today, the badge is just a faster trigger for it, restricted to your
-own shop's bridge (a stolen card ID can't be used from outside).
-
-**Read this before buying cards.** Cheap MIFARE Classic cards/key fobs
-(the $1–2 kind sold everywhere) use broken encryption and can be cloned
-in under a second with a ~$30 tool anyone can buy. That's fine for
-"identify who's on the register" as a convenience — **not fine alone**
-for anything sensitive (admin actions, refunds/voids). If a tap needs to
-actually mean something, pair it with a quick PIN on the numeric keypad
-(tap = who, PIN = proof) or buy MIFARE DESFire EV1 cards instead — same
-reader, real AES encryption, not practically cloneable, a few dollars
-more per card.
-
-**Decide:** (a) build this at all, (b) Classic (cheap, convenience-only)
-or DESFire (secure) cards, (c) tap alone or tap+PIN for sensitive
-actions.
-
-**Cost:** reader already owned. Cards: MIFARE Classic ~$0.50–2 each,
-DESFire EV1 ~$2–5 each. No new recurring cost either way.
-
-Full technical design: `ROADMAP.md` → "6. Staff badge sign-in (NFC/RFID)."
-
-## 6. Upload real food photography
+## 5. Upload real food photography
 
 **Need:** photos of the menu items.
 
@@ -133,10 +99,10 @@ no code change:
 
 Once real photos exist, worth revisiting which other items (beyond the
 Panzarotti/Specialty Pies already flagged) should get the "Signature"
-prominence treatment. Full detail: `ROADMAP.md` → "8. Smaller polish
+prominence treatment. Full detail: `ROADMAP.md` → "7. Smaller polish
 items."
 
-## 7. Custom domain + SEO
+## 6. Custom domain + SEO
 
 **Not started** — you have `cifelli.com` but haven't asked for the
 migration. Full DNS/code checklist (including the steps only you can do
