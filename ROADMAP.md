@@ -59,15 +59,6 @@ Not blocked on the owner — just not built yet, roughly in priority order:
   on ad hoc.
 - [ ] **Micro-interactions / hover states** — polish pass across buttons,
   cards, transitions. Ongoing/incremental rather than a single task.
-- [ ] **Reprint a completed/historical order by ticket number**, added
-  2026-09-09 — the new "Print" button (`requestPrint()`,
-  `staff/index.html`) only appears on POS's *active* order queue, so a
-  ticket that's already completed (yesterday's, or one that scrolled out
-  of the active list) has no way to be reprinted today. The
-  `print_jobs`/bridge machinery underneath already supports this fully
-  (it just needs *an* order object, active or not) — what's missing is
-  a small lookup UI (ticket number → order → the same `requestPrint()`
-  call), not new backend work.
 - [ ] **External numeric keypad shortcuts** — the owner's keypad (a V7/
   SEVEN KP400, confirmed 2026-09-08) is a plain USB HID keyboard, so
   typing on it already works today with zero code, on any POS number
@@ -156,7 +147,11 @@ standalone Node.js service — ESC/POS receipt formatting, sending to a
 Health (`service_heartbeats`), so the Staff Hub shows it as Healthy/
 Down rather than a guess. The Staff Hub side is wired up too: a "Print"
 button on every POS order (`renderQueueRow` → `requestPrint()`,
-`staff/index.html`) and an "Open Drawer (No Sale)" button in Till.
+`staff/index.html`), an "Open Drawer (No Sale)" button in Till, and a
+"Reprint an Order" ticket-number lookup on the POS Queue screen
+(`reprintLookup()`) that works for any order at all, not just what's
+still active — a completed order from last week reprints exactly the
+same way as one still in the live queue.
 
 **Architecture changed from the original design, and why:** the Staff
 Hub used to be meant to push a print job to the bridge directly over a

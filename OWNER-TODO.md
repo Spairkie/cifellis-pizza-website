@@ -59,10 +59,12 @@ forwards bytes to the printer, nothing demanding.
 50-roll case is roughly $50–75 total).
 
 **What's built and ready (2026-09-09):** the print-and-drawer-kick
-pipeline is fully implemented — a "Print" button on every POS order and
-an "Open Drawer" button in Till, both queue a job Supabase-side; the
-bridge polls for it and prints (kicking the drawer too, automatically,
-on any cash order). The only things left are buying the hardware above
+pipeline is fully implemented — a "Print" button on every POS order, an
+"Open Drawer" button in Till, and a "Reprint an Order" ticket-number
+search on the POS Queue screen that works for any order, not just
+today's. All three queue a job Supabase-side; the bridge polls for it
+and prints (kicking the drawer too, automatically, on any cash order).
+The only things left are buying the hardware above
 and a **five-minute one-time setup step**: run
 `select set_print_bridge_token('...');` in the Supabase SQL Editor and
 put the same value in the bridge's `.env` — see `print-bridge/README.md`
