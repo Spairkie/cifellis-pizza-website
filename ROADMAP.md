@@ -59,6 +59,15 @@ Not blocked on the owner — just not built yet, roughly in priority order:
   on ad hoc.
 - [ ] **Micro-interactions / hover states** — polish pass across buttons,
   cards, transitions. Ongoing/incremental rather than a single task.
+- [ ] **Reprint a completed/historical order by ticket number**, added
+  2026-09-09 — the new "Print" button (`requestPrint()`,
+  `staff/index.html`) only appears on POS's *active* order queue, so a
+  ticket that's already completed (yesterday's, or one that scrolled out
+  of the active list) has no way to be reprinted today. The
+  `print_jobs`/bridge machinery underneath already supports this fully
+  (it just needs *an* order object, active or not) — what's missing is
+  a small lookup UI (ticket number → order → the same `requestPrint()`
+  call), not new backend work.
 - [ ] **External numeric keypad shortcuts** — the owner's keypad (a V7/
   SEVEN KP400, confirmed 2026-09-08) is a plain USB HID keyboard, so
   typing on it already works today with zero code, on any POS number
@@ -138,32 +147,58 @@ sending — budget roughly $1/month for the number plus ~$0.0079/text.
 (`order/rate.html`) can go out by text instead of only showing on the
 confirmation screen.
 
-## 3. Receipt printing
+## 3. Receipt printing + cash drawer
 
-**Status:** partially real. `print-bridge/` is a standalone Node.js
-service — ESC/POS receipt formatting and sending to a **network** printer
-works today. It also reports a heartbeat to System Health once actually
-deployed and running (`service_heartbeats`), so the Staff Hub will show
-it as Healthy/Down rather than a guess. Missing: USB printer support
-(needs the printer's actual vendor/product ID, documented in
-`print-bridge/transport.js`), and the Staff Hub doesn't call it yet — the
-function to add is commented at the bottom of `print-bridge/index.js`.
+**Status: built, ready for hardware (2026-09-09).** `print-bridge/` is a
+standalone Node.js service — ESC/POS receipt formatting, sending to a
+**network** printer, and a cash-drawer kick pulse (`escpos.js`,
+`buildDrawerKick()`) all work today. It reports a heartbeat to System
+Health (`service_heartbeats`), so the Staff Hub shows it as Healthy/
+Down rather than a guess. The Staff Hub side is wired up too: a "Print"
+button on every POS order (`renderQueueRow` → `requestPrint()`,
+`staff/index.html`) and an "Open Drawer (No Sale)" button in Till.
 
-**What it needs:** a thermal receipt printer (network/Wi-Fi is the easy
-path — 58mm or 80mm, "ESC/POS" in the listing) and a cheap mini PC or
-Raspberry Pi to run the bridge near it. The **Star Micronics TSP143IIIU**
-the owner is already looking at (researched 2026-09-08, ~$290-390
-depending on retailer) is a real, well-regarded fit — ESC/POS compatible,
-80mm/3" width, auto-cutter — but it's **USB only, not network/Wi-Fi**.
-That's the one thing to weigh: `print-bridge/`'s tested path today is
-the network transport (`sendOverLan`); USB support is the still-stubbed
-part (`print-bridge/transport.js`) that needs the printer's actual
-vendor/product ID to finish, which this model would finally provide. A
-Wi-Fi-model Star printer would work with zero further code; the
-TSP143IIIU works too, it just means finishing the USB path first.
-Thermal paper (80mm, the size this printer takes): roughly $1-1.60/roll
-in bulk (50-roll cases run about $50-75 total, cheaper per roll than
-small packs) — a genuinely small ongoing cost.
+**Architecture changed from the original design, and why:** the Staff
+Hub used to be meant to push a print job to the bridge directly over a
+WebSocket. That can't actually work — the Staff Hub is served over
+https (GitHub Pages), and every modern browser blocks a plain `ws://`
+connection from an https page as mixed content, full stop, including to
+localhost. Rather than solve that with a TLS certificate on a local-
+network device (real option, more to maintain than this needs), the
+Staff Hub now queues a job as an ordinary row in a new `print_jobs`
+table (plain https, no different from placing an order), and
+`print-bridge` polls Supabase for pending jobs every few seconds
+(`POLL_INTERVAL_MS`, default 4s) and prints them. See the "WHY POLLING"
+comment at the top of `print-bridge/index.js` and the "Print Bridge"
+section of `supabase/schema.sql` for the full reasoning. **Never revert
+this to a direct WebSocket push** without solving the mixed-content
+problem first — it's not a bug, it's a hard browser security boundary.
+
+**Security:** `print_jobs` grants staff INSERT/SELECT only — nothing
+ever lets a browser session mark a job printed. The bridge authenticates
+separately via a shared secret (`bridge_secrets`, stored only as a
+bcrypt hash, set once via `select set_print_bridge_token('...')` in the
+SQL Editor as an admin) required by both `claim_pending_print_jobs()`
+and `complete_print_job()` — the public anon key alone isn't enough to
+call either successfully. A job's `payload` (which carries the
+customer's name/address/items, needed to actually print the receipt) is
+nulled out the moment the job completes, so that data doesn't sit around
+longer than it has to.
+
+**Hardware recommendation changed too:** steered away from the Star
+Micronics TSP143IIIU (USB-only — the harder, unbuilt transport) toward
+the **Epson TM-m30III** (Ethernet, ~$275) — purpose-built for tablet/
+cloud-POS setups like this one, and it has a cash-drawer kick port,
+which the TSP143IIIU research hadn't even considered since nothing
+addressed the drawer question yet. Full purchase links and a compatible
+drawer: `OWNER-TODO.md` → "2. Receipt printer + cash drawer."
+
+**What's left:** buy the printer + drawer + a mini PC/Pi to run the
+bridge (`OWNER-TODO.md` has links), run the one-time
+`set_print_bridge_token()` step, fill in `print-bridge/.env`, `npm
+start`. No more code to write for the LAN path. USB support
+(`print-bridge/transport.js`) stays a stub, not needed for the
+recommended hardware.
 
 ## 4. SEO — deferred until the custom domain is live
 

@@ -33,25 +33,40 @@ only missing piece is a Stripe account and the "Pay Now" button, which
 needs real keys to build against. Full detail: `ROADMAP.md` → "1. Real
 card payments."
 
-## 2. Receipt printer
+## 2. Receipt printer + cash drawer
 
-**You're looking at:** Star Micronics TSP143IIIU (~$290–390). Good
-printer — but it's **USB, not network/Wi-Fi.**
+**Recommended: Epson TM-m30III (Ethernet)** — ~$275, built specifically
+for tablet/cloud-POS setups like this one, has a cash-drawer kick port,
+and is the transport `print-bridge/` already talks to (LAN/Wi-Fi, not
+USB). Skip the Star Micronics TSP143IIIU you were looking at before —
+it's USB-only, the harder path for no benefit here.
+[Buy on Amazon](https://www.amazon.com/TM-m30III-Desktop-Direct-Thermal-Printer/dp/B0DN552V88)
+· [$275 at Lavu](https://shop.lavu.com/products/epson-tm-m30iii-receipt-printer-ethernet-interface)
 
-**The catch:** `print-bridge/` (already built and tested) currently only
-talks to *network* printers. USB support is stubbed, waiting on exactly
-this kind of printer's vendor/product ID to finish — a small, already-
-scoped piece of code once you have it in hand to test against.
+**Cash drawer** (the piece that was missing entirely from the plan) —
+any RJ11/RJ12 drawer works, it plugs into the printer, not this bridge.
+[MUNBYN 16" cash drawer, ~$60–80, explicitly Epson-compatible](https://www.amazon.com/clp/B082ZXBMX1)
+is a reasonable, well-reviewed pick.
 
-**Simpler alternative:** any Wi-Fi/LAN ESC/POS printer (58mm or 80mm)
-works with the bridge today, zero further code.
-
-**Also need:** a cheap mini PC or Raspberry Pi (~$40–100) near the
-printer to run the bridge service — doesn't need to be the same device
-running the Staff Hub.
+**Also need:** a cheap mini PC or Raspberry Pi near the printer to run
+the bridge service — doesn't need to be the same device running the
+Staff Hub.
+[Raspberry Pi 5 starter kit, ~$120–140](https://www.amazon.com/CanaKit-Raspberry-Essentials-Starter-Kit/dp/B0CVQT445P)
+is plenty for this — it just polls Supabase every few seconds and
+forwards bytes to the printer, nothing demanding.
 
 **Ongoing cost:** 80mm thermal paper runs ~$1–1.60/roll in bulk (a
 50-roll case is roughly $50–75 total).
+
+**What's built and ready (2026-09-09):** the print-and-drawer-kick
+pipeline is fully implemented — a "Print" button on every POS order and
+an "Open Drawer" button in Till, both queue a job Supabase-side; the
+bridge polls for it and prints (kicking the drawer too, automatically,
+on any cash order). The only things left are buying the hardware above
+and a **five-minute one-time setup step**: run
+`select set_print_bridge_token('...');` in the Supabase SQL Editor and
+put the same value in the bridge's `.env` — see `print-bridge/README.md`
+for the exact steps. Nothing else to build.
 
 Full detail: `ROADMAP.md` → "3. Receipt printing."
 

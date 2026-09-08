@@ -718,6 +718,40 @@ async function updateOrder(docId, patch){
     return false;
   }
 }
+
+/* Queues a print-bridge job (supabase/schema.sql's print_jobs table) --
+   see print-bridge/README.md for the full picture. Cash orders also
+   kick the drawer as part of the same print job (openDrawer), so a
+   till-side "no sale" is the only time drawerOnly is used on its own.
+   Fire-and-forget by design: this only ever queues the job, it doesn't
+   wait to confirm the bridge actually printed it (that machine might be
+   off, or a few seconds behind) -- Staff Hub > System Health is where
+   to check the bridge itself is alive. */
+async function requestPrint(order, { drawerOnly = false } = {}){
+  const db = await getDb();
+  if (!db){ showToast('Offline: nothing queued (no database connection)'); return; }
+  const body = drawerOnly
+    ? { kind: 'drawer_kick', ticket: '', requestedByEmail: App.myEmail || '' }
+    : {
+        kind: 'receipt',
+        ticket: order.ticket || '',
+        orderId: order.id || null,
+        requestedByEmail: App.myEmail || '',
+        payload: {
+          ticket: order.ticket || '', orderType: order.orderType || '',
+          customerName: order.customerName || '', phone: order.phone || '', address: order.address || '',
+          items: order.items || [], subtotal: order.subtotal || 0, tax: order.tax || 0,
+          tip: order.tip || 0, total: order.total || 0, notes: order.notes || '',
+          openDrawer: order.payMethod === 'cash',
+        },
+      };
+  try{
+    await db.collection('print_jobs').add(body);
+    showToast(drawerOnly ? 'Drawer open queued' : `Receipt for ${order.ticket || 'this order'} sent to the printer`);
+  }catch(e){
+    showToast('Could not queue that: ' + (e && e.message ? e.message : 'unknown error'));
+  }
+}
 </script>
 
 <script>
@@ -1200,6 +1234,8 @@ function renderPosQueue(){
           });
           const editBtn = document.getElementById(`queue-edit-${o.id}`);
           if (editBtn) editBtn.addEventListener('click', () => editOrderInPos(o));
+          const printBtn = document.getElementById(`queue-print-${o.id}`);
+          if (printBtn) printBtn.addEventListener('click', () => requestPrint(o));
           const cancelBtn = document.getElementById(`queue-cancel-${o.id}`);
           if (cancelBtn) cancelBtn.addEventListener('click', () => {
             showConfirmModal({
@@ -1282,6 +1318,7 @@ function renderQueueRow(o){
     <span class="mono" style="font-weight:600;">${money(o.total||0)}${o.tip ? `<span style="color:var(--gold); font-weight:400;"> (+${money(o.tip)} tip)</span>` : ''}</span>
     <span style="font-size:11.5px; color:var(--paper-dim);">${timeAgo(o.createdAt)}</span>
     ${(o.status==='new') ? `<button class="btn-ghost" id="queue-edit-${o.id}" type="button">Edit</button>` : ''}
+    <button class="btn-ghost" id="queue-print-${o.id}" type="button">Print</button>
     ${next ? `<button class="btn btn-outline" style="padding:6px 12px; font-size:12px;" id="queue-advance-${o.id}" type="button">${escapeHtml(statusLabel(next))}</button>` : ''}
     ${(o.status!=='out_for_delivery') ? `<button class="btn-ghost" id="queue-cancel-${o.id}" type="button">Cancel</button>` : ''}
   </div>`;
@@ -3025,6 +3062,7 @@ function renderTillView(){
           Opened by ${who(shift.openedByEmail)} at ${new Date(shift.openedAt).toLocaleString()}<br>
           Starting cash: ${money(shift.startingCash)}
         </div>
+        <button class="btn-ghost" id="till-open-drawer-btn" type="button" style="margin-top:10px;">Open Drawer (No Sale)</button>
       </div>
       <div class="me-card" style="margin-bottom:20px;">
         <div class="me-card-title">So Far This Shift</div>
@@ -3061,6 +3099,7 @@ function renderTillView(){
     document.getElementById('till-open-btn').addEventListener('click', openRegisterShift);
   } else {
     document.getElementById('till-close-btn').addEventListener('click', closeRegisterShift);
+    document.getElementById('till-open-drawer-btn').addEventListener('click', () => requestPrint(null, { drawerOnly: true }));
     subscribeTillReport(shift);
   }
 }

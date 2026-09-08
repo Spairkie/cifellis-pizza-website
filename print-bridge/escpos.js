@@ -119,4 +119,13 @@ function buildReceipt(order, { width = 32 } = {}){
   return r.toBuffer();
 }
 
-module.exports = { ReceiptBuilder, buildReceipt, twoCol, money };
+/* Cash drawer "kick" pulse (ESC p m t1 t2) -- the standard command every
+   ESC/POS printer forwards to a drawer plugged into its RJ11/RJ12 drawer
+   port. m=0 selects drawer 1 (the only drawer almost anyone has); t1/t2
+   are the pulse on/off time in 2ms units -- 25/250 (~50ms/~500ms) is the
+   commonly-used default that works with virtually every drawer. */
+function buildDrawerKick(){
+  return Buffer.from([ESC, 0x70, 0x00, 0x19, 0xfa]);
+}
+
+module.exports = { ReceiptBuilder, buildReceipt, buildDrawerKick, twoCol, money };
