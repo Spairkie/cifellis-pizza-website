@@ -32,12 +32,13 @@ already-shipped items unless something here specifically asks for it.**
 - [x] Persistent mobile conversion bar (Order / Call / Directions)
 
 **Priority 3 — privacy / accessibility / recovery**
-- [ ] Customer-facing policies (privacy, ordering/cancellation/refund,
+- [x] Customer-facing policies (privacy, ordering/cancellation/refund,
   SMS consent, delivery/location-data disclosure)
-- [ ] Disaster-recovery documentation (backup/restore, outage
+- [x] Disaster-recovery documentation (backup/restore, outage
   procedure, phone-order fallback, printed menu backup)
-- [ ] High-contrast accessibility mode (dark stays default; light/day
-  mode explicitly deferred again until wanted)
+- [x] High-contrast accessibility mode (dark stays default; light/day
+  mode explicitly deferred again until wanted) — `index.html` only so
+  far, kiosk is a natural follow-up
 
 **Priority 4 — code quality**
 - [ ] Reduce duplicated ordering logic between `order/index.html` and
@@ -172,6 +173,56 @@ breakpoint; also nudged the existing `#toTop` button and the footer's
 bottom padding to clear it the same way. Confirmed the bar is
 completely absent above the 760px breakpoint (no accidental effect on
 desktop).
+
+## Priority 3: privacy / accessibility / recovery, 2026-09-07 (Claude Code)
+
+Third batch. Three items.
+
+**Customer-facing policies** — new `policies.html`: Privacy Policy,
+Ordering/Cancellation/Refunds, Text Message Consent, and Delivery &
+Location Data, as one page with anchored sections rather than four
+separate pages (simpler to link, and small-business policy pages
+commonly work this way). Written to describe what this specific system
+actually does — not a generic template — grounded in reading the real
+code: pay-in-person (no card data collected through the site), the
+actual Supabase/RLS access model, Cloudflare's cookieless analytics,
+localStorage (not cookies) for cart/intro state, the real SMS opt-in
+behavior (recorded today, sending itself not wired up yet — see item 2
+in the "What's fully working" section below), and driver location
+tracking scoped to active deliveries only (matches the Driver Map
+feature's own scoping, described honestly as the same system, not a
+separate hidden one). Flagged at the top as accurate-to-practice, not
+lawyer-reviewed. Linked from the homepage footer and directly under the
+Place Order button on checkout.
+
+**Disaster-recovery documentation** — new `DISASTER-RECOVERY.md` at the
+repo root, for whoever runs this project, not customers: diagnosing a
+Supabase-vs-GitHub-Pages outage, backup/restore steps (`pg_dump`/
+`psql`, since free-tier Supabase doesn't include automatic backups —
+checked which tier gets them before writing this as if it were a given
+extra), a printed-menu-backup habit tied to Menu Editor saves, and how
+active orders are handled when an outage hits mid-service. No
+credentials anywhere in it, by design — every step says *where* to find
+what it needs (the Supabase dashboard), never the value itself.
+
+**High-contrast accessibility mode**, `index.html` only for this pass
+(the marketing site was the explicit original scope; the ordering
+kiosk would need the same treatment as a natural follow-up, not
+claimed as done here). Dark theme stays the default in both modes, per
+the owner's explicit call on that earlier in this project — this
+boosts contrast within the existing palette rather than introducing a
+light theme. Implemented as one global override of the three custom
+properties (`--paper-dim`, `--line-on-ink`, `--line-on-paper`) most of
+the page's dim text and hairline borders already read through, rather
+than touching each rule individually — a toggle button in the header
+(persisted to `localStorage`) flips a `data-contrast="high"` attribute
+on `<html>`, set by a tiny script placed before the stylesheet even
+loads so a returning visitor with it on never sees a flash of normal
+contrast first. `prefers-reduced-motion` handling (already respected
+for the intro video) is untouched either way. Verified directly:
+toggling swaps the color values live, the choice survives a reload and
+is already applied at `domcontentloaded` (before first paint), and
+`aria-pressed` tracks state correctly for assistive tech.
 
 ## Polish round: 3D hero pizza, anti-spam, Staff Hub UI cleanup, 2026-09-07 (Claude Code)
 

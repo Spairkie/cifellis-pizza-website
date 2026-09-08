@@ -1,6 +1,12 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script>
+  // Set before first paint (not down with the other page scripts) so a
+  // returning visitor with high-contrast on never sees a flash of the
+  // normal-contrast styles first.
+  try{ if (localStorage.getItem('cifellisHighContrast') === '1') document.documentElement.setAttribute('data-contrast','high'); }catch(e){}
+</script>
 <meta charset="utf-8">
 <title>Cifelli's Pizza | Lindenwold, NJ</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -276,6 +282,32 @@
     align-items:center; justify-content:center; cursor:pointer;
   }
   .menu-toggle svg{width:20px;height:20px;}
+
+  .contrast-toggle{
+    display:flex; align-items:center; justify-content:center; flex:none;
+    width:38px; height:38px; border-radius:50%; background:none;
+    border:1px solid var(--line-on-ink); color:var(--paper-dim); cursor:pointer;
+  }
+  .contrast-toggle svg{ width:19px; height:19px; }
+  .contrast-toggle:hover{ border-color:var(--gold); color:var(--gold); }
+  .contrast-toggle[aria-pressed="true"]{ background:var(--gold); border-color:var(--gold); color:var(--ink); }
+
+  /* High-contrast mode: boosts text that's deliberately dimmed for
+     visual hierarchy back up near full contrast, and strengthens the
+     hairline borders/dividers used throughout (many of which sit at
+     12-20% opacity by design). Deliberately a global custom-property
+     override rather than touching each rule individually -- nearly
+     every dim-text and border declaration on this page already reads
+     through --paper-dim/--line-on-paper/--line-on-ink, so overriding
+     the three variables here reaches all of them in one place. Default
+     dark theme (not a light/day theme) stays the base in both modes,
+     per the owner's explicit call on that. */
+  :root[data-contrast="high"]{
+    --paper-dim:#f9f2e2;
+    --line-on-ink: rgba(244,234,214,.55);
+    --line-on-paper: rgba(28,23,18,.55);
+  }
+  :root[data-contrast="high"] :focus-visible{ outline-width:3px; outline-offset:3px; }
 
   @media (max-width: 860px){
     nav.main-nav{
@@ -646,6 +678,9 @@
     </nav>
 
     <div class="header-actions">
+      <button class="contrast-toggle" id="contrastToggle" type="button" aria-pressed="false" aria-label="Toggle high-contrast mode" title="High-contrast mode">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor" stroke="none"/></svg>
+      </button>
       <a class="btn btn--sauce header-order-btn" href="order/">
         <span class="long">Order Online</span><span class="short">Order</span>
       </a>
@@ -1298,6 +1333,7 @@
       <nav class="footer-nav">
         <a href="#home">Home</a><a href="#about">Our Counter</a><a href="#specials">Specials</a>
         <a href="#menu">Menu</a><a href="#reviews">Reviews</a><a href="#visit">Visit</a><a href="order/">Order Online</a>
+        <a href="policies.html">Policies</a>
       </nav>
       <a class="social-btn social-btn--facebook" href="https://www.facebook.com/Cifellis" target="_blank" rel="noopener" aria-label="Facebook">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 22v-8.5H16l.4-3.4h-2.9V8.1c0-1 .3-1.6 1.7-1.6H16V3.5c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.1V10H7v3.4h2.6V22h3.9z"/></svg>
@@ -1343,6 +1379,18 @@
     header.classList.toggle('is-scrolled', y > 8);
     toTop.classList.toggle('show', y > 500);
   }, { passive: true });
+
+  var contrastToggle = document.getElementById('contrastToggle');
+  if (contrastToggle){
+    var isHighContrast = document.documentElement.getAttribute('data-contrast') === 'high';
+    contrastToggle.setAttribute('aria-pressed', isHighContrast ? 'true' : 'false');
+    contrastToggle.addEventListener('click', function(){
+      isHighContrast = !isHighContrast;
+      document.documentElement.setAttribute('data-contrast', isHighContrast ? 'high' : 'normal');
+      contrastToggle.setAttribute('aria-pressed', isHighContrast ? 'true' : 'false');
+      try{ localStorage.setItem('cifellisHighContrast', isHighContrast ? '1' : '0'); }catch(e){}
+    });
+  }
 
   var toggle = document.getElementById('menuToggle');
   var nav = document.getElementById('mainNav');
