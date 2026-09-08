@@ -559,6 +559,34 @@
   #toTop.show{ opacity:1; pointer-events:auto; }
   #toTop svg{ width:20px; height:20px; }
 
+  .conversion-bar{ display:none; }
+  @media (max-width:760px){
+    .conversion-bar{
+      display:block; position:fixed; left:0; right:0; bottom:0; z-index:55;
+      background:var(--ink-soft); border-top:1px solid var(--line-on-ink);
+      box-shadow:0 -8px 24px -12px rgba(0,0,0,.55);
+      padding:7px max(10px, env(safe-area-inset-left)) calc(7px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
+    }
+    .conversion-bar-row{ display:flex; gap:8px; max-width:480px; margin:0 auto; }
+    .conversion-bar a{
+      flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+      padding:7px 4px; border-radius:12px; text-decoration:none; color:var(--paper-dim);
+      font-size:10.5px; font-weight:700;
+    }
+    .conversion-bar a svg{ width:19px; height:19px; }
+    .conversion-bar a.is-primary{ background:var(--sauce); color:var(--paper); }
+    /* Keep this bar from ever covering the footer's own text, and keep
+       the back-to-top button clear of the bar instead of stacking on
+       top of it. */
+    footer{ padding-bottom:calc(16px + 60px + env(safe-area-inset-bottom)); }
+    #toTop{ bottom:calc(76px + env(safe-area-inset-bottom)); }
+    /* The intro's own "Scroll Down" hint sits 26px from the bottom of
+       a 100vh section -- which is now covered by the fixed conversion
+       bar. Push it up to clear the bar instead of disappearing under
+       it. */
+    .intro-scroll{ bottom:calc(26px + 60px + env(safe-area-inset-bottom)); }
+  }
+
   :focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
 </style>
 </head>
@@ -581,6 +609,7 @@
     </svg>
     <div class="intro-wordmark">Cifelli's</div>
     <div class="intro-tagline">Pizza &amp; Italian Kitchen &middot; Lindenwold, NJ</div>
+    <a class="btn btn--sauce intro-order-btn" href="order/">Order Now &rarr;</a>
   </div>
   <button class="intro-scroll" id="introScrollBtn" type="button" aria-label="Scroll down to the site">
     <span>Scroll Down</span>
@@ -765,7 +794,7 @@
           <path d="M195 130 q-11 -11 0 -18 q11 7 0 18 Z" transform="rotate(-10 195 130)"/>
         </g>
       </svg>
-      <model-viewer id="heroModel" src="models/pepperoni-pizza.glb" alt="A fresh pepperoni pizza"
+      <model-viewer id="heroModel" alt="A fresh pepperoni pizza"
         loading="eager" auto-rotate camera-controls interaction-prompt="none" shadow-intensity="1.2" exposure="1"
         camera-orbit="45deg 60deg 1.6m" field-of-view="25deg" min-camera-orbit="auto 40deg auto" max-camera-orbit="auto 80deg auto">
       </model-viewer>
@@ -1282,6 +1311,29 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
 </button>
 
+<!-- Persistent mobile conversion bar: Order/Call/Directions, always
+     reachable without hunting for a link. Marketing-site only (this
+     page has no cart or other bottom UI to collide with) -- if this
+     pattern is ever added to the ordering kiosk, it would need to
+     avoid the cart button/badge that already lives in that corner
+     there, which is a real risk this file doesn't have. -->
+<nav class="conversion-bar" aria-label="Quick actions">
+  <div class="conversion-bar-row">
+    <a class="is-primary" href="order/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-4.6-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.4-9.5 9-9.5 9z"/></svg>
+      <span>Order</span>
+    </a>
+    <a href="tel:+18564358799">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      <span>Call</span>
+    </a>
+    <a href="https://www.google.com/maps/search/?api=1&query=700+Chews+Landing+Road+Lindenwold+NJ+08021" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span>Directions</span>
+    </a>
+  </div>
+</nav>
+
 <script>
 (function(){
   var header = document.getElementById('siteHeader');
@@ -1327,6 +1379,28 @@
       if (target) target.scrollIntoView({ behavior:'smooth', block:'start' });
     });
   }
+
+  /* Repeat-visitor intro: the full cinematic splash is a first-
+     impression thing -- someone who's already seen it (localStorage,
+     not sessionStorage, since "I was here yesterday" should count, not
+     just "I was here in this same tab a minute ago") gets auto-scrolled
+     past it into the real page shortly after load instead of needing to
+     scroll or click through it every single visit. The splash itself,
+     the video, and the manual Scroll Down control are all left
+     completely intact either way -- a returning visitor who wants to
+     see it again just scrolls back up. */
+  try{
+    var introSeenKey = 'cifellisIntroSeen';
+    var hasSeenIntro = window.localStorage && localStorage.getItem(introSeenKey);
+    if (hasSeenIntro){
+      setTimeout(function(){
+        var header = document.getElementById('siteHeader');
+        var target = header || document.getElementById('home');
+        if (target) target.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block:'start' });
+      }, 250);
+    }
+    if (window.localStorage) localStorage.setItem(introSeenKey, '1');
+  }catch(e){ /* localStorage unavailable (private browsing, etc.) -- every visit just gets the full intro */ }
 
   var pills = document.querySelectorAll('#filterBar .pill');
   var cats = document.querySelectorAll('.menu-cat');
@@ -1411,6 +1485,22 @@
   });
   // No 'error' handler needed -- doing nothing is exactly correct here,
   // the SVG (shown by default) just stays visible.
+
+  // loading="eager" above guarantees the model starts downloading no
+  // matter where it sits on the page -- this hero is below a full-screen
+  // intro splash, and model-viewer's default (viewport-based lazy
+  // loading) would otherwise never even start the fetch until a visitor
+  // scrolled near it. src is deliberately left off the tag itself and
+  // set here instead, after a short idle/delay -- giving the intro
+  // splash's own video first claim on bandwidth for its critical first
+  // frame, without ever making the model's load depend on scroll
+  // position (which is exactly what caused the original deadlock).
+  var startModelLoad = function(){ heroModel.src = 'models/pepperoni-pizza.glb'; };
+  if ('requestIdleCallback' in window){
+    requestIdleCallback(startModelLoad, { timeout: 1500 });
+  } else {
+    setTimeout(startModelLoad, 400);
+  }
 })();
 </script>
 </body>

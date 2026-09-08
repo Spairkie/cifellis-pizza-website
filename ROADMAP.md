@@ -25,11 +25,11 @@ already-shipped items unless something here specifically asks for it.**
   button, cached lookups, no more per-keystroke geocoding)
 
 **Priority 2 — performance / customer UX**
-- [ ] Optimize intro + 3D loading (smarter timing than plain eager,
+- [x] Optimize intro + 3D loading (smarter timing than plain eager,
   without reintroducing the lazy-load deadlock)
-- [ ] Improve repeat-visitor intro (shortened/skipped on return visits,
+- [x] Improve repeat-visitor intro (shortened/skipped on return visits,
   an Order Now action on the intro itself)
-- [ ] Persistent mobile conversion bar (Order / Call / Directions)
+- [x] Persistent mobile conversion bar (Order / Call / Directions)
 
 **Priority 3 — privacy / accessibility / recovery**
 - [ ] Customer-facing policies (privacy, ordering/cancellation/refund,
@@ -128,6 +128,50 @@ later, per its own header comment — this only changed when/how often
 it's called, not what it calls. Verified directly: typing an address no
 longer fires any geocode request; clicking Check Address fires exactly
 one; clicking it again unchanged fires zero more (served from cache).
+
+## Priority 2: performance / customer UX, 2026-09-07 (Claude Code)
+
+Second batch from the owner's roadmap. Three items.
+
+**Smarter 3D model loading, without reintroducing the lazy-load
+deadlock.** `loading="eager"` stays (removing it is exactly what caused
+the original bug — this hero sits below a full-screen intro splash, and
+model-viewer's default behaves like viewport-based lazy loading). What
+changed: the `<model-viewer>` tag no longer carries `src` in its initial
+markup at all; a small script sets `heroModel.src` after
+`requestIdleCallback` (falling back to a 400ms `setTimeout` where
+that's unavailable). This gives the intro splash's own video first
+claim on bandwidth for its critical first frame, while never making the
+model's load depend on scroll position or visibility — the one thing
+that actually caused the deadlock before.
+
+**Repeat-visitor intro.** First visit still gets the full cinematic
+splash, untouched. A return visit (`localStorage`, not
+`sessionStorage` — "I was here yesterday" should count, not just
+"earlier in this same tab") auto-scrolls past the intro ~250ms after
+load instead of requiring a manual scroll or click every single time.
+The splash section, video, and manual "Scroll Down" control are all
+still fully there — a returning visitor who wants to see it again just
+scrolls back up. Added an "Order Now" button directly on the intro
+content itself, for anyone who wants to skip straight to ordering
+without scrolling through the rest of the page at all.
+
+**Persistent mobile conversion bar** (Order / Call / Directions),
+fixed to the bottom of the viewport under 760px, safe-area aware
+(`env(safe-area-inset-*)` on all sides, not just bottom). Marketing
+site only (`index.html`) — deliberately not the ordering kiosk, which
+already has its own floating cart button/badge in that same corner
+that this would collide with; noted directly in the code as a warning
+for if this pattern is ever extended there. **A real bug caught before
+shipping:** the intro's own "Scroll Down" hint is positioned 26px from
+the bottom of its full-viewport-height section — which the new fixed
+bottom bar now covers, since a `position:fixed` element sits outside
+normal document flow and doesn't push content up on its own. Fixed by
+pushing `.intro-scroll` up to clear the bar's height on the same mobile
+breakpoint; also nudged the existing `#toTop` button and the footer's
+bottom padding to clear it the same way. Confirmed the bar is
+completely absent above the 760px breakpoint (no accidental effect on
+desktop).
 
 ## Polish round: 3D hero pizza, anti-spam, Staff Hub UI cleanup, 2026-09-07 (Claude Code)
 
