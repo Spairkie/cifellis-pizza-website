@@ -4,9 +4,9 @@ Things that are blocked on you specifically — an account to create, a
 piece of hardware to buy, content only you can provide — not on more
 code. This is your personal tracking list; `ROADMAP.md` has the full
 technical detail behind each item if you want it (linked below), and
-records the from-scratch history of everything already built. Check
-things off here as you get to them; nothing in this file is read by
-the app itself.
+`git log` has the from-scratch history of everything already built.
+Check things off here as you get to them; nothing in this file is read
+by the app itself.
 
 ## [ ] Add SMS order notifications
 
@@ -44,7 +44,7 @@ upfront-vs-pay-on-arrival question above anyway.
 TO FINISH THIS" steps at the top of `order/payments.js` and both Edge
 Function files above (in order — they reference each other).
 
-Full detail: `ROADMAP.md` → "Phase 8" entry, 2026-09-08.
+Full detail: `ROADMAP.md` → "1. Real card payments."
 
 ## [ ] Set up receipt printing
 
@@ -87,12 +87,12 @@ Once real photos exist, worth revisiting which other items (beyond the
 Panzarotti and Specialty Pies already flagged) should get the
 "Signature" prominence treatment — that's a one-line change per item
 once you have a list in mind. Full detail: `ROADMAP.md` → "6. Smaller
-polish items" and "Priority 5" entry.
+polish items."
 
 ## Also sitting in the backlog, lower urgency
 
 Not urgent enough to be above the fold here, but written down in
-`ROADMAP.md`'s Tier 3 section so nothing gets lost:
+`ROADMAP.md`'s Backlog section so nothing gets lost:
 - **External numeric keypad shortcuts** — you confirmed it's a
   standard keyboard, so this already works today with zero code;
   flag it again once you land on an exact model if you want dedicated

@@ -3,6 +3,8 @@
 Website, online ordering, staff POS, kitchen board, and delivery driver app
 for Cifelli's Pizza (700 Chews Landing Rd, Lindenwold, NJ 08021).
 
+**Live site:** https://spairkie.github.io/cifellis-pizza-website/
+
 ## What's in here
 
 - **`index.html`**: the marketing site (menu, specials, reviews, hours,
@@ -11,11 +13,12 @@ for Cifelli's Pizza (700 Chews Landing Rd, Lindenwold, NJ 08021).
 - **`order/`**: the Customer Kiosk, a single-purpose ordering app for
   customers (the counter kiosk or a customer's own phone). Public, no
   login, installable as its own PWA.
-- **`staff/`**: the Staff Hub, three role-based screens (Staff POS,
-  Kitchen Board, Driver App) sharing the same live order queue as the
-  Customer Kiosk. Requires a Supabase Auth sign-in, not linked from the
-  public site, and not indexed by search engines. Installable as its own
-  PWA, separate from the Customer Kiosk.
+- **`staff/`**: the Staff Hub — POS, Kitchen Board, Driver App, Analytics,
+  Driver Roster, Menu Editor, Store Settings, Catering Inquiries, and an
+  admin-only System Health screen, all role-gated and sharing the same
+  live order queue as the Customer Kiosk. Requires a Supabase Auth
+  sign-in, not linked from the public site, and not indexed by search
+  engines. Installable as its own PWA, separate from the Customer Kiosk.
 - **`supabase/`**: the database schema and setup instructions for the
   free backend that powers live orders, including the row-level security
   rules that keep the two apps' access separate. See `supabase/README.md`
@@ -59,9 +62,10 @@ If this ever needs to grow past what Supabase's free tier or built-in
 features cover (SMS notifications, a receipt printer bridge, real payment
 processing), the natural next step is a small serverless function (a
 Supabase Edge Function, or a free Render web service) added alongside,
-not a rebuild. See `docs/growth-options.md` for the research behind SMS,
-AI, online payment and tips, receipt printing, and hosting for a future
-custom domain, none of which is built yet.
+not a rebuild. See `ROADMAP.md` for the research behind SMS, online
+payment, receipt printing, and a future custom domain — each is scaffolded
+in the code already but blocked on an account or hardware decision from
+the owner, tracked in `OWNER-TODO.md`.
 
 ## Getting it running
 
@@ -89,8 +93,14 @@ custom domain, none of which is built yet.
 ## What's real, and what isn't (yet)
 
 Real: the menu (matches the shop's actual items and prices), the order
-flow, the live shared queue across all four screens, ticket numbers, and
-the kitchen board's order-aging warnings.
+flow (server-authoritative pricing — a customer's device can never dictate
+what an order costs), the live shared queue across all four screens,
+ticket numbers, and the kitchen board's order-aging warnings. Also real:
+customer accounts with order history and reorder, favorites ("My Usual"),
+scheduled orders (with real lead-time/business-hours validation), a
+catering/large-order inquiry form, an optional loyalty program (off by
+default, admin-configurable), and an admin-only System Health screen in
+the Staff Hub.
 
 Not built: real payment processing. Card is selectable as a payment method
 throughout, but nothing actually charges a card, every order is paid in
@@ -107,10 +117,12 @@ left to do:
 - **Tipping** — actually works today. The Customer Kiosk shows a tip
   picker (15%/18%/20%/custom) for delivery orders, added to the total
   and stored on the order.
-- **Online card payments** — not wired up. `order/payments.js` documents
-  the steps to add Stripe (or another processor); today "Card" just
+- **Online card payments** — the server-side scaffold exists
+  (`supabase/functions/create-payment-intent/`, `supabase/functions/
+  stripe-webhook/`, and `order/payments.js`'s client glue), but there's
+  no live Stripe key and no "Pay Now" button yet. Today "Card" just
   tells the counter to bring the card reader over, no money moves
-  through the site yet.
+  through the site. See `OWNER-TODO.md`.
 - **SMS order notifications** — not wired up.
   `supabase/functions/send-order-sms/` is a Supabase Edge Function stub
   with the Twilio integration steps documented; the Customer Kiosk
@@ -124,11 +136,14 @@ left to do:
   `print-bridge/README.md`.
 - **Analytics & SEO** — `index.html` has Open Graph/Twitter meta tags and
   Restaurant structured data (JSON-LD) for search engines, plus
-  `robots.txt` and `sitemap.xml` at the repo root. Analytics itself
-  (e.g. Google Analytics 4) is a commented-out snippet in `index.html`'s
-  `<head>` — uncomment it and add your own Measurement ID when you have
-  one. `/staff/` is excluded from search indexing and the sitemap since
-  it's a private tool, not a public page.
+  `robots.txt` and `sitemap.xml` at the repo root. Cloudflare Web
+  Analytics (free, cookieless) is already live on the homepage and
+  kiosk; a commented-out Google Analytics 4 snippet sits alongside it
+  in `index.html`'s `<head>` if a funnel-capable tool is ever wanted on
+  top. Search Console/Bing/Google Business Profile submission is
+  intentionally deferred until the custom domain migration — see
+  `ROADMAP.md`. `/staff/` is excluded from search indexing and the
+  sitemap since it's a private tool, not a public page.
 
 ## Research notes (for whoever picks this up later)
 
