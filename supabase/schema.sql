@@ -1493,6 +1493,269 @@ as $$
 $$;
 grant execute on function public.regulars_summary() to authenticated;
 
+-- =========================================================================
+-- Phase 4: Operational Monitoring (Staff Hub > System Health), 2026-09-08
+-- =========================================================================
+-- A read-only health snapshot for admins, and the plumbing that feeds
+-- it. Three new tables, each intentionally small and narrow:
+--
+--   app_errors        -- structured client-side error telemetry, deduped
+--                         by (source, message) rather than one row per
+--                         occurrence, so a repeating error doesn't flood
+--                         the table or the System Health screen. NEVER
+--                         given customer data (name/phone/address/items)
+--                         -- only a source tag and a short, generic
+--                         message. Written via report_app_error() below,
+--                         never a direct table insert, so that boundary
+--                         is enforced in one place, not at every call
+--                         site.
+--   service_heartbeats -- for a local, off-site service (right now: the
+--                         print-bridge, once it's actually deployed) to
+--                         report "I'm alive" periodically. One row per
+--                         service, upserted, so staleness alone (no
+--                         write in the health check's own freshness
+--                         window) means "assume it's down" without
+--                         needing an explicit down signal.
+--   external_health_checks -- results from a scheduled GitHub Actions
+--                         workflow (.github/workflows/health-check.yml)
+--                         that fetches the live homepage, kiosk, a
+--                         couple of critical JS files, the hero GLB
+--                         asset, and this same database, on a timer,
+--                         from *outside* this app entirely -- catches
+--                         "the site is actually down for a real visitor
+--                         right now" in a way nothing inside the app
+--                         itself ever could.
+--
+-- system_health() stitches all of this together (plus store_settings,
+-- menu_config, recent orders, driver_locations staleness, and a
+-- config-presence check for payments/SMS -- see its own comments below)
+-- into one jsonb snapshot for the System Health screen to render.
+-- Nothing in this section can ever block ordering: every reporting call
+-- (report_app_error, report_service_heartbeat, report_external_check)
+-- is a narrow, fire-and-forget write with no dependency running the
+-- other direction, and system_health() is a pure read.
+
+create table if not exists public.app_errors (
+  id uuid primary key default gen_random_uuid(),
+  source text not null,
+  message text not null,
+  "occurrenceCount" int not null default 1,
+  "firstSeenAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  "lastSeenAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  unique (source, message)
+);
+alter table public.app_errors enable row level security;
+-- No direct grants to anon/authenticated at all -- every write goes
+-- through report_app_error() (security definer, below); only an admin
+-- can browse the raw table directly for deeper debugging.
+grant select on public.app_errors to authenticated;
+drop policy if exists "app_errors_admin_select" on public.app_errors;
+create policy "app_errors_admin_select" on public.app_errors
+  for select to authenticated
+  using (public.is_admin());
+
+create or replace function public.report_app_error(p_source text, p_message text)
+returns void
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_source text := left(trim(coalesce(p_source, 'unknown')), 60);
+  v_message text := left(trim(coalesce(p_message, '')), 300);
+begin
+  if v_message = '' then return; end if;
+  insert into public.app_errors (source, message)
+  values (v_source, v_message)
+  on conflict (source, message) do update
+    set "occurrenceCount" = public.app_errors."occurrenceCount" + 1,
+        "lastSeenAt" = (extract(epoch from now()) * 1000)::bigint;
+exception when others then
+  -- Telemetry must never be the thing that breaks the page that's
+  -- trying to report a problem. Swallow anything unexpected here.
+  return;
+end;
+$$;
+grant execute on function public.report_app_error(text, text) to anon, authenticated;
+
+create table if not exists public.service_heartbeats (
+  service text primary key,
+  status text not null default 'unknown',
+  detail text,
+  "lastSeenAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+alter table public.service_heartbeats enable row level security;
+grant select on public.service_heartbeats to authenticated;
+drop policy if exists "service_heartbeats_admin_select" on public.service_heartbeats;
+create policy "service_heartbeats_admin_select" on public.service_heartbeats
+  for select to authenticated
+  using (public.is_admin());
+
+create or replace function public.report_service_heartbeat(p_service text, p_status text, p_detail text)
+returns void
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_service text := left(trim(coalesce(p_service, '')), 60);
+begin
+  if v_service = '' then return; end if;
+  insert into public.service_heartbeats (service, status, detail, "lastSeenAt")
+  values (v_service, coalesce(nullif(trim(p_status), ''), 'unknown'), left(p_detail, 300), (extract(epoch from now()) * 1000)::bigint)
+  on conflict (service) do update
+    set status = excluded.status, detail = excluded.detail, "lastSeenAt" = excluded."lastSeenAt";
+exception when others then
+  return;
+end;
+$$;
+-- Granted to anon too: the print-bridge is a small local script, not a
+-- signed-in Staff Hub session, and has no natural way to hold a
+-- Supabase Auth session of its own. Same narrow-RPC-only trust model as
+-- everything else public-writable in this file (report_app_error
+-- above, create_order, redeem/validate_promo_code) -- it can only ever
+-- upsert its own named row with a status/detail string, nothing else.
+grant execute on function public.report_service_heartbeat(text, text, text) to anon, authenticated;
+
+create table if not exists public.external_health_checks (
+  target text primary key,
+  ok boolean not null,
+  "statusCode" int,
+  detail text,
+  "checkedAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+alter table public.external_health_checks enable row level security;
+grant select on public.external_health_checks to authenticated;
+drop policy if exists "external_health_checks_admin_select" on public.external_health_checks;
+create policy "external_health_checks_admin_select" on public.external_health_checks
+  for select to authenticated
+  using (public.is_admin());
+
+create or replace function public.report_external_check(p_target text, p_ok boolean, p_status_code int, p_detail text)
+returns void
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_target text := left(trim(coalesce(p_target, '')), 60);
+begin
+  if v_target = '' then return; end if;
+  insert into public.external_health_checks (target, ok, "statusCode", detail, "checkedAt")
+  values (v_target, coalesce(p_ok, false), p_status_code, left(p_detail, 300), (extract(epoch from now()) * 1000)::bigint)
+  on conflict (target) do update
+    set ok = excluded.ok, "statusCode" = excluded."statusCode", detail = excluded.detail, "checkedAt" = excluded."checkedAt";
+exception when others then
+  return;
+end;
+$$;
+-- Granted to anon for the same reason as report_service_heartbeat: the
+-- GitHub Actions workflow that calls this has no Staff Hub session
+-- either, and this can only ever upsert one named row's pass/fail
+-- result, nothing else.
+grant execute on function public.report_external_check(text, boolean, int, text) to anon, authenticated;
+
+-- The one read this whole section exists for. Admin-only (system
+-- internals, not something every staff member needs); a plain function
+-- (not security definer) is fine here since every table it touches
+-- already grants admin full access via the policies above and
+-- elsewhere in this file -- it just saves the System Health screen from
+-- stitching together six separate queries with six different RLS
+-- shapes into one call.
+create or replace function public.system_health()
+returns jsonb
+language plpgsql stable
+as $$
+declare
+  v_settings record;
+  v_menu record;
+  v_last_customer_order bigint;
+  v_errors jsonb;
+  v_stale_drivers int;
+  v_active_drivers int;
+  v_heartbeats jsonb;
+  v_external jsonb;
+  v_sms_sent int;
+  v_sms_failed int;
+  v_sms_total_recent int;
+  v_payment_orders int;
+  v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  select "ordersPaused", "pauseMessage", version, extract(epoch from "updatedAt")*1000 as updated_ms
+    into v_settings from public.store_settings where id = 1;
+  select version, extract(epoch from "updatedAt")*1000 as updated_ms
+    into v_menu from public.menu_config where id = 1;
+
+  select max("createdAt") into v_last_customer_order
+    from public.orders where source = 'customer';
+
+  select jsonb_agg(jsonb_build_object(
+      'source', source, 'message', message, 'occurrenceCount', "occurrenceCount",
+      'firstSeenAt', "firstSeenAt", 'lastSeenAt', "lastSeenAt"
+    ) order by "lastSeenAt" desc)
+    into v_errors
+    from (select * from public.app_errors order by "lastSeenAt" desc limit 20) e;
+
+  -- A driver row is "stale" if it hasn't updated in the last 5 minutes
+  -- -- the client already treats anything that old as "may be offline"
+  -- (see driver_locations' own comment in this file), so this reuses
+  -- the same threshold rather than inventing a second one.
+  select count(*) filter (where "updatedAt" < v_now - 5*60*1000), count(*)
+    into v_stale_drivers, v_active_drivers
+    from public.driver_locations;
+
+  select jsonb_agg(jsonb_build_object(
+      'service', service, 'status', status, 'detail', detail, 'lastSeenAt', "lastSeenAt"
+    ))
+    into v_heartbeats
+    from public.service_heartbeats;
+
+  select jsonb_agg(jsonb_build_object(
+      'target', target, 'ok', ok, 'statusCode', "statusCode", 'detail', detail, 'checkedAt', "checkedAt"
+    ))
+    into v_external
+    from public.external_health_checks;
+
+  -- Payment/SMS health is derived entirely from real order data rather
+  -- than a live network ping -- there is no live processor/sender to
+  -- ping yet (see order/payments.js and supabase/functions/
+  -- send-order-sms), and once there is, this same query starts
+  -- reflecting reality automatically with no code change needed here:
+  -- a provider showing up on real orders means it's configured: sent
+  -- vs failed counts say whether it's actually working.
+  select count(*) filter (where "smsStatus" = 'sent'),
+         count(*) filter (where "smsStatus" = 'failed'),
+         count(*) filter (where "phoneOptIn" and "createdAt" >= v_now - 7*86400000)
+    into v_sms_sent, v_sms_failed, v_sms_total_recent
+    from public.orders;
+
+  select count(*) into v_payment_orders
+    from public.orders where "paymentProvider" is not null;
+
+  return jsonb_build_object(
+    'checkedAt', v_now,
+    'ordersPaused', coalesce(v_settings."ordersPaused", false),
+    'pauseMessage', v_settings."pauseMessage",
+    'storeSettingsVersion', v_settings.version,
+    'storeSettingsUpdatedAt', v_settings.updated_ms,
+    'menuConfigVersion', v_menu.version,
+    'menuConfigUpdatedAt', v_menu.updated_ms,
+    'lastCustomerOrderAt', v_last_customer_order,
+    'recentErrors', coalesce(v_errors, '[]'::jsonb),
+    'staleDriverCount', coalesce(v_stale_drivers, 0),
+    'activeDriverLocationCount', coalesce(v_active_drivers, 0),
+    'serviceHeartbeats', coalesce(v_heartbeats, '[]'::jsonb),
+    'externalChecks', coalesce(v_external, '[]'::jsonb),
+    'smsSentCount', coalesce(v_sms_sent, 0),
+    'smsFailedCount', coalesce(v_sms_failed, 0),
+    'smsOptInRecentCount', coalesce(v_sms_total_recent, 0),
+    'paymentOrderCount', coalesce(v_payment_orders, 0)
+  );
+end;
+$$;
+grant execute on function public.system_health() to authenticated;
+
 insert into public.menu_config (id, data)
 values (1, $json${"TAX_RATE": 0.06625, "PIZZA_SIZES": [{"key": "personal", "label": "Personal Pan (9\")", "base": 8, "perTopping": 1}, {"key": "medium", "label": "Medium (14\")", "base": 14.5, "perTopping": 3}, {"key": "large", "label": "Large (16\")", "base": 15.99, "perTopping": 3.5}, {"key": "sicilian", "label": "Sicilian (16x16\")", "base": 17.99, "perTopping": 4}], "TOPPINGS": ["Pepperoni", "Sausage", "Bacon", "Meatball", "Ham", "Extra Cheese", "Green Pepper", "Onion", "Black Olive", "Mushroom", "Anchovy", "Pineapple", "Spinach", "Broccoli"], "SPECIALTY_PIZZAS": [{"name": "Bacon BBQ Chicken Ranch", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 26}]}, {"name": "Buffalo Chicken", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 26}]}, {"name": "Hawaiian", "sizes": [{"label": "Medium", "price": 20.5}, {"label": "Large", "price": 22.99}, {"label": "Sicilian", "price": 24.99}]}, {"name": "White Pie", "sizes": [{"label": "Medium", "price": 14.5}, {"label": "Large", "price": 15.99}, {"label": "Sicilian", "price": 17.99}]}, {"name": "The Works", "sizes": [{"label": "Medium", "price": 24}, {"label": "Large", "price": 25.99}, {"label": "Sicilian", "price": 29.99}]}], "CATEGORIES": [{"key": "panzarotti", "label": "Panzarotti", "note": "Deep fried and golden brown", "items": [{"name": "Panzarotti", "price": 8.25, "desc": "Add $0.75 per extra ingredient"}]}, {"key": "stromboli", "label": "Stromboli", "photo": "../images/menu/stromboli.jpg", "placeholder": "../images/menu/stromboli.svg", "items": [{"name": "Cheese Stromboli", "price": 17.99, "desc": "+$2.50 per topping, +$5.00 steak or chicken"}, {"name": "Steak & Onion Stromboli", "price": 24.99}]}, {"key": "calzones", "label": "Calzones", "photo": "../images/menu/calzone.jpg", "placeholder": "../images/menu/calzone.svg", "items": [{"name": "Calzone", "price": 14.99, "desc": "Ham, ricotta, mozzarella and sauce"}]}, {"key": "turnover", "label": "Pizza Turnover", "items": [{"name": "Pizza Turnover", "price": 13.5, "desc": "Mozzarella and pizza sauce, $1 per extra ingredient"}]}, {"key": "wings", "label": "Wings", "note": "All wings come with bread and blue cheese", "photo": "../images/menu/wings.jpg", "placeholder": "../images/menu/wings.svg", "items": [{"name": "Wings", "size": "8 pc", "price": 9.5}, {"name": "Wings", "size": "12 pc", "price": 14.99}, {"name": "Wings", "size": "16 pc", "price": 18.99}, {"name": "Wings", "size": "24 pc", "price": 27.99}]}, {"key": "steaks", "label": "Steaks", "note": "Chicken made with 100% boneless, skinless breast meat", "items": [{"name": "Plain Steak", "price": 11}, {"name": "Cheese Steak", "price": 12}, {"name": "Chicken Cheese Steak", "price": 12}, {"name": "Bacon Cheese Steak", "price": 13}, {"name": "Cheese Steak Sub", "price": 13}, {"name": "Chicken Cheese Steak Sub", "price": 13}, {"name": "Mushroom Cheese Steak", "price": 13}, {"name": "Pepperoni Cheese Steak", "price": 13}, {"name": "Pizza Steak", "price": 13}, {"name": "Buffalo Chicken Cheese Steak", "price": 13}, {"name": "Broccoli Garlic & Oil Chicken Cheese Steak", "price": 13}, {"name": "Cheese Steak Special", "price": 13.75}, {"name": "Cheese Steak Platter", "price": 14.99}]}, {"key": "hoagies", "label": "Hoagies", "note": "All hoagies made with lettuce, tomato, onion and oil", "photo": "../images/menu/hoagie.jpg", "placeholder": "../images/menu/hoagie.svg", "items": [{"name": "Mixed Cheese", "price": 11}, {"name": "American", "price": 11.5}, {"name": "Ham & Cheese", "price": 12}, {"name": "Italian", "price": 12}, {"name": "Turkey & Cheese", "price": 12}, {"name": "Roast Beef, Provolone or American", "price": 13}, {"name": "Fried Fish Hoagie", "price": 13}]}, {"key": "pasta", "label": "Pasta", "note": "Served with soup, salad and garlic bread, spaghetti or ziti", "photo": "../images/menu/pasta.jpg", "placeholder": "../images/menu/pasta.svg", "items": [{"name": "Tomato Sauce", "price": 12.99}, {"name": "Meatballs", "price": 16.99}, {"name": "Sausage", "price": 16.99}]}, {"key": "parm", "label": "Parmigiana Dinners", "note": "Served with salad and garlic bread or a side of spaghetti/ziti", "items": [{"name": "Eggplant Parmigiana", "price": 15.99}, {"name": "Chicken Cutlet Parmigiana", "price": 16.99}]}, {"key": "hotsand", "label": "Hot Sandwiches", "items": [{"name": "Homemade Meatball Sandwich", "price": 11.5}, {"name": "Eggplant Parmigiana", "price": 11}, {"name": "Homemade Meatball Parmigiana", "price": 12.5}, {"name": "Chicken Parmigiana", "price": 12.5}, {"name": "Sausage Parmigiana", "price": 12.5}, {"name": "Hot Roast Beef", "price": 12}, {"name": "Hot Roast Beef with Cheese", "price": 13}, {"name": "Sausage Supreme", "price": 12.99}]}, {"key": "italian", "label": "Italian Specialties", "note": "Served with soup, salad and garlic bread", "items": [{"name": "Baked Ziti", "price": 16.99}, {"name": "Cheese Ravioli", "price": 16.99}, {"name": "Stuffed Shells Parmigiana", "price": 16.99}]}, {"key": "platters", "label": "Platters", "items": [{"name": "BLT Club", "price": 12.99}, {"name": "Chicken Finger Platter", "price": 13.99}, {"name": "Ham & Cheese Club", "price": 13.99}, {"name": "Chicken Club", "price": 14.99}, {"name": "Roast Beef Club", "price": 14.99}, {"name": "Turkey Club", "price": 14.99}, {"name": "Shrimp Platter", "price": 14.99}]}, {"key": "burgers", "label": "Quarter Pound Burgers", "photo": "../images/menu/burger.jpg", "placeholder": "../images/menu/burger.svg", "items": [{"name": "Hamburger", "price": 7}, {"name": "Cheeseburger", "price": 8}, {"name": "Bacon Cheeseburger", "price": 9}, {"name": "Pizza Burger", "price": 9}, {"name": "Cheese Burger Sub", "price": 13}]}, {"key": "sides", "label": "Side Orders", "items": [{"name": "French Fries", "price": 5.75}, {"name": "Onion Rings", "price": 8}, {"name": "Poppers", "size": "Cheddar", "price": 8}, {"name": "Breaded Mushrooms", "price": 8.5}, {"name": "Broccoli Bites", "price": 8.5}, {"name": "Meatballs", "price": 8.5}, {"name": "Mozzarella Sticks", "price": 8.5}, {"name": "Pizza Fries", "size": "Small", "price": 8.5}, {"name": "Pizza Fries", "size": "Large", "price": 10.5}, {"name": "Sausage", "price": 8.5}, {"name": "Fried Tomato", "price": 9}, {"name": "Cheese Fries", "size": "Small", "price": 6.5}, {"name": "Cheese Fries", "size": "Large", "price": 9}, {"name": "Loaded Fries", "size": "Small", "price": 9.5}, {"name": "Loaded Fries", "size": "Large", "price": 10.5}, {"name": "Homemade Cole Slaw", "size": "Pint", "price": 3.5}, {"name": "Homemade Cole Slaw", "size": "Quart", "price": 7}, {"name": "Something Sweet Zeppoli", "size": "Small", "price": 4}, {"name": "Something Sweet Zeppoli", "size": "Large", "price": 8}]}, {"key": "soups", "label": "Soups", "items": [{"name": "Pasta Faggioli", "size": "Small", "price": 4.99}, {"name": "Pasta Faggioli", "size": "Quart", "price": 8.99}, {"name": "Chili", "size": "Small, winter", "price": 6.5}, {"name": "Chili", "size": "Quart, winter", "price": 11.99}]}, {"key": "salads", "label": "Salads", "photo": "../images/menu/salad.jpg", "placeholder": "../images/menu/salad.svg", "items": [{"name": "Tossed Salad", "price": 7.99}, {"name": "Antipasta", "price": 12.99}, {"name": "Chef Salad", "price": 12.99}, {"name": "Chicken Caesar Salad", "price": 12.99}, {"name": "Grilled Chicken Salad", "price": 12.99}]}, {"key": "breakfast", "label": "Breakfast", "items": [{"name": "Grilled Cheese", "price": 7, "desc": "+$1 to add ham or bacon"}, {"name": "Bacon, Lettuce & Tomato", "price": 8}, {"name": "Pepper and Egg", "price": 10}, {"name": "Bacon, Egg and Cheese", "price": 11}, {"name": "Sausage, Egg and Cheese", "price": 11}, {"name": "Pork Roll, Egg and Cheese", "price": 11}]}, {"key": "knots", "label": "Garlic Knots", "items": [{"name": "Garlic Knots", "size": "6 pc", "price": 4.75}]}, {"key": "drinks", "label": "Drinks", "note": "We carry Pepsi products -- names/prices are a starting point, adjust in Staff Hub > Menu Editor to match what you actually stock", "items": [{"name": "Pepsi", "size": "20 oz", "price": 2.75}, {"name": "Diet Pepsi", "size": "20 oz", "price": 2.75}, {"name": "Pepsi Zero Sugar", "size": "20 oz", "price": 2.75}, {"name": "Mountain Dew", "size": "20 oz", "price": 2.75}, {"name": "Starry", "size": "20 oz", "price": 2.75}, {"name": "Mug Root Beer", "size": "20 oz", "price": 2.75}, {"name": "Brisk Iced Tea", "size": "20 oz", "price": 2.75}, {"name": "Aquafina Water", "size": "20 oz", "price": 2.0}, {"name": "Pepsi", "size": "2 Liter", "price": 4.5}, {"name": "Diet Pepsi", "size": "2 Liter", "price": 4.5}, {"name": "Mountain Dew", "size": "2 Liter", "price": 4.5}, {"name": "Starry", "size": "2 Liter", "price": 4.5}]}], "SPECIALS_BY_DAY": {"0": {"name": "4 Original Panzarotti", "price": 25.99}, "1": {"name": "2 Cheese Steaks", "price": 20.99}, "2": {"name": "Large Pizza", "price": 13.99}, "3": {"name": "Sicilian Pie", "price": 15.99}, "4": {"name": "2 Chicken Finger Platters", "price": 22.99}, "5": {"name": "Stromboli + 2 Liter Soda", "price": 18.5}, "6": {"name": "Cheese Steak Platter", "price": 13.99}}}$json$::jsonb)
 on conflict (id) do nothing;

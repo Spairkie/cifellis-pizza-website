@@ -1,0 +1,91 @@
+# External health check (Phase 4: Operational Monitoring).
+#
+# Everything else in this project's monitoring checks the site from the
+# *inside* -- a browser tab open to the Staff Hub, or the database
+# itself. This is the one check that runs from genuinely outside the
+# app, on a timer, the same way a real visitor would hit these URLs --
+# it's the only thing that would catch "GitHub Pages is actually down
+# right now" or "the hero 3D asset 404s" while nobody happens to have
+# Staff Hub open.
+#
+# Each target's pass/fail result is POSTed to report_external_check()
+# (supabase/schema.sql, anon-callable, can only ever upsert its own one
+# named row -- same narrow-RPC trust model as everything else public-
+# writable in that file) and shown on Staff Hub > System Health.
+#
+# The anon key below is the Supabase "anon public" key already shipped
+# in every page of this site (order/supabase-config.js) -- it's meant
+# to be public; access is controlled by RLS, not by hiding this key.
+#
+# Monitoring failure must never block ordering: this workflow only ever
+# reads live URLs and reports results, it never touches orders, menu
+# data, or anything else the live site depends on.
+
+name: External Health Check
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # every 30 minutes
+  workflow_dispatch: {}      # manual "Run workflow" button, for testing this itself
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: https://yzehosyrsygvbddskpqs.supabase.co
+      SUPABASE_ANON_KEY: sb_publishable_Bqdzh16tXCHmSj3zJUSWbw_hY_y9hcJ
+      SITE_BASE: https://spairkie.github.io/cifellis-pizza-website
+    steps:
+      - name: Check each target and report results
+        shell: bash
+        run: |
+          set -u
+
+          report() {
+            target="$1"; ok="$2"; code="$3"; detail="$4"
+            # curl's %{http_code} is "000" on a total connection failure
+            # (DNS, timeout, refused) -- exactly the case this exists to
+            # catch, and also not valid JSON (leading zero), which would
+            # make --argjson reject it and silently drop the report.
+            # Normalize that one case to a real null instead.
+            if [ "$code" = "000" ]; then code_json="null"; else code_json="$code"; fi
+            curl -s -o /dev/null -X POST "$SUPABASE_URL/rest/v1/rpc/report_external_check" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg t "$target" --argjson ok "$ok" --argjson c "$code_json" --arg d "$detail" \
+                '{p_target: $t, p_ok: $ok, p_status_code: $c, p_detail: $d}')"
+          }
+
+          check_url() {
+            name="$1"; url="$2"
+            code=$(curl -s -o /dev/null -w '%{http_code}' -L --max-time 20 "$url" || echo "000")
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "$name: OK ($code)"
+              report "$name" true "$code" "OK"
+            else
+              echo "$name: FAILED ($code)"
+              report "$name" false "$code" "Unexpected status code"
+            fi
+          }
+
+          check_url "homepage" "$SITE_BASE/index.html"
+          check_url "kiosk" "$SITE_BASE/order/index.html"
+          check_url "staff-hub" "$SITE_BASE/staff/index.html"
+          check_url "ordering-core-js" "$SITE_BASE/order/ordering-core.js"
+          check_url "hero-glb-asset" "$SITE_BASE/models/pepperoni-pizza.glb"
+
+          # Backend: a public-read row (store_settings), same as what
+          # the homepage's hours-override banner already fetches
+          # unauthenticated -- confirms Supabase itself is reachable
+          # and answering, without needing a service-role key in CI.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            "$SUPABASE_URL/rest/v1/store_settings?select=id&id=eq.1" \
+            -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY" || echo "000")
+          if [ "$code" = "200" ]; then
+            echo "backend: OK ($code)"
+            report "backend" true "$code" "OK"
+          else
+            echo "backend: FAILED ($code)"
+            report "backend" false "$code" "Unexpected status code"
+          fi

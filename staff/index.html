@@ -429,6 +429,11 @@
           <div class="t">Bug Reports</div>
           <div class="d">What staff have flagged as broken from inside the app. For managers.</div>
         </button>
+        <button class="role-card" data-role="systemhealth" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          <div class="t">System Health</div>
+          <div class="d">Database, realtime, ordering, and integration status at a glance. For managers.</div>
+        </button>
       </div>
     </div>
   </div>
@@ -459,6 +464,7 @@
     <div class="view" id="view-drivermap" hidden></div>
     <div class="view" id="view-bugreports" hidden></div>
     <div class="view" id="view-promocodes" hidden></div>
+    <div class="view" id="view-systemhealth" hidden></div>
   </main>
 </div>
 
@@ -681,6 +687,7 @@ async function submitOrder(order){
     await db.collection('orders').add(body);
   }catch(e){
     showToast('Could not save order: ' + (e && e.message ? e.message : 'unknown error'));
+    reportAppError('pos-submit', (e && e.message) || 'unknown error'); // message only -- never customer data
     return null;
   }
   return ticket;
@@ -711,7 +718,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till', bugreports:'Bug Reports', promocodes:'Promo Codes', drivermap:'Driver Map' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till', bugreports:'Bug Reports', promocodes:'Promo Codes', drivermap:'Driver Map', systemhealth:'System Health' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -750,6 +757,7 @@ function computeRolePermissions(){
     till: isAdmin || !isDriver,
     bugreports: isAdmin,
     promocodes: isAdmin,
+    systemhealth: isAdmin,
     drivermap: isAdmin || !isDriver,
   };
 }
@@ -938,6 +946,7 @@ function goToRole(role){
   if (role === 'till'){ document.getElementById('view-till').hidden = false; initTillView(); }
   if (role === 'bugreports'){ document.getElementById('view-bugreports').hidden = false; initBugReportsView(); }
   if (role === 'promocodes'){ document.getElementById('view-promocodes').hidden = false; initPromoCodesView(); }
+  if (role === 'systemhealth'){ document.getElementById('view-systemhealth').hidden = false; initSystemHealthView(); }
   if (role === 'drivermap'){ document.getElementById('view-drivermap').hidden = false; initDriverMapView(); }
 }
 
@@ -3136,6 +3145,222 @@ async function togglePromoCodeActive(id, next){
     await loadPromoCodes(db);
   }catch(e){
     showToast('Could not update: ' + (e && e.message ? e.message : 'unknown error'));
+  }
+}
+</script>
+
+<script>
+/* =========================================================================
+   SYSTEM HEALTH (Phase 4: Operational Monitoring), admin-only
+   ========================================================================= */
+/* A snapshot, not a live subscription -- this is a diagnostic screen an
+   admin checks in on, not something that needs to update itself while
+   sitting open. Fetched fresh on entry and on demand (Refresh button).
+   The one thing checked live in the browser, not through system_health(),
+   is Realtime connectivity -- that's inherently a property of *this*
+   browser tab's own WebSocket connection, not something a database
+   query could ever answer. Monitoring failure must never block
+   ordering: every read here is read-only, and a failure to load this
+   screen has no effect on anything else in the app. */
+
+function healthStatusBadge(status){
+  const map = {
+    healthy: { label: 'Healthy', color: 'var(--ok)' },
+    degraded: { label: 'Degraded', color: 'var(--warn)' },
+    down: { label: 'Down', color: 'var(--bad)' },
+    paused: { label: 'Paused', color: 'var(--warn)' },
+    notconfigured: { label: 'Not Configured', color: 'var(--paper-dim)' },
+    unknown: { label: 'Unknown', color: 'var(--paper-dim)' },
+  };
+  const m = map[status] || map.unknown;
+  return `<span class="mono" style="color:${m.color}; font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.06em;">${m.label}</span>`;
+}
+
+function healthCard(title, status, detailHtml){
+  return `<div class="me-card" style="margin-bottom:14px;">
+    <div class="row-between" style="align-items:flex-start;">
+      <div class="me-card-title" style="margin-bottom:0;">${escapeHtml(title)}</div>
+      ${healthStatusBadge(status)}
+    </div>
+    <div style="font-size:13px; color:var(--paper-dim); margin-top:6px; line-height:1.5;">${detailHtml}</div>
+  </div>`;
+}
+
+async function initSystemHealthView(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-systemhealth');
+  view.innerHTML = `
+    <div class="view-header" style="display:flex; justify-content:space-between; align-items:center;">
+      <h2>System Health</h2>
+      <button class="btn-ghost" id="health-refresh-btn" type="button">Refresh</button>
+    </div>
+    <div id="health-root" style="max-width:720px;">Loading...</div>`;
+  document.getElementById('health-refresh-btn').addEventListener('click', loadSystemHealth);
+  await loadSystemHealth();
+}
+
+async function loadSystemHealth(){
+  const root = document.getElementById('health-root');
+  if (!root) return;
+  const db = App.db || await getDb();
+  if (!db){
+    root.innerHTML = healthCard('Database', 'down', 'Not connected to Supabase at all -- check order/supabase-config.js and network connectivity.');
+    return;
+  }
+  let health;
+  try{
+    health = await db.rpc('system_health', {});
+  }catch(e){
+    root.innerHTML = healthCard('Database', 'down', 'system_health() failed: ' + escapeHtml((e && e.message) || 'unknown error') + '. If this persists, the database itself may be unreachable, not just this one call.');
+    return;
+  }
+  renderSystemHealth(health, root);
+  checkRealtimeHealth(db); // async, patches its own card in once it resolves -- see below
+}
+
+function timeAgoOrNever(ts){
+  return ts ? timeAgo(ts) + ' ago' : 'never';
+}
+
+function renderSystemHealth(h, root){
+  const now = Date.now();
+
+  // Database: got this far, so the RPC round-trip itself succeeded.
+  const dbCard = healthCard('Database', 'healthy', `Reachable -- responded just now.`);
+
+  // Realtime: placeholder until checkRealtimeHealth's own async check
+  // resolves and patches #health-realtime-detail in place below.
+  const realtimeCard = `<div class="me-card" style="margin-bottom:14px;" id="health-realtime-card">
+    <div class="row-between" style="align-items:flex-start;">
+      <div class="me-card-title" style="margin-bottom:0;">Realtime</div>
+      <span id="health-realtime-badge">${healthStatusBadge('unknown')}</span>
+    </div>
+    <div style="font-size:13px; color:var(--paper-dim); margin-top:6px;" id="health-realtime-detail">Checking this tab's live connection...</div>
+  </div>`;
+
+  const orderingStatus = h.ordersPaused ? 'paused' : 'healthy';
+  const orderingCard = healthCard('Online Ordering', orderingStatus,
+    h.ordersPaused
+      ? `Paused${h.pauseMessage ? ': "' + escapeHtml(h.pauseMessage) + '"' : ''}. Toggle from Kitchen Board or Store Settings.`
+      : 'Accepting online orders normally.');
+
+  const menuOk = h.menuConfigVersion != null;
+  const menuCard = healthCard('Menu Config', menuOk ? 'healthy' : 'down',
+    menuOk ? `Version ${h.menuConfigVersion}, last updated ${timeAgoOrNever(h.menuConfigUpdatedAt)}.` : 'No menu_config row found -- the kiosk is running on its hardcoded fallback menu.');
+
+  const settingsOk = h.storeSettingsVersion != null;
+  const settingsCard = healthCard('Store Settings', settingsOk ? 'healthy' : 'down',
+    settingsOk ? `Version ${h.storeSettingsVersion}, last updated ${timeAgoOrNever(h.storeSettingsUpdatedAt)}.` : 'No store_settings row found.');
+
+  const lastOrderCard = healthCard('Last Customer Order', 'unknown',
+    h.lastCustomerOrderAt ? `${timeAgoOrNever(h.lastCustomerOrderAt)} (${new Date(h.lastCustomerOrderAt).toLocaleString()}).` : 'No customer orders on record yet.');
+
+  const errorRows = h.recentErrors || [];
+  const errorsCard = healthCard('Recent App Errors', errorRows.length ? 'degraded' : 'healthy',
+    errorRows.length
+      ? errorRows.slice(0, 8).map(e => `<div style="margin-bottom:4px;"><span class="mono" style="color:var(--paper-dim);">[${escapeHtml(e.source)}]</span> ${escapeHtml(e.message)} <span style="color:var(--paper-dim);">&times;${e.occurrenceCount}, last ${timeAgo(e.lastSeenAt)} ago</span></div>`).join('')
+      : 'None reported.');
+
+  const staleCard = healthCard('Driver Locations', h.staleDriverCount > 0 ? 'degraded' : 'healthy',
+    `${h.activeDriverLocationCount} active location row(s)${h.staleDriverCount ? `, ${h.staleDriverCount} stale (no update in 5+ min)` : ''}.`);
+
+  // Payments: derived from real order data (see system_health()'s own
+  // comment) -- always "Not Configured" until a real processor is
+  // wired up and has actually processed at least one order.
+  const paymentsConfiguredClientSide = (typeof paymentsConfigured === 'function') && paymentsConfigured();
+  const paymentsStatus = h.paymentOrderCount > 0 ? 'healthy' : 'notconfigured';
+  const paymentsCard = healthCard('Payments', paymentsStatus,
+    h.paymentOrderCount > 0
+      ? `${h.paymentOrderCount} order(s) on record with a payment provider set.`
+      : `No processor wired up yet${paymentsConfiguredClientSide ? ' (a publishable key is set client-side, but no order has gone through it yet)' : ''} -- see order/payments.js and OWNER-TODO.md.`);
+
+  // SMS: same reasoning -- derived from smsStatus on real orders.
+  let smsStatus = 'notconfigured';
+  if (h.smsSentCount > 0 && h.smsFailedCount === 0) smsStatus = 'healthy';
+  else if (h.smsSentCount > 0 && h.smsFailedCount > 0) smsStatus = 'degraded';
+  else if (h.smsFailedCount > 0 && h.smsSentCount === 0) smsStatus = 'down';
+  const smsCard = healthCard('SMS Notifications', smsStatus,
+    (h.smsSentCount > 0 || h.smsFailedCount > 0)
+      ? `${h.smsSentCount} sent, ${h.smsFailedCount} failed. ${h.smsOptInRecentCount} opt-in(s) in the last 7 days.`
+      : `Not sending yet (${h.smsOptInRecentCount} customer(s) opted in over the last 7 days, waiting) -- see supabase/functions/send-order-sms and OWNER-TODO.md.`);
+
+  // Print bridge: from service_heartbeats. No row at all means it's
+  // never once reported in; a stale row (10+ min) means it was running
+  // and stopped.
+  const printHb = (h.serviceHeartbeats || []).find(s => s.service === 'print-bridge');
+  let printStatus = 'notconfigured';
+  let printDetail = 'Not set up yet -- see print-bridge/ and OWNER-TODO.md.';
+  if (printHb){
+    const staleMs = now - printHb.lastSeenAt;
+    if (staleMs > 10*60*1000){
+      printStatus = 'down';
+      printDetail = `Last heard from ${timeAgo(printHb.lastSeenAt)} ago (${escapeHtml(printHb.detail || '')}) -- assume it's not running right now.`;
+    } else {
+      printStatus = printHb.status === 'healthy' ? 'healthy' : 'degraded';
+      printDetail = `${escapeHtml(printHb.detail || printHb.status)} -- last heard from ${timeAgo(printHb.lastSeenAt)} ago.`;
+    }
+  }
+  const printCard = healthCard('Receipt Printer Bridge', printStatus, printDetail);
+
+  const scheduledCard = healthCard('Scheduled Orders', 'notconfigured', 'Feature not built yet -- see ROADMAP.md Phase 8.');
+
+  const externalRows = h.externalChecks || [];
+  const externalCard = healthCard('External Site Checks', externalRows.length ? (externalRows.every(r => r.ok) ? 'healthy' : 'degraded') : 'notconfigured',
+    externalRows.length
+      ? externalRows.map(r => `<div style="margin-bottom:4px;">${r.ok ? healthStatusBadge('healthy') : healthStatusBadge('down')} <span class="mono">${escapeHtml(r.target)}</span> ${r.statusCode ? '(' + r.statusCode + ')' : ''} <span style="color:var(--paper-dim);">checked ${timeAgo(r.checkedAt)} ago</span>${r.detail ? ' -- ' + escapeHtml(r.detail) : ''}</div>`).join('')
+      : 'Not set up yet -- see .github/workflows/health-check.yml.');
+
+  root.innerHTML = `
+    <div style="font-size:12px; color:var(--paper-dim); margin-bottom:14px;">Checked ${new Date(h.checkedAt).toLocaleString()}</div>
+    ${dbCard}${realtimeCard}${orderingCard}${menuCard}${settingsCard}${lastOrderCard}${errorsCard}${staleCard}${paymentsCard}${smsCard}${printCard}${scheduledCard}${externalCard}
+  `;
+}
+
+// A dedicated client, created once and reused across every health check
+// (not one per load/refresh) purely to reach .channel() -- the
+// Firestore-shaped adapter (order/db-supabase.js) deliberately doesn't
+// expose that. Creating a fresh Supabase client per call worked, but
+// each one spins up its own GoTrueClient sharing the same localStorage
+// auth-token key as the page's real client and every previous check's
+// client -- harmless once, real waste (and a logged warning) on every
+// repeat visit to this screen.
+let healthCheckClient = null;
+
+async function checkRealtimeHealth(db){
+  const badgeEl = document.getElementById('health-realtime-badge');
+  const detailEl = document.getElementById('health-realtime-detail');
+  if (!badgeEl || !detailEl || !db || !db.rpc) return; // db here is the Firestore-shaped wrapper; need the raw client for a channel
+  try{
+    if (!healthCheckClient) healthCheckClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    const client = healthCheckClient;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      badgeEl.innerHTML = healthStatusBadge('down');
+      detailEl.textContent = 'No response within 5s -- Realtime may be unreachable from this browser/network.';
+      try{ client.realtime.disconnect(); }catch(e){}
+    }, 5000);
+    const channel = client.channel('health-check-' + Math.random().toString(36).slice(2));
+    channel.subscribe((status) => {
+      if (settled) return;
+      if (status === 'SUBSCRIBED'){
+        settled = true;
+        clearTimeout(timeout);
+        badgeEl.innerHTML = healthStatusBadge('healthy');
+        detailEl.textContent = 'Connected just now.';
+        client.removeChannel(channel);
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+        settled = true;
+        clearTimeout(timeout);
+        badgeEl.innerHTML = healthStatusBadge('down');
+        detailEl.textContent = 'Connection status: ' + status + '.';
+        try{ client.removeChannel(channel); }catch(e){}
+      }
+    });
+  }catch(e){
+    badgeEl.innerHTML = healthStatusBadge('unknown');
+    detailEl.textContent = 'Could not run the check: ' + ((e && e.message) || 'unknown error');
   }
 }
 </script>

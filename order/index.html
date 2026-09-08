@@ -763,6 +763,7 @@ async function submitCustomerOrder(){
   }catch(e){
     console.error('Order save failed:', e);
     showToast((e && e.message) ? e.message : 'Could not place your order. Please call (856) 435-8799 to order instead.');
+    reportAppError('kiosk-checkout', (e && e.message) || 'unknown error'); // message only -- never name/phone/address/cart contents
     submitBtn.disabled = false;
     submitBtn.textContent = 'Place Order';
     return;

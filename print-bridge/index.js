@@ -47,6 +47,45 @@ if (!PRINTER_HOST && PRINTER_TRANSPORT === 'lan'){
   console.warn('PRINTER_HOST is not set — print jobs will fail until you set it in .env');
 }
 
+/*
+ * Health heartbeat (Staff Hub > System Health, Phase 4: Operational
+ * Monitoring): reports "I'm alive" every 2 minutes so an admin can see
+ * from the browser whether this service is actually running, without
+ * needing to walk over and check the mini PC. Uses the same public
+ * Supabase anon key already shipped in every page of this site (see
+ * order/supabase-config.js) and one narrow RPC
+ * (report_service_heartbeat, supabase/schema.sql) that can only ever
+ * upsert this one named row -- same trust model as everything else
+ * public-writable in that file. Entirely best-effort: a failed
+ * heartbeat POST is logged and otherwise ignored, never allowed to
+ * affect actual printing.
+ */
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://yzehosyrsygvbddskpqs.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_Bqdzh16tXCHmSj3zJUSWbw_hY_y9hcJ';
+const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000;
+
+async function sendHeartbeat(status, detail){
+  try{
+    await fetch(`${SUPABASE_URL}/rest/v1/rpc/report_service_heartbeat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ p_service: 'print-bridge', p_status: status, p_detail: detail }),
+    });
+  }catch(err){
+    console.warn('Heartbeat POST failed (non-fatal, printing is unaffected):', err && err.message || err);
+  }
+}
+
+const heartbeatDetail = () => `transport=${PRINTER_TRANSPORT}${PRINTER_TRANSPORT === 'lan' ? `, host=${PRINTER_HOST || '(not set)'}` : ''}`;
+sendHeartbeat(PRINTER_HOST || PRINTER_TRANSPORT !== 'lan' ? 'healthy' : 'degraded', heartbeatDetail());
+setInterval(() => {
+  sendHeartbeat(PRINTER_HOST || PRINTER_TRANSPORT !== 'lan' ? 'healthy' : 'degraded', heartbeatDetail());
+}, HEARTBEAT_INTERVAL_MS);
+
 wss.on('connection', (ws) => {
   ws.on('message', async (raw) => {
     let msg;

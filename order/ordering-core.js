@@ -157,8 +157,27 @@ async function loadMenuConfig(db){
       // expects {TAX_RATE, CATEGORIES, ...} directly, not the wrapping row.
   }catch(e){
     console.error('Could not load live menu config, using built-in defaults:', e);
+    reportAppError('menu-config-load', (e && e.message) || 'unknown error');
     return false;
   }
+}
+
+/* Structured error telemetry (Phase 4: Operational Monitoring, Staff
+   Hub > System Health) -- fire-and-forget, deliberately never awaited
+   by a caller and never throws back into one. Only ever pass a short,
+   generic error message here, NEVER a customer name/phone/address/cart
+   contents -- report_app_error() itself also truncates and this is the
+   one boundary that keeps sensitive data out of a table staff can
+   browse. Deduped server-side by (source, message), so calling this
+   from a busy retry loop can't flood the table. A failure to report a
+   failure is itself just silently swallowed -- monitoring must never
+   become a second way for something to break. */
+function reportAppError(source, message){
+  try{
+    if (typeof App !== 'undefined' && App && App.db && typeof App.db.rpc === 'function'){
+      App.db.rpc('report_app_error', { p_source: source, p_message: String(message || 'unknown error').slice(0, 300) }).catch(()=>{});
+    }
+  }catch(e){ /* see comment above -- never let this be the thing that breaks */ }
 }
 
 /* Pricing math + small formatting/normalization helpers used

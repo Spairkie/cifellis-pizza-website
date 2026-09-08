@@ -56,9 +56,93 @@ why this is a natural stopping point to check in before continuing.
 
 **Part 2 — Phase 4 (Operational Monitoring) and Phase 8 (Growth
 Features)**
-- [ ] Not started — awaiting the owner's go-ahead on scope/sequencing.
-  See "Part 1 fixes shipped and tested" below for status and what's
-  next.
+- [x] Phase 4 (Operational Monitoring) — owner gave the go-ahead
+  2026-09-08. Staff Hub > System Health screen, admin-only. See "Phase
+  4: Operational Monitoring shipped" below.
+- [ ] Phase 8 (Growth Features) — in progress. Real payments explicitly
+  deferred by the owner (scaffold only, no live processor) until they
+  decide to turn it on.
+
+## Phase 4: Operational Monitoring shipped, 2026-09-08 (Claude Code)
+
+A new admin-only Staff Hub screen (System Health) plus the plumbing
+that feeds it. Nothing here can ever block ordering -- every reporting
+call is a narrow, fire-and-forget write, and system_health() (the one
+thing the screen actually reads) is a pure read with no side effects.
+
+**What it shows:** database reachability (implicit -- got a response at
+all), Realtime connectivity (checked live in the browser via a
+throwaway test channel, since that's a property of the current tab's
+own WebSocket, not something a query could answer), online-ordering
+paused/active state, menu_config and store_settings version + last-
+updated time, the last successful customer order, recent app errors
+(deduped, most recent first), driver_locations staleness, and
+Payments/SMS/Receipt-Printer-Bridge/Scheduled-Orders each as Healthy/
+Degraded/Down/Not Configured.
+
+**New tables (all in `supabase/schema.sql`):**
+- `app_errors` -- structured client-side error telemetry, deduped by
+  (source, message) via upsert rather than one row per occurrence, so
+  a repeating error can't flood the table. Written only through
+  `report_app_error()` (security definer, anon+authenticated), never a
+  direct insert -- that's the one place the "never log customer PII"
+  boundary needs to be enforced, and every call site (kiosk checkout
+  failure, POS submit failure, menu_config load failure) only ever
+  passes a generic error message, never name/phone/address/cart
+  contents.
+- `service_heartbeats` -- lets an off-site local service report "I'm
+  alive" periodically. Print-bridge now sends one every 2 minutes (see
+  `print-bridge/index.js`) once it's actually deployed and running;
+  until then there's simply no row, which System Health correctly
+  reads as "Not Configured" rather than a false "Down."
+- `external_health_checks` -- results from a new scheduled GitHub
+  Actions workflow (`.github/workflows/health-check.yml`, every 30 min
+  + manual trigger) that fetches the live homepage, kiosk, Staff Hub,
+  a critical JS file, the hero GLB asset, and the database itself, from
+  genuinely outside this app -- the one check that would catch "GitHub
+  Pages is actually down right now" while nobody has Staff Hub open.
+
+**Payments/SMS health is derived from real order data, not a live
+ping** -- there's no live processor or sender to ping yet (see
+`order/payments.js`, `supabase/functions/send-order-sms/`, and
+`OWNER-TODO.md`), so both correctly show "Not Configured" today. The
+query is written so that the moment either goes live and actually
+processes a real order, System Health starts reflecting reality
+automatically with no further code change: payments looks at
+`paymentProvider`/`paymentStatus` on real orders, SMS at `smsStatus`.
+
+**Caught and fixed one real (if narrow) pre-existing bug while testing
+this:** `goToRole()` bails out with an access-denied toast if
+`computeRolePermissions()` hasn't resolved yet (specifically,
+`App.isAdmin` -- set asynchronously by `loadMyStaffRow()`, called
+*after* the role-picker screen is already shown, per that function's
+own comment about a related race it already guards for the auto-
+resume-saved-role case). Not user-facing in practice -- every role
+card starts with the HTML `hidden` attribute and only becomes visible
+once `applyRoleVisibility()` runs at the end of that same async call,
+so a real person literally cannot click a role card during the race
+window. Only found because a first-draft test called `goToRole()`
+directly instead of clicking the (correctly still-hidden) button,
+bypassing that protection. Documented here rather than "fixed" since
+the actual protection already exists and works; the test was corrected
+to click through the UI like everything else in this project's test
+suite already does.
+
+**Tested against production:** every reporting RPC (dedup verified by
+calling `report_app_error` twice and confirming one row with
+`occurrenceCount: 2`), `system_health()` confirmed admin-only (denied
+for anon and plain staff, allowed for admin) and fast (~25ms direct
+SQL, ~130ms over REST with seeded data in every new table), the
+external-check workflow's underlying REST calls verified directly with
+curl before relying on GitHub Actions to run them (including a fix for
+`jq --argjson` rejecting curl's `"000"` total-failure code, which isn't
+valid JSON -- exactly the case that check exists to catch, so it needed
+to work). Full System Health screen tested end-to-end through the real
+UI: Database/Realtime/Ordering/Menu/Settings/Errors/Drivers/Payments/
+SMS/Print-Bridge/External-Checks all rendering correctly with seeded
+data, Refresh button re-fetching correctly, admin-only visibility
+confirmed (plain staff account sees no System Health card at all). All
+test rows deleted after.
 
 ## Next Development Roadmap, added 2026-09-07 by the owner
 
