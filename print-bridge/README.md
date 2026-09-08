@@ -19,6 +19,10 @@ Staff Hub (browser)  --WebSocket-->  Print Bridge (this folder)  --USB/LAN-->  P
   printers with an Ethernet or Wi-Fi port.
 - The WebSocket server (`index.js`) accepts print jobs and reports
   success/failure back to whoever asked for the print.
+- Once running, it reports a health heartbeat to Supabase every 2
+  minutes, so Staff Hub > System Health shows this service as Healthy/
+  Degraded instead of an unknown "Not Configured" — no setup needed
+  beyond starting the bridge.
 
 ## What's still a stub
 
