@@ -7,6 +7,105 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Polish round: 3D hero pizza, anti-spam, Staff Hub UI cleanup, 2026-09-07 (Claude Code)
+
+A batch of owner-requested polish items, all shipped together.
+
+**3D pizza in the homepage hero.** The owner supplied `Pepperoni
+pizza.glb` (a real 3D model, ~1.1MB). Added as `models/pepperoni-
+pizza.glb`, rendered with `<model-viewer>` (Google's web component,
+loaded from jsdelivr like every other CDN script in this project).
+The existing hand-drawn SVG pizza is the real fallback, not just a
+loading spinner: it's shown immediately (inline, zero load time),
+and only fades out once the 3D model's `load` event actually fires;
+if the model-viewer script or the .glb fails for any reason, nothing
+happens and the SVG just stays up indefinitely. Tuned the camera
+(`camera-orbit`, `field-of-view`, min/max orbit clamp) so it reads
+well at the requested 440px/1:1 hero size, and turned off
+model-viewer's built-in drag-hint icon (`interaction-prompt="none"`)
+since it looked like a stray UI glitch sitting in the middle of a
+decorative hero image.
+
+**A real bug caught before this ever reached the owner:** this
+homepage sits behind a full-screen intro splash (`#introSplash`) —
+the hero section is below the fold until a visitor scrolls or clicks
+"Scroll Down." model-viewer's default `loading="auto"` behaves like
+native lazy-loading (only starts fetching once the element is near
+the viewport), so without an explicit fix the 3D model would never
+even start downloading until someone scrolled down — meaning anyone
+who scrolled fast would see the model pop in late, or see the SVG
+fallback for longer than necessary. Fixed with `loading="eager"` so
+the fetch starts immediately on page load, in parallel with the
+splash's own video, and is typically already finished loading by the
+time a visitor scrolls to the hero at all. Only found this by loading
+the real page in Playwright and checking element position/timing
+directly — worth remembering for any future scroll-revealed content
+on this homepage.
+
+**Anti-spam / anti-bot safeguards**, three layers, requested
+specifically to prevent bot spamming, order spamming, and false order
+creation:
+1. A honeypot field (visually hidden, `aria-hidden` so screen readers
+   skip it entirely) on both public write-facing forms — the customer
+   checkout in `order/index.html` and the driver self-application in
+   `staff/apply.html`. A real visitor never sees or fills it; if it's
+   filled, the submission is silently dropped.
+2. A minimum-time-on-page check on checkout only (3 seconds from the
+   order form appearing to clicking Place Order) — unlike the
+   honeypot, a fast real customer with autofill and a restored cart
+   could plausibly trip this, so it gets an actual (deliberately
+   generic) toast instead of a silent no-op.
+3. **The real backstop, server-side:** a Postgres trigger
+   (`enforce_order_rate_limit`) blocks more than 5 customer-sourced
+   orders from the same phone number in 15 minutes — this is the one
+   layer that can't be bypassed by a script calling the REST API
+   directly, unlike the two client-side checks above. Staff-entered
+   POS orders are explicitly exempt (a busy shift legitimately rings
+   up several orders for the same regular).
+   None of this is a real CAPTCHA — a script specifically targeting
+   this form can still work around a honeypot or a timing check. This
+   stops the common, unsophisticated case; if real abuse ever shows
+   up, hCaptcha or Cloudflare Turnstile (both free) would be the next
+   step, deferred for now since both need a new account, same as the
+   payment/SMS scaffolds already noted below.
+
+**Staff Hub UI cleanup**, three separate requests:
+- **Active-user indicator redesigned as a facepile** (overlapping
+  circular avatars, initials on a color deterministically derived from
+  each person's email) instead of a plain "N online" text label — the
+  standard pattern collaborative tools (Figma, Linear, Google Docs) use
+  for "who's here," recognizable at a glance and scales better than a
+  growing text string as more staff sign in. The signed-in viewer's own
+  avatar gets a gold ring. Clicking still opens the same dropdown with
+  full names/roles as before.
+- **"Report a Bug" moved from a text button crowding the header into a
+  small icon-only circular button** — the header had grown to clock +
+  presence + bug button + switch screen + sign out, genuinely crowded;
+  considered a floating action button instead but rejected it since a
+  persistent overlay could sit on top of and interfere with tapping
+  real controls on working screens like Kitchen Board or POS, which
+  matters more for an operational tool than a consumer app.
+- **Role picker reorganized into three labeled sections** — Daily
+  Operations (POS, Kitchen, Driver App, Till), Insights (Analytics,
+  Driver Map), Management (Menu Editor, Store Settings, Driver Roster,
+  Promo Codes, Bug Reports) — instead of one flat grid in whatever
+  order each feature happened to be added over many sessions. A
+  section with nothing visible in it for the signed-in person's role
+  (e.g. "Management" for a driver-only account) hides itself entirely
+  rather than showing an empty-looking heading.
+
+Tested end-to-end: the 3D model loads and fades in correctly both
+scrolled-into-view and (after the eager-loading fix) before ever being
+scrolled to; all three anti-spam layers confirmed directly (honeypot
+silently blocks with zero network calls fired, the timing check blocks
+with a toast and a legitimate later submit succeeds, the database
+trigger blocks the 6th rapid same-phone customer order while leaving
+POS orders completely unaffected); the facepile renders correctly with
+multiple simultaneous real sessions; role-section hiding confirmed
+correct for both an admin (all three sections) and a driver-only
+account (only Daily Operations). All test orders/rows cleaned up
+afterward.
+
 ## Live driver map, 2026-09-07 (Claude Code)
 
 Owner asked for this despite the backlog's own note that it's "probably

@@ -50,7 +50,9 @@
   #screen-role h1, #screen-login h1{ font-size:clamp(32px,6vw,48px); }
   #screen-role .sub, #screen-login .sub{ color:var(--paper-dim); font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.1em; text-transform:uppercase; }
   #screen-login .field-group{ text-align:left; }
-  .role-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; max-width:900px; width:100%; }
+  .role-sections{ display:flex; flex-direction:column; gap:26px; max-width:900px; width:100%; }
+  .role-section-label{ font-family:"IBM Plex Mono",monospace; font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--paper-dim); margin-bottom:12px; text-align:left; }
+  .role-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; width:100%; }
   .role-card{
     background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
     padding:26px 20px; color:var(--paper); text-align:left; transition:border-color .15s ease, transform .15s ease;
@@ -169,10 +171,23 @@
   .kitchen-pause-badge.is-clickable{ cursor:pointer; }
   .kitchen-pause-badge.is-clickable:hover{ border-color:var(--gold); color:var(--gold); }
   .header-clock{ font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--paper-dim); }
+  .icon-btn{ display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%; background:none; border:1px solid var(--line-on-ink); color:var(--paper-dim); cursor:pointer; flex:none; }
+  .icon-btn svg{ width:16px; height:16px; }
+  .icon-btn:hover{ border-color:var(--gold); color:var(--gold); }
   .presence-wrap{ position:relative; display:inline-flex; }
-  .presence-widget{ display:flex; align-items:center; gap:6px; background:none; border:1px solid var(--line-on-ink); border-radius:999px; padding:6px 12px; font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--paper-dim); cursor:pointer; }
+  .presence-widget{ display:flex; align-items:center; gap:0; background:none; border:none; padding:2px; cursor:pointer; }
+  .presence-widget:hover .presence-avatar{ transform:translateY(-2px); }
+  .presence-avatar{
+    width:28px; height:28px; border-radius:50%; margin-left:-9px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:"IBM Plex Mono",monospace; font-size:11.5px; font-weight:700; color:#fff;
+    border:2px solid var(--ink-soft); box-shadow:0 1px 3px rgba(0,0,0,.4);
+    transition:transform .15s ease; flex:none;
+  }
+  .presence-avatar:first-child{ margin-left:0; }
+  .presence-avatar.is-you{ border-color:var(--gold); }
+  .presence-avatar--overflow{ background:var(--ink); color:var(--paper-dim); }
   .presence-widget:hover{ border-color:var(--gold); color:var(--gold); }
-  .presence-widget .dot{ width:7px; height:7px; border-radius:50%; background:var(--ok); flex:none; }
   .presence-dropdown{ position:absolute; top:calc(100% + 8px); right:0; min-width:220px; background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:10px 14px; box-shadow:0 12px 28px -12px rgba(0,0,0,.6); text-align:left; z-index:20; }
   .presence-dropdown .row{ display:flex; justify-content:space-between; gap:10px; padding:5px 0; font-size:12.5px; color:var(--paper); white-space:nowrap; }
   .presence-dropdown .row .who{ color:var(--paper-dim); }
@@ -343,62 +358,79 @@
     <h1>Cifelli's Staff Hub</h1>
     <div class="sub">One live order queue &middot; three screens</div>
   </div>
-  <div class="role-grid">
-    <button class="role-card" data-role="pos" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><path d="M2 13h20"/></svg>
-      <div class="t">Staff POS</div>
-      <div class="d">Ring up phone and walk-in orders, take cash, manage what's in progress.</div>
-    </button>
-    <button class="role-card" data-role="kitchen" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg>
-      <div class="t">Kitchen Board</div>
-      <div class="d">The live current-orders screen: new, in progress, ready, out the door.</div>
-    </button>
-    <button class="role-card" data-role="driver" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 13l2-6h9l3 6M3 13h16M3 13v4h2m14-4v4h-2"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg>
-      <div class="t">Driver App</div>
-      <div class="d">Claim deliveries, get the address, mark them out the door and delivered.</div>
-    </button>
-    <button class="role-card" data-role="analytics" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
-      <div class="t">Analytics</div>
-      <div class="d">Today's numbers, top sellers, and which customers keep coming back.</div>
-    </button>
-    <button class="role-card" data-role="driverroster" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
-      <div class="t">Driver Roster</div>
-      <div class="d">Add drivers, their car info, and manage who's active — for managers.</div>
-    </button>
-    <button class="role-card" data-role="menu" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 8h8M9 12h8"/></svg>
-      <div class="t">Menu Editor</div>
-      <div class="d">Prices, items, and daily specials — changes go live on the kiosk right away. For managers.</div>
-    </button>
-    <button class="role-card" data-role="drivermap" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-6-3V4l6 3 6-3 6 3v13l-6-3-6 3z"/><path d="M9 4v13M15 7v13"/></svg>
-      <div class="t">Driver Map</div>
-      <div class="d">Live map of drivers currently out on a delivery.</div>
-    </button>
-    <button class="role-card" data-role="till" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.5" fill="currentColor" stroke="none"/><path d="M13 15h5"/></svg>
-      <div class="t">Till</div>
-      <div class="d">Open the register with a starting cash count, close out at the end of your shift.</div>
-    </button>
-    <button class="role-card" data-role="bugreports" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="6" width="8" height="12" rx="4"/><path d="M8 9H4M8 13H4M8 17H5M16 9h4M16 13h4M16 17h3M12 3v3M9 5l1.5 1M15 5l-1.5 1"/></svg>
-      <div class="t">Bug Reports</div>
-      <div class="d">What staff have flagged as broken from inside the app. For managers.</div>
-    </button>
-    <button class="role-card" data-role="promocodes" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
-      <div class="t">Promo Codes</div>
-      <div class="d">Create and manage discount codes for online orders. For managers.</div>
-    </button>
-    <button class="role-card" data-role="storesettings" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      <div class="t">Store Settings</div>
-      <div class="d">Pause online orders, holiday hours, receipt message. For managers.</div>
-    </button>
+  <div class="role-sections">
+    <div class="role-section" data-section="daily">
+      <div class="role-section-label">Daily Operations</div>
+      <div class="role-grid">
+        <button class="role-card" data-role="pos" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><path d="M2 13h20"/></svg>
+          <div class="t">Staff POS</div>
+          <div class="d">Ring up phone and walk-in orders, take cash, manage what's in progress.</div>
+        </button>
+        <button class="role-card" data-role="kitchen" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg>
+          <div class="t">Kitchen Board</div>
+          <div class="d">The live current-orders screen: new, in progress, ready, out the door.</div>
+        </button>
+        <button class="role-card" data-role="driver" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 13l2-6h9l3 6M3 13h16M3 13v4h2m14-4v4h-2"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg>
+          <div class="t">Driver App</div>
+          <div class="d">Claim deliveries, get the address, mark them out the door and delivered.</div>
+        </button>
+        <button class="role-card" data-role="till" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.5" fill="currentColor" stroke="none"/><path d="M13 15h5"/></svg>
+          <div class="t">Till</div>
+          <div class="d">Open the register with a starting cash count, close out at the end of your shift.</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="role-section" data-section="insights">
+      <div class="role-section-label">Insights</div>
+      <div class="role-grid">
+        <button class="role-card" data-role="analytics" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+          <div class="t">Analytics</div>
+          <div class="d">Today's numbers, top sellers, and which customers keep coming back.</div>
+        </button>
+        <button class="role-card" data-role="drivermap" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-6-3V4l6 3 6-3 6 3v13l-6-3-6 3z"/><path d="M9 4v13M15 7v13"/></svg>
+          <div class="t">Driver Map</div>
+          <div class="d">Live map of drivers currently out on a delivery.</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="role-section" data-section="management">
+      <div class="role-section-label">Management</div>
+      <div class="role-grid">
+        <button class="role-card" data-role="menu" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 8h8M9 12h8"/></svg>
+          <div class="t">Menu Editor</div>
+          <div class="d">Prices, items, and daily specials — changes go live on the kiosk right away. For managers.</div>
+        </button>
+        <button class="role-card" data-role="storesettings" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <div class="t">Store Settings</div>
+          <div class="d">Pause online orders, holiday hours, receipt message. For managers.</div>
+        </button>
+        <button class="role-card" data-role="driverroster" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          <div class="t">Driver Roster</div>
+          <div class="d">Add drivers, their car info, and manage who's active — for managers.</div>
+        </button>
+        <button class="role-card" data-role="promocodes" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+          <div class="t">Promo Codes</div>
+          <div class="d">Create and manage discount codes for online orders. For managers.</div>
+        </button>
+        <button class="role-card" data-role="bugreports" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="6" width="8" height="12" rx="4"/><path d="M8 9H4M8 13H4M8 17H5M16 9h4M16 13h4M16 17h3M12 3v3M9 5l1.5 1M15 5l-1.5 1"/></svg>
+          <div class="t">Bug Reports</div>
+          <div class="d">What staff have flagged as broken from inside the app. For managers.</div>
+        </button>
+      </div>
+    </div>
   </div>
   <button class="btn-ghost" id="installBtn" type="button" hidden style="margin-top:6px; font-size:13px;">Install this app on this device &darr;</button>
 </div>
@@ -857,6 +889,12 @@ function applyRoleVisibility(){
   document.querySelectorAll('.role-card[data-role]').forEach(card => {
     card.hidden = !perms[card.getAttribute('data-role')];
   });
+  // A section heading with nothing visible under it (e.g. "Management"
+  // for a driver-only account) would just look broken -- hide the whole
+  // section, not only its cards.
+  document.querySelectorAll('.role-section').forEach(section => {
+    section.hidden = section.querySelectorAll('.role-card:not([hidden])').length === 0;
+  });
 }
 
 /* Active-user indicator: "who else is signed into the Staff Hub right
@@ -906,6 +944,16 @@ function stopPresenceHeartbeat(){
   clearInterval(presenceListTimer);
 }
 
+// Deterministic color per person (from their email) so the same person
+// gets the same avatar color every time, across sessions and devices.
+function presenceAvatarColor(email){
+  let hash = 0;
+  for (let i = 0; i < email.length; i++){ hash = email.charCodeAt(i) + ((hash << 5) - hash); }
+  return `hsl(${Math.abs(hash) % 360}, 55%, 42%)`;
+}
+
+const PRESENCE_MAX_AVATARS = 4;
+
 async function refreshPresenceList(){
   const widget = document.getElementById('presence-widget');
   if (!App.db || !widget) return;
@@ -916,7 +964,17 @@ async function refreshPresenceList(){
     const online = rows.filter(r => (r.lastSeenAt||0) >= cutoff)
       .sort((a,b) => (a.email === App.myEmail ? -1 : b.email === App.myEmail ? 1 : 0));
     widget.hidden = false;
-    widget.innerHTML = `<span class="dot"></span>${online.length} online`;
+    // A facepile (overlapping avatar circles), the standard pattern for
+    // "who's here right now" in collaborative tools -- recognizable at
+    // a glance without reading text, and scales better than a growing
+    // "N online" string as more staff sign in at once.
+    const shown = online.slice(0, PRESENCE_MAX_AVATARS);
+    const overflow = online.length - shown.length;
+    widget.innerHTML = shown.map(r => {
+      const initial = escapeHtml(((r.email || '?').charAt(0)).toUpperCase());
+      const isYou = r.email === App.myEmail;
+      return `<span class="presence-avatar${isYou ? ' is-you' : ''}" style="background:${presenceAvatarColor(r.email||'')};">${initial}</span>`;
+    }).join('') + (overflow > 0 ? `<span class="presence-avatar presence-avatar--overflow">+${overflow}</span>` : '');
     const list = document.getElementById('presence-dropdown-list');
     if (list){
       list.innerHTML = online.length ? online.map(r => `
@@ -980,7 +1038,7 @@ function goToRole(role){
   stopAllSubscriptions();
 
   const right = document.getElementById('header-right');
-  right.innerHTML = '<span class="header-clock" id="header-clock"></span><span class="presence-wrap" id="presence-wrap"><button type="button" id="presence-widget" class="presence-widget" hidden></button></span><button class="btn-ghost" id="report-bug-btn" type="button">Report a Bug</button><button class="btn-ghost" id="switch-role-btn">Switch screen</button><button class="btn-ghost" id="signout-btn">Sign Out</button>';
+  right.innerHTML = '<span class="header-clock" id="header-clock"></span><span class="presence-wrap" id="presence-wrap"><button type="button" id="presence-widget" class="presence-widget" hidden></button></span><button class="icon-btn" id="report-bug-btn" type="button" title="Report a bug" aria-label="Report a bug"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="6" width="8" height="12" rx="4"/><path d="M8 9H4M8 13H4M8 17H5M16 9h4M16 13h4M16 17h3M12 3v3M9 5l1.5 1M15 5l-1.5 1"/></svg></button><button class="btn-ghost" id="switch-role-btn">Switch screen</button><button class="btn-ghost" id="signout-btn">Sign Out</button>';
   document.getElementById('report-bug-btn').addEventListener('click', openBugReportModal);
   startHeaderClock();
   wirePresenceWidget();

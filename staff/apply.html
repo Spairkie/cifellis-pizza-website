@@ -52,6 +52,9 @@
   </div>
 
   <div id="formStep">
+    <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+      <label>Company</label><input id="apl-hp" name="company" tabindex="-1" autocomplete="off">
+    </div>
     <div class="section-label">Your Info</div>
     <div class="field-group"><label>Name</label><input id="apl-name" placeholder="Your full name"></div>
     <div class="field-group"><label>Phone</label><input id="apl-phone" placeholder="(856) 555-0100"></div>
@@ -118,6 +121,8 @@
   }
 
   document.getElementById('submitBtn').addEventListener('click', async () => {
+    const honeypot = document.getElementById('apl-hp');
+    if (honeypot && honeypot.value.trim()) return; // real applicants never fill this in
     const name = document.getElementById('apl-name').value.trim();
     const phone = document.getElementById('apl-phone').value.trim();
     const email = document.getElementById('apl-email').value.trim();

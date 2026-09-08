@@ -355,8 +355,15 @@
   }
   .ticket-strip .cell .v{ font-weight:700; font-size:14.5px; }
 
-  .hero-art{ position:relative; justify-self:center; width:100%; max-width:400px; }
-  .hero-art svg{ width:100%; height:auto; }
+  .hero-art{ position:relative; justify-self:center; width:100%; max-width:440px; aspect-ratio:1/1; }
+  .hero-art svg{ width:100%; height:auto; transition:opacity .5s ease; }
+  .hero-art model-viewer{
+    position:absolute; inset:0; width:100%; height:100%;
+    --poster-color:transparent; background:transparent;
+    opacity:0; transition:opacity .6s ease; pointer-events:none;
+  }
+  .hero-art model-viewer.is-loaded{ opacity:1; pointer-events:auto; }
+  .hero-art svg.is-hidden{ opacity:0; }
 
   @media (max-width:900px){
     .hero .wrap{ grid-template-columns:1fr; }
@@ -653,7 +660,7 @@
     </div>
 
     <div class="hero-art">
-      <svg viewBox="0 0 420 420" role="img" aria-label="Illustration of a fresh pepperoni pizza">
+      <svg id="heroSvg" viewBox="0 0 420 420" role="img" aria-label="Illustration of a fresh pepperoni pizza">
         <defs>
           <filter id="softBlur" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="10"/>
@@ -758,6 +765,10 @@
           <path d="M195 130 q-11 -11 0 -18 q11 7 0 18 Z" transform="rotate(-10 195 130)"/>
         </g>
       </svg>
+      <model-viewer id="heroModel" src="models/pepperoni-pizza.glb" alt="A fresh pepperoni pizza"
+        loading="eager" auto-rotate camera-controls interaction-prompt="none" shadow-intensity="1.2" exposure="1"
+        camera-orbit="45deg 60deg 1.6m" field-of-view="25deg" min-camera-orbit="auto 40deg auto" max-camera-orbit="auto 80deg auto">
+      </model-viewer>
     </div>
   </div>
 </section>
@@ -1380,6 +1391,26 @@
     banner.textContent = data.hoursOverrideNote;
     banner.hidden = false;
   }catch(e){ /* homepage stays fully functional either way */ }
+})();
+</script>
+
+<!-- Hero 3D pizza: the SVG illustration is the real fallback and is
+     shown immediately (it's inline, no load time at all); this swaps in
+     a rotating 3D model once it's actually ready. If the model-viewer
+     script fails to load, or the .glb fails to load, the SVG just stays
+     up forever -- nothing here can make the hero look broken. -->
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.4.0/dist/model-viewer.min.js"></script>
+<script>
+(function(){
+  var heroModel = document.getElementById('heroModel');
+  var heroSvg = document.getElementById('heroSvg');
+  if (!heroModel || !heroSvg) return;
+  heroModel.addEventListener('load', function(){
+    heroModel.classList.add('is-loaded');
+    heroSvg.classList.add('is-hidden');
+  });
+  // No 'error' handler needed -- doing nothing is exactly correct here,
+  // the SVG (shown by default) just stays visible.
 })();
 </script>
 </body>

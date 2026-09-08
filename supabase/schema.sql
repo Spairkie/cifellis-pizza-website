@@ -393,6 +393,46 @@ create policy "orders_insert_public" on public.orders
   for insert to anon, authenticated
   with check (true);
 
+-- Anti-abuse: block a burst of orders from the same phone number in a
+-- short window. Deliberately server-side (a trigger, not a client-side
+-- check) since a client-side-only guard is trivially bypassed by anyone
+-- calling the REST API directly -- the same reasoning as every other
+-- real trust boundary in this file. Only applies to source='customer'
+-- (the public kiosk); staff ringing up real phone/walk-in orders at POS
+-- are never throttled, including several for the same regular's number
+-- in one shift. Paired with a honeypot field and a minimum-time-on-page
+-- check in order/index.html's checkout flow -- neither of those is a
+-- real security boundary on its own (both are trivial for a script that
+-- specifically targets this form to work around), but together they
+-- stop the common case: an unsophisticated bot or script hammering the
+-- public endpoint, not a targeted attacker. A real CAPTCHA (hCaptcha or
+-- Cloudflare Turnstile, both free) would be the next step up if actual
+-- abuse shows up -- both need a new account, so deferred for now, same
+-- as the payment/SMS scaffolds elsewhere in this project.
+create or replace function public.enforce_order_rate_limit()
+returns trigger language plpgsql as $$
+declare
+  recent_count int;
+begin
+  if new.source = 'customer' and new.phone <> '' then
+    select count(*) into recent_count
+    from public.orders
+    where phone = new.phone
+      and source = 'customer'
+      and "createdAt" >= (extract(epoch from now()) * 1000)::bigint - 15 * 60 * 1000;
+    if recent_count >= 5 then
+      raise exception 'Too many orders placed from this phone number recently. Please call the shop directly at (856) 435-8799.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists orders_rate_limit_trigger on public.orders;
+create trigger orders_rate_limit_trigger
+  before insert on public.orders
+  for each row execute function public.enforce_order_rate_limit();
+
 -- Staff can read every order. A signed-in customer can read only
 -- orders that match the phone number on their own account — never
 -- other customers' orders, and never by guessing an id.

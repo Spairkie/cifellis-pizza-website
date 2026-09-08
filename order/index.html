@@ -682,10 +682,10 @@ window.addEventListener('appinstalled', () => {
 /* =========================================================================
    ORDERING (shared by Customer Kiosk and Staff POS)
    ========================================================================= */
-let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null, promoCode:null, discountAmount:0, discountLabel:'' };
+let orderCtx = { mode:null, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null, promoCode:null, discountAmount:0, discountLabel:'', formLoadedAt:0 };
 
 function resetOrderCtx(mode){
-  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null, promoCode:null, discountAmount:0, discountLabel:'' };
+  orderCtx = { mode, cart:[], pizzaSize:'medium', pizzaToppings:new Set(), orderType:null, payMethod:'cash', tip:0, tipPct:null, deliveryInfo:null, promoCode:null, discountAmount:0, discountLabel:'', formLoadedAt:Date.now() };
 }
 
 const CART_STORAGE_KEY = 'cifellisCart';
@@ -826,6 +826,9 @@ function buildCartPaneHTML(mode){
             <button type="button" data-v="pickup" aria-pressed="true">Pickup</button>
             <button type="button" data-v="delivery">Delivery</button>
           </div>
+        </div>
+        <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+          <label>Company</label><input id="hp-${mode}" name="company" tabindex="-1" autocomplete="off">
         </div>
         <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Your name"></div>
         <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
@@ -1245,7 +1248,30 @@ async function applyPromoCode(mode){
   }
 }
 
+const ORDER_MIN_FORM_TIME_MS = 3000; // faster than this and it's not a human filling out the form
+
 async function submitCustomerOrder(){
+  // Anti-bot: a hidden field no real visitor sees or fills (screen
+  // readers skip it too, via aria-hidden), and a minimum time between
+  // the form appearing and submit -- neither is a real security
+  // boundary on its own (a script targeting this form specifically can
+  // trivially work around both), but together they silently stop the
+  // common case, an unsophisticated bot/script hammering the public
+  // endpoint. Fails silently (no error shown) so as not to coach an
+  // actual bot on what tripped it -- see the note in schema.sql's
+  // orders_rate_limit_trigger for the server-side backstop this pairs
+  // with.
+  const honeypot = document.getElementById('hp-customer');
+  if (honeypot && honeypot.value.trim()) return; // real visitors never fill this in, so never a false positive
+  if (Date.now() - orderCtx.formLoadedAt < ORDER_MIN_FORM_TIME_MS){
+    // Unlike the honeypot, a very fast real customer (autofill + an
+    // already-restored cart on a return visit) could plausibly trip
+    // this -- so unlike the honeypot above, this gets actual feedback
+    // rather than a silent no-op, phrased generically enough not to
+    // hand a bot the exact mechanism.
+    showToast('Please review your order and try again.');
+    return;
+  }
   // Re-check right before submitting, not just at page load -- staff may
   // have paused ordering after this tab was opened. Deliberately not a
   // full renderOrderLayout() here -- that would wipe whatever the
