@@ -117,7 +117,17 @@
       return api;
     }
 
-    return { collection, auth: client.auth };
+    // Passthrough for Postgres functions (security definer RPCs like
+    // rate_delivery/redeem_promo_code) that need to run server-side
+    // logic RLS alone can't express -- general-purpose, not tied to any
+    // one caller.
+    async function rpc(name, params) {
+      const { data, error } = await client.rpc(name, params);
+      if (error) throw error;
+      return data;
+    }
+
+    return { collection, auth: client.auth, rpc };
   }
 
   global.createSupabaseDb = createSupabaseDb;

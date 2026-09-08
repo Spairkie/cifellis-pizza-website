@@ -7,6 +7,85 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Promo code engine, 2026-09-07 (Claude Code)
+
+Owner's policy decision (2026-09-07): **one redemption per phone number
+per code** — a customer can't reuse the same code twice, but a different
+code is fine. Enforced with a real unique constraint on
+`(code, phone)` in a new `promo_redemptions` table, not just a UI
+check — same "the check that matters lives in the database" principle
+as every other trust boundary in this project.
+
+**New `redeem_promo_code(code, phone)` Postgres function** (security
+definer, like `rate_delivery()`): validates the code exists, is active,
+and isn't expired, then atomically inserts the redemption row (the
+unique constraint is what actually blocks a repeat) and returns the
+discount. Raises a specific exception per failure reason (invalid,
+inactive, expired, already used) rather than a bare boolean — surfaced
+to the customer as the exact error text, since promo UX benefits from
+knowing *why* a code didn't work.
+
+**Checkout UI** (`order/index.html`): a Promo Code field in the cart
+pane, "Apply" validates against the phone number already entered above
+(tied to it at that moment — if the phone field changes afterward, the
+discount is dropped and the customer's asked to re-apply, since the
+redemption was already consumed against the old number). Discount shows
+as its own line between Subtotal and Tax on the cart, the receipt, and
+the confirmation screen. Discount is applied to the *taxable* subtotal
+(a coupon reduces what's actually taxed, the standard treatment), not
+tacked on after tax.
+
+**New admin-only Staff Hub screen: Promo Codes** — create a code
+(percent or fixed dollar amount off, optional expiry), deactivate/
+reactivate existing ones, see a live redemption count per code.
+
+**Small general-purpose addition:** `order/db-supabase.js`'s adapter
+gained a `.rpc(name, params)` passthrough — `redeem_promo_code()` needed
+to be callable from the same shared client instance the rest of the
+kiosk already uses (this project deliberately keeps one Supabase client
+per page), and there was no existing way to call a Postgres function
+through the Firestore-shaped wrapper. Available for anything else that
+needs it later, same as the earlier `collection().get()` addition.
+
+**One schema quirk worth flagging:** `promo_codes` uses `code` (not
+`id`) as its real primary key, but the Staff Hub's adapter always calls
+`.doc(id)` against a column literally named `id`. Added a surrogate
+`id uuid unique` column purely so Promo Codes management could use the
+same adapter pattern every other admin screen already does, rather than
+writing one-off raw-client code just for this table.
+
+Tested end-to-end against the real live backend, including placing (and
+then deleting) a real order through the actual checkout flow: created a
+10%-off code from the admin screen, applied it at checkout with a math
+check (subtotal $20 → $2 discount → tax on $18 → confirmed the exact
+cents landed in both the UI and the saved order row), confirmed the
+same phone reusing the code is rejected, a different phone succeeds,
+and deactivating the code blocks further redemptions. All test rows
+(order, redemption, code) cleaned up afterward.
+
+## Driver leaderboard, 2026-09-07 (Claude Code)
+
+Added to the Driver App screen itself (not admin-only) since the whole
+point of a leaderboard is drivers seeing how they stack up — this is
+gamification for drivers, not a management report. Needed no new
+schema: every stat it shows (deliveries, miles, tips, average rating)
+was already tracked per-order and computed the same way the existing
+per-driver stats panel does, just aggregated across every approved
+driver instead of one.
+
+Three period tabs (This Week / This Month / All-Time, rolling windows —
+not calendar-boundary weeks, consistent with how "today" is computed
+everywhere else in this app), ranked by delivery count, a trophy on
+whoever's in first, the signed-in driver's own row highlighted and
+tagged "(you)". Drivers with zero deliveries in the selected period
+just don't appear, rather than cluttering the board with empty rows.
+
+Tested end-to-end against the real live backend with two real driver
+test accounts and real completed delivery orders: correct ranking (2
+deliveries beat 1), correct miles/tips/average-rating math, correct
+"(you)" tagging from the second driver's own perspective, period switch
+works. Test orders cleaned up afterward.
+
 ## Live bug reporting, 2026-09-07 (Claude Code)
 
 First Tier 3 item — picked over the other Tier 3 entries specifically
@@ -337,15 +416,17 @@ about before starting.
   (frequent location writes, a map view, handling a driver who closes
   the tab mid-delivery). Worth it if delivery volume grows; probably
   not the next thing to build for a single shop's current volume.
-- [ ] **Promo code engine**. New schema (codes, redemption limits,
+- [x] **Promo code engine**. New schema (codes, redemption limits,
   expiry, stacking rules), and a decision needed on fraud/abuse
   handling (one code per phone number? per order?) before writing any
-  code.
-- [ ] **Driver leaderboards / gamification**. Fun, and drivers already
+  code. Owner decided: one per phone. Shipped 2026-09-07 — see "Promo
+  code engine" above.
+- [x] **Driver leaderboards / gamification**. Fun, and drivers already
   have miles/tips/ratings tracked (Analytics, Driver App history) that
   a leaderboard could be built from relatively cheaply once wanted —
   low urgency until there are enough drivers for a leaderboard to mean
-  anything.
+  anything. Owner asked for it despite low current driver count.
+  Shipped 2026-09-07 — see "Driver leaderboard" above.
 - [ ] **External numeric keypad shortcuts**. Real hardware-integration
   question: is this a USB keypad the browser sees as keyboard input
   (works today with zero code, standard keycodes), or something needing

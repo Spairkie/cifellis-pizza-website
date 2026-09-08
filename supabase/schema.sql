@@ -74,6 +74,8 @@ alter table public.orders add column if not exists "cancelReason" text;
 alter table public.orders add column if not exists "driverId" uuid;
 alter table public.orders add column if not exists "driverRating" smallint;
 alter table public.orders add column if not exists "driverRatingComment" text;
+alter table public.orders add column if not exists "promoCode" text;
+alter table public.orders add column if not exists "discountAmount" numeric(10,2) not null default 0;
 
 do $$ begin
   alter table public.orders add constraint orders_driverrating_check
@@ -496,6 +498,121 @@ create policy "register_shifts_staff_all" on public.register_shifts
   with check (public.is_staff());
 -- No delete policy -- same reasoning as orders above: keep full shift
 -- history, fix mistakes by hand in the dashboard rather than an undo UI.
+
+-- =========================================================================
+-- Promo codes (Staff Hub > Promo Codes, admin-only; redeemed at checkout)
+-- =========================================================================
+-- Policy decision (owner's call, 2026-09-07): one redemption per phone
+-- number per code -- not per order, so a customer can't reuse the same
+-- code on a second order, but a different code is fine. Enforced with a
+-- real unique constraint in promo_redemptions below, not just a UI
+-- check, the same way every other trust boundary in this file is.
+create table if not exists public.promo_codes (
+  -- code is the real business key (what redeem_promo_code() looks up,
+  -- what promo_redemptions references), but the Staff Hub's Firestore-
+  -- shaped db adapter always calls .doc(id).update()/.get() against a
+  -- column literally named "id" -- this surrogate key exists purely so
+  -- Promo Codes management can use that same adapter pattern every
+  -- other admin screen in this file already uses, not because the data
+  -- model needs two keys.
+  code text primary key,
+  label text not null default '',
+  "discountType" text not null check ("discountType" in ('percent','fixed')),
+  amount numeric(10,2) not null check (amount > 0),
+  active boolean not null default true,
+  "expiresAt" bigint,
+  "createdAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  "createdBy" uuid references auth.users(id)
+);
+-- Migration: the id column above didn't exist when this table was first
+-- created in an earlier run of this file -- add it (and its uniqueness)
+-- the same way the orders table's migration block above adds columns.
+alter table public.promo_codes add column if not exists id uuid not null default gen_random_uuid();
+create unique index if not exists promo_codes_id_idx on public.promo_codes (id);
+
+-- Codes are managed only through the admin-only Promo Codes screen and
+-- validated only through redeem_promo_code() below (security definer,
+-- so it can read promo_codes even though no SELECT policy grants that
+-- to anon/authenticated directly) -- deliberately no public read policy,
+-- so codes aren't a browsable list to anyone holding the anon key.
+alter table public.promo_codes enable row level security;
+grant select, insert, update on public.promo_codes to authenticated;
+drop policy if exists "promo_codes_admin_all" on public.promo_codes;
+create policy "promo_codes_admin_all" on public.promo_codes
+  for all to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+
+-- No orderId column linking a redemption to the specific order it was
+-- used on: redeem_promo_code() runs before the order exists (at
+-- "Apply Code" time in checkout, so the discount can show before final
+-- submit), and there's no second call afterward to attach the resulting
+-- order id -- adding an always-null column for that would be exactly
+-- the kind of half-finished field this project avoids. The (code,
+-- phone) pair below is already enough for what this needs to enforce
+-- and audit; wire up that link later if it's ever actually wanted.
+create table if not exists public.promo_redemptions (
+  id uuid primary key default gen_random_uuid(),
+  code text not null references public.promo_codes(code),
+  phone text not null,
+  "redeemedAt" bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  unique (code, phone)
+);
+
+-- No policies grant anon/authenticated direct access at all -- every
+-- write goes through redeem_promo_code() (security definer, below),
+-- and only an admin can browse redemptions directly for auditing.
+alter table public.promo_redemptions enable row level security;
+grant select on public.promo_redemptions to authenticated;
+drop policy if exists "promo_redemptions_admin_select" on public.promo_redemptions;
+create policy "promo_redemptions_admin_select" on public.promo_redemptions
+  for select to authenticated
+  using (public.is_admin());
+
+-- Validates and atomically redeems a code for a phone number, called at
+-- checkout before the order is placed (order/index.html). Raises a
+-- specific exception per failure reason (surfaced to the customer as
+-- e.message by the Supabase JS client) rather than returning a bare
+-- boolean like rate_delivery() above -- promo UX benefits from knowing
+-- *why* a code didn't work, unlike a delivery rating.
+create or replace function public.redeem_promo_code(p_code text, p_phone text)
+returns jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_code text := upper(trim(p_code));
+  v_phone text := trim(p_phone);
+  v_row public.promo_codes%rowtype;
+begin
+  if v_code = '' then
+    raise exception 'Enter a promo code';
+  end if;
+  if v_phone = '' then
+    raise exception 'A phone number is required to apply a promo code';
+  end if;
+
+  select * into v_row from public.promo_codes where code = v_code;
+  if not found then
+    raise exception 'That promo code doesn''t exist';
+  end if;
+  if not v_row.active then
+    raise exception 'That promo code is no longer active';
+  end if;
+  if v_row."expiresAt" is not null and v_row."expiresAt" < (extract(epoch from now()) * 1000)::bigint then
+    raise exception 'That promo code has expired';
+  end if;
+
+  begin
+    insert into public.promo_redemptions (code, phone) values (v_code, v_phone);
+  exception when unique_violation then
+    raise exception 'This phone number has already used that code';
+  end;
+
+  return jsonb_build_object('code', v_code, 'discountType', v_row."discountType", 'amount', v_row.amount, 'label', v_row.label);
+end;
+$$;
+grant execute on function public.redeem_promo_code(text, text) to anon, authenticated;
 
 -- =========================================================================
 -- Bug reports (Staff Hub > "Report a Bug", admin-only Bug Reports screen)
