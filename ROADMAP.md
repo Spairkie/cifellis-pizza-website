@@ -41,9 +41,13 @@ already-shipped items unless something here specifically asks for it.**
   far, kiosk is a natural follow-up
 
 **Priority 4 — code quality**
-- [ ] Reduce duplicated ordering logic between `order/index.html` and
+- [x] Reduce duplicated ordering logic between `order/index.html` and
   `staff/index.html` (pricing, cart, pizza-builder, menu normalization,
-  validation) — no framework rewrite, just shared files
+  validation) — no framework rewrite, just shared files. First
+  increment shipped: pricing math + menu normalization, in
+  `order/ordering-core.js`. Cart state and pizza-builder UI
+  deliberately still separate — see the dated entry for why and what
+  the next increment would cover.
 
 **Priority 5 — content / conversion polish**
 - [ ] Prepare menu/order UI for more real food photography (owner is
@@ -223,6 +227,53 @@ for the intro video) is untouched either way. Verified directly:
 toggling swaps the color values live, the choice survives a reload and
 is already applied at `domcontentloaded` (before first paint), and
 `aria-pressed` tracks state correctly for assistive tech.
+
+## Priority 4: reduce duplicated ordering logic, 2026-09-07 (Claude Code)
+
+A real, live refactor of code both apps depend on for money math — done
+carefully, and deliberately narrow rather than a full merge. Confirmed
+first that `order/index.html` and `staff/index.html` had genuinely
+diverged: `staff/index.html`'s `computeTotals()` was missing the
+`discount` parameter added earlier this session for promo codes
+entirely (harmless today, since Staff POS has no promo-code UI to call
+it with one — but it's exactly the kind of drift this task exists to
+prevent, and proof the risk is real, not theoretical).
+
+**New `order/ordering-core.js`**, loaded by both pages via `<script
+src>`, same as `db-supabase.js`/`geo.js` already are. Contains what was
+confirmed byte-identical (or safely unifiable — one file had richer
+category `photo`/`placeholder` fields than the other; kept the fuller
+version, harmless where unused) between the two files: the hardcoded
+fallback menu constants (`TAX_RATE`, `PIZZA_SIZES`, `TOPPINGS`,
+`SPECIALTY_PIZZAS`, `CATEGORIES`, `SPECIALS_BY_DAY`, `DAY_NAMES`),
+`applyMenuConfig()`/`loadMenuConfig()`, and the pricing/formatting
+helpers `money()`, `escapeHtml()`, `lineLabel()`, `computeTotals()` —
+the last of these now correctly supports the `discount` parameter in
+both apps, closing the exact drift found above.
+
+**Deliberately not extracted in this pass:** cart state
+(`orderCtx`/`resetOrderCtx`), the pizza-builder UI, and
+`buildCartPaneHTML`/`buildMenuPaneHTML`/`renderCart` — these remain
+separate per-file, because they're not actually identical (the POS
+cart pane has no promo-code field or SMS opt-in, for instance) and
+merging them safely is a larger, separate piece of work than "pricing
+math and menu normalization," which is what was asked for this round.
+Flagging this explicitly so "gradually" means an actual next step
+exists to pick up, not that the duplication problem is fully solved.
+
+Also added `ordering-core.js` (and `geo.js`, which was missing too) to
+both `order/sw.js` and `staff/sw.js`'s precached shell file list, and
+bumped both `CACHE_NAME`s again (v2 → v3) — a new critical shared file
+should be available offline from the first visit, not just after
+runtime caching happens to grab it.
+
+Tested end-to-end against the real live backend on both apps: the
+customer kiosk's menu renders (21 categories), a real placed order's
+displayed subtotal/tax/total matched exactly what landed in the
+database; Staff POS rang up a separate real order with matching
+totals; Analytics, Menu Editor (correct tax rate), Till, and Kitchen
+Board all confirmed rendering with no errors. Test orders cleaned up
+afterward.
 
 ## Polish round: 3D hero pizza, anti-spam, Staff Hub UI cleanup, 2026-09-07 (Claude Code)
 

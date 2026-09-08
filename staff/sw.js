@@ -6,12 +6,14 @@
  * offline, and never touching Supabase requests (different origin) so
  * live order data is always read and written fresh.
  */
-const CACHE_NAME = 'cifellis-staff-hub-v2';
+const CACHE_NAME = 'cifellis-staff-hub-v3';
 const SHELL_FILES = [
   './',
   './index.html',
   '../order/db-supabase.js',
   '../order/supabase-config.js',
+  '../order/geo.js',
+  '../order/ordering-core.js',
   './manifest.webmanifest',
   '../order/icons/icon-192.png',
   '../order/icons/icon-512.png',

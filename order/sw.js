@@ -11,12 +11,14 @@
  * Bump CACHE_NAME when you deploy a change you want clients to pick up
  * a fresh shell for right away.
  */
-const CACHE_NAME = 'cifellis-order-hub-v2';
+const CACHE_NAME = 'cifellis-order-hub-v3';
 const SHELL_FILES = [
   './',
   './index.html',
   './db-supabase.js',
   './supabase-config.js',
+  './geo.js',
+  './ordering-core.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
