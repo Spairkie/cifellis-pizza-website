@@ -675,6 +675,64 @@ begin
 end $$;
 
 -- =========================================================================
+-- Live driver locations (Staff Hub > Driver Map)
+-- =========================================================================
+-- One row per driver, upserted from the Driver App only while that
+-- driver has an active delivery out (not the whole time the app happens
+-- to be open) -- the real battery/privacy/data cost this was flagged
+-- with in ROADMAP.md is why tracking is scoped that tightly rather than
+-- running continuously. Own row only (id = auth.uid(), same ownership
+-- pattern as staff_presence above); any staff can read the whole table
+-- to render the map. The row is deleted once a driver has no more
+-- active deliveries or clocks out, so a stale row only ever means
+-- "their last delivery run, now finished" rather than looking live
+-- forever -- the client additionally treats anything not updated in the
+-- last couple of minutes as "may be offline" rather than trusting it.
+create table if not exists public.driver_locations (
+  id uuid primary key references auth.users(id) on delete cascade,
+  lat numeric(9,6) not null,
+  lng numeric(9,6) not null,
+  heading numeric(6,2),
+  "updatedAt" bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+
+alter table public.driver_locations enable row level security;
+grant select, insert, update, delete on public.driver_locations to authenticated;
+
+drop policy if exists "driver_locations_staff_select" on public.driver_locations;
+create policy "driver_locations_staff_select" on public.driver_locations
+  for select to authenticated
+  using (public.is_staff());
+
+drop policy if exists "driver_locations_own_insert" on public.driver_locations;
+create policy "driver_locations_own_insert" on public.driver_locations
+  for insert to authenticated
+  with check (id = auth.uid());
+
+drop policy if exists "driver_locations_own_update" on public.driver_locations;
+create policy "driver_locations_own_update" on public.driver_locations
+  for update to authenticated
+  using (id = auth.uid())
+  with check (id = auth.uid());
+
+drop policy if exists "driver_locations_own_delete" on public.driver_locations;
+create policy "driver_locations_own_delete" on public.driver_locations
+  for delete to authenticated
+  using (id = auth.uid());
+
+-- Realtime: the Driver Map screen live-subscribes so a driver's dot
+-- moves without a manual refresh.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'driver_locations'
+  ) then
+    alter publication supabase_realtime add table public.driver_locations;
+  end if;
+end $$;
+
+-- =========================================================================
 -- Staff presence ("who's online" indicator in the Staff Hub header)
 -- =========================================================================
 -- One row per staff member, upserted every ~20s while any Staff Hub

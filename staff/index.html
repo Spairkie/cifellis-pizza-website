@@ -293,7 +293,13 @@
   .me-chip button:hover{ color:var(--sauce); }
   .me-row{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
   .me-row-soldout{ opacity:.5; }
+  #driver-map{ height:calc(100vh - 200px); min-height:360px; border-radius:10px; overflow:hidden; border:1px solid var(--line-on-ink); }
+  .driver-map-pin{ background:var(--sauce); color:#fff; border-radius:50% 50% 50% 0; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; transform:rotate(-45deg); box-shadow:0 2px 6px rgba(0,0,0,.5); border:2px solid #fff; }
+  .driver-map-pin span{ transform:rotate(45deg); }
+  .driver-map-pin.is-stale{ background:var(--paper-dim); opacity:.7; }
+  .driver-map-shop-pin{ background:var(--gold); color:var(--ink); border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:13px; box-shadow:0 2px 6px rgba(0,0,0,.5); border:2px solid #fff; }
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
 
@@ -368,6 +374,11 @@
       <div class="t">Menu Editor</div>
       <div class="d">Prices, items, and daily specials — changes go live on the kiosk right away. For managers.</div>
     </button>
+    <button class="role-card" data-role="drivermap" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-6-3V4l6 3 6-3 6 3v13l-6-3-6 3z"/><path d="M9 4v13M15 7v13"/></svg>
+      <div class="t">Driver Map</div>
+      <div class="d">Live map of drivers currently out on a delivery.</div>
+    </button>
     <button class="role-card" data-role="till" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.5" fill="currentColor" stroke="none"/><path d="M13 15h5"/></svg>
       <div class="t">Till</div>
@@ -413,6 +424,7 @@
     <div class="view" id="view-menu" hidden></div>
     <div class="view" id="view-storesettings" hidden></div>
     <div class="view" id="view-till" hidden></div>
+    <div class="view" id="view-drivermap" hidden></div>
     <div class="view" id="view-bugreports" hidden></div>
     <div class="view" id="view-promocodes" hidden></div>
   </main>
@@ -421,6 +433,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../order/supabase-config.js"></script>
 <script src="../order/db-supabase.js"></script>
 <script src="../order/geo.js"></script>
@@ -796,7 +809,7 @@ async function updateOrder(docId, patch){
 /* =========================================================================
    AUTH GATE + BOOT + ROLE SWITCHING
    ========================================================================= */
-const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till', bugreports:'Bug Reports', promocodes:'Promo Codes' };
+const ROLE_LABELS = { pos:'Staff POS', kitchen:'Kitchen Board', driver:'Driver App', analytics:'Analytics', driverroster:'Driver Roster', menu:'Menu Editor', storesettings:'Store Settings', till:'Till', bugreports:'Bug Reports', promocodes:'Promo Codes', drivermap:'Driver Map' };
 
 function stopAllSubscriptions(){
   App.unsub.forEach(fn => { try{ fn(); }catch(e){} });
@@ -835,6 +848,7 @@ function computeRolePermissions(){
     till: isAdmin || !isDriver,
     bugreports: isAdmin,
     promocodes: isAdmin,
+    drivermap: isAdmin || !isDriver,
   };
 }
 
@@ -996,6 +1010,7 @@ function goToRole(role){
   if (role === 'till'){ document.getElementById('view-till').hidden = false; initTillView(); }
   if (role === 'bugreports'){ document.getElementById('view-bugreports').hidden = false; initBugReportsView(); }
   if (role === 'promocodes'){ document.getElementById('view-promocodes').hidden = false; initPromoCodesView(); }
+  if (role === 'drivermap'){ document.getElementById('view-drivermap').hidden = false; initDriverMapView(); }
 }
 
 document.querySelectorAll('.role-card').forEach(btn => {
@@ -1041,6 +1056,7 @@ async function initAuthGate(){
     const uid = sessionData && sessionData.session && sessionData.session.user && sessionData.session.user.id;
     const email = sessionData && sessionData.session && sessionData.session.user && sessionData.session.user.email;
     App.myEmail = email || '';
+    App.myUid = uid || null;
     if (!uid || !db) return;
     startPresenceHeartbeat();
     try{
@@ -2224,6 +2240,59 @@ async function toggleShift(){
   renderDriverLists();
 }
 
+/* Live driver location (Staff Hub > Driver Map). Deliberately scoped to
+   "this driver currently has an active delivery out" -- not the whole
+   time the Driver App happens to be open -- per the real battery/
+   privacy/data cost this was flagged with when the feature was first
+   scoped (see ROADMAP.md). watchPosition (not a polling timer) so the
+   OS's own location services pick the update cadence rather than
+   forcing a fresh GPS fix on a fixed schedule. DB writes are throttled
+   separately from however often the browser calls back. */
+let driverGeoWatchId = null;
+let driverLocationLastWriteAt = 0;
+const DRIVER_LOCATION_WRITE_INTERVAL_MS = 15000;
+
+function startDriverLocationTracking(){
+  if (driverGeoWatchId != null) return; // already tracking
+  if (!navigator.geolocation) return; // map just won't show this driver
+  driverGeoWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const now = Date.now();
+      if (now - driverLocationLastWriteAt < DRIVER_LOCATION_WRITE_INTERVAL_MS) return;
+      driverLocationLastWriteAt = now;
+      writeDriverLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.heading);
+    },
+    () => { /* permission denied or unavailable -- rest of Driver App still works fully without this */ },
+    { enableHighAccuracy: false, maximumAge: 10000, timeout: 20000 }
+  );
+  // Runs the same way every other live subscription on this screen
+  // stops -- via stopAllSubscriptions() on any role switch -- so
+  // leaving Driver App always stops GPS tracking too, not just a
+  // driver finishing their last delivery.
+  App.unsub.push(stopDriverLocationTracking);
+}
+
+async function writeDriverLocation(lat, lng, heading){
+  if (!App.db || !App.myUid) return;
+  try{
+    await App.db.collection('driver_locations').doc(App.myUid).set({
+      lat, lng,
+      heading: (heading == null || Number.isNaN(heading)) ? null : heading,
+      updatedAt: Date.now(),
+    });
+  }catch(e){ /* map just won't show this driver's latest position */ }
+}
+
+function stopDriverLocationTracking(){
+  if (driverGeoWatchId != null){
+    navigator.geolocation.clearWatch(driverGeoWatchId);
+    driverGeoWatchId = null;
+  }
+  if (App.db && App.myUid){
+    App.db.collection('driver_locations').doc(App.myUid).delete().catch(() => {});
+  }
+}
+
 function renderDriverLists(){
   const view = document.getElementById('view-driver');
   const driver = App.driver;
@@ -2282,6 +2351,7 @@ function renderDriverLists(){
       const available = deliveries.filter(o => o.status === 'ready' && !o.driverId);
       const mine = deliveries.filter(o => o.status === 'out_for_delivery' && o.driverId === driver.id);
       const myCompleted = deliveries.filter(o => o.status === 'completed' && o.driverId === driver.id);
+      if (mine.length > 0) startDriverLocationTracking(); else stopDriverLocationTracking();
       renderDriverStats(myCompleted);
       renderDriverHistory(myCompleted);
       LeaderboardState.deliveries = deliveries;
@@ -3498,6 +3568,110 @@ async function togglePromoCodeActive(id, next){
   }catch(e){
     showToast('Could not update: ' + (e && e.message ? e.message : 'unknown error'));
   }
+}
+</script>
+
+<script>
+/* =========================================================================
+   DRIVER MAP -- driver_locations table, rendered with Leaflet + OSM tiles
+   (both free, no API key -- same reasoning as the Nominatim/OSRM geocoder
+   already used for delivery distance in order/geo.js)
+   ========================================================================= */
+// SHOP_LOCATION itself comes from order/geo.js (loaded above -- note its
+// field is .lon, not .lng, matching that file's own convention).
+const DRIVER_LOCATION_STALE_MS = 2 * 60 * 1000; // older than this: may be offline
+
+let driverMapInstance = null;
+let driverMapMarkers = new Map(); // driverId -> L.marker
+let driverMapDriversById = new Map(); // driverId -> drivers row, for name lookups
+let driverMapLastDocs = [];
+let driverMapStaleTimer = null;
+
+async function initDriverMapView(){
+  stopAllSubscriptions();
+  const view = document.getElementById('view-drivermap');
+  view.innerHTML = `
+    <div class="view-header"><h2>Driver Map</h2></div>
+    <div id="driver-map"></div>
+    <div style="font-size:12px; color:var(--paper-dim); margin-top:10px;">Shows drivers currently out on a delivery. A grayed-out pin means that driver's phone hasn't reported in over 2 minutes — they may be offline or between deliveries.</div>`;
+  if (typeof L === 'undefined'){
+    document.getElementById('driver-map').outerHTML = '<div class="cart-empty">Map library failed to load. Check your internet connection and reload.</div>';
+    return;
+  }
+  const db = App.db || await getDb();
+  if (!db){ document.getElementById('driver-map').outerHTML = '<div class="cart-empty">Not connected to the database.</div>'; return; }
+
+  driverMapMarkers = new Map();
+  driverMapLastDocs = [];
+  driverMapInstance = L.map('driver-map').setView([SHOP_LOCATION.lat, SHOP_LOCATION.lon], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(driverMapInstance);
+  L.marker([SHOP_LOCATION.lat, SHOP_LOCATION.lon], {
+    icon: L.divIcon({ className:'', html:'<div class="driver-map-shop-pin">🍕</div>', iconSize:[22,22], iconAnchor:[11,11] }),
+  }).addTo(driverMapInstance).bindPopup("Cifelli's Pizza");
+
+  App.unsub.push(() => {
+    if (driverMapInstance){ driverMapInstance.remove(); driverMapInstance = null; }
+    clearInterval(driverMapStaleTimer);
+  });
+
+  try{
+    const driversSnap = await db.collection('drivers').get();
+    driverMapDriversById = new Map((driversSnap.docs || []).map(d => [d.id, d.data()]));
+  }catch(e){ driverMapDriversById = new Map(); }
+
+  try{
+    const unsub = db.collection('driver_locations').onSnapshot(snap => {
+      renderDriverMapMarkers((snap.docs || []).map(d => d.data()));
+    }, () => { /* map just stops updating -- not worth a full error state for a live-position feed */ });
+    App.unsub.push(unsub);
+  }catch(e){ /* map still shows the shop pin even if this fails */ }
+
+  // Re-check staleness on a timer independent of new data arriving -- a
+  // driver whose phone died should visibly gray out even if nothing
+  // else ever changes again.
+  driverMapStaleTimer = setInterval(() => renderDriverMapMarkers(), 30000);
+}
+
+function driverMapPinHtml(name, stale){
+  const initial = escapeHtml((name || '?').charAt(0).toUpperCase());
+  return `<div class="driver-map-pin${stale ? ' is-stale' : ''}"><span>${initial}</span></div>`;
+}
+
+function renderDriverMapMarkers(docs){
+  if (!driverMapInstance) return;
+  if (docs) driverMapLastDocs = docs;
+  const now = Date.now();
+  const seenIds = new Set();
+
+  driverMapLastDocs.forEach(row => {
+    seenIds.add(row.id);
+    const driver = driverMapDriversById.get(row.id);
+    const name = (driver && driver.name) || 'Driver';
+    const stale = (now - (row.updatedAt || 0)) > DRIVER_LOCATION_STALE_MS;
+    const popupHtml = `<b>${escapeHtml(name)}</b><br>${stale ? 'Last seen' : 'Updated'} ${timeAgo(row.updatedAt || 0)}`;
+    const icon = L.divIcon({ className:'', html: driverMapPinHtml(name, stale), iconSize:[26,26], iconAnchor:[13,26] });
+    let marker = driverMapMarkers.get(row.id);
+    if (!marker){
+      marker = L.marker([row.lat, row.lng], { icon }).addTo(driverMapInstance).bindPopup(popupHtml);
+      driverMapMarkers.set(row.id, marker);
+    } else {
+      marker.setLatLng([row.lat, row.lng]);
+      marker.setIcon(icon);
+      marker.setPopupContent(popupHtml);
+    }
+  });
+
+  // Drop markers for drivers no longer reporting a location at all
+  // (their delivery finished and the row was deleted).
+  [...driverMapMarkers.keys()].forEach(id => {
+    if (!seenIds.has(id)){
+      driverMapInstance.removeLayer(driverMapMarkers.get(id));
+      driverMapMarkers.delete(id);
+    }
+  });
 }
 </script>
 

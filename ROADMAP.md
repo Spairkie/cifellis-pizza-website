@@ -7,6 +7,63 @@ Where the project stands, and what's left. Last reviewed 2026-09-07.
 for that handoff, with credentials status, known gotchas, and where to
 start. This file is the detailed history.
 
+## Live driver map, 2026-09-07 (Claude Code)
+
+Owner asked for this despite the backlog's own note that it's "probably
+not the next thing to build" — built with the real cost that note
+flagged (battery/privacy/data) deliberately minimized rather than
+ignored.
+
+**Location tracking is scoped to "this driver currently has an active
+delivery out," not the whole time the Driver App happens to be open.**
+That's the actual mitigation for the battery/privacy/data-usage concern
+this feature was flagged with when first scoped — a driver between
+deliveries, or just browsing other Staff Hub screens, reports nothing.
+Uses the browser's `watchPosition` (not a polling timer), so the OS's
+own location services choose the update cadence; database writes are
+separately throttled to at most once every 15 seconds regardless of how
+often the browser calls back. New `driver_locations` table, one row per
+driver, RLS mirrors `staff_presence` exactly (own row to write, any
+staff can read all of them) — a driver's own location is only ever
+written by that driver, an admin or POS staff can see everyone's.
+
+**New Staff Hub screen: Driver Map** (same audience as POS/Kitchen/
+Analytics — not admin-only, not driver-only), a live Leaflet map over
+free OpenStreetMap tiles (same "free, no API key" reasoning as the
+Nominatim/OSRM geocoder already used for delivery distance). Each
+driver gets a pin, live-updating as their location changes; the shop
+itself gets a fixed pin for reference. **Handles a driver who closes
+the tab mid-delivery** by treating anything not updated in over 2
+minutes as "may be offline" (grayed out, "last seen Xm" in the popup)
+rather than presenting a stale position as current — the row only gets
+deleted outright once a driver cleanly finishes their last delivery or
+clocks out; an abrupt disconnect just goes stale and visibly says so.
+
+**A real bug caught and fixed before this ever reached testing:**
+`staff/index.html` already loads `order/geo.js` (for the delivery
+distance lookup), which declares its own top-level `const
+SHOP_LOCATION` — my first pass declared a second one for the map,
+which is a hard `SyntaxError` (redeclaring a `const` across script tags
+in the same page throws, it doesn't just shadow), silently killing the
+*entire* script block it was in and leaving `initDriverMapView`
+undefined. Fixed by reusing the existing global instead of redeclaring
+it — worth remembering given how much cross-file duplication already
+exists in this project (see `HANDOFF.md`'s note on that): a new global
+name should be checked against what `order/geo.js` and the rest of
+`staff/index.html` already declare before adding it, not assumed free.
+Caught by actually loading the page in Playwright rather than syntax-
+checking alone — a syntax checker sees each `<script>` block in
+isolation and would never have flagged a cross-block redeclaration.
+
+Tested end-to-end against the real live backend with Playwright's
+geolocation mocking: a driver claiming a delivery starts reporting a
+location that lands in the database with the exact mocked coordinates,
+the Driver Map correctly shows both the driver's pin and the shop's,
+completing the delivery stops tracking and removes the row, and the
+map drops the marker in real time afterward. Also confirmed the
+permission boundary: general staff can see Driver Map, a driver-only
+account cannot. All test rows cleaned up.
+
 ## Promo code engine, 2026-09-07 (Claude Code)
 
 Owner's policy decision (2026-09-07): **one redemption per phone number
@@ -410,12 +467,13 @@ Not because they're bad ideas — because each is either a meaningfully
 larger build, or brings ongoing costs/risks worth being deliberate
 about before starting.
 
-- [ ] **Live driver map**. Needs a driver's phone to continuously
+- [x] **Live driver map**. Needs a driver's phone to continuously
   report location while a delivery's out — real battery/privacy/data-
   usage cost to the driver, and meaningfully more infrastructure
   (frequent location writes, a map view, handling a driver who closes
   the tab mid-delivery). Worth it if delivery volume grows; probably
-  not the next thing to build for a single shop's current volume.
+  not the next thing to build for a single shop's current volume. Owner
+  asked for it anyway. Shipped 2026-09-07 — see "Live driver map" above.
 - [x] **Promo code engine**. New schema (codes, redemption limits,
   expiry, stacking rules), and a decision needed on fraud/abuse
   handling (one code per phone number? per order?) before writing any
