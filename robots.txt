@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /staff/
 
-Sitemap: https://builtbysai.github.io/cifellis-pizza-website/sitemap.xml
+Sitemap: https://builtbysai.github.io/cifellis/sitemap.xml

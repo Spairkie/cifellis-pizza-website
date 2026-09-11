@@ -243,17 +243,18 @@ migration yet.
    Pages IPs, or a `CNAME` for a `www` subdomain — check
    docs.github.com → "Managing a custom domain" for current values.
 
-**Code changes, once DNS is confirmed working** (all currently hardcoded
-to `https://builtbysai.github.io/cifellis-pizza-website/`):
+**Code changes — done 2026-09-11** (repo renamed `cifellis-pizza-website` →
+`cifellis`; all paths updated from
+`https://builtbysai.github.io/cifellis-pizza-website/` to
+`https://builtbysai.github.io/cifellis/`):
 4. `index.html`: canonical link, `og:url`, `og:image`, `twitter:image`,
    and the Restaurant JSON-LD block's `image`/`url`/`menu` fields.
 5. `robots.txt`'s `Sitemap:` line.
 6. `sitemap.xml`'s two `<loc>` entries.
-7. Spot-check `order/index.html`/`staff/index.html` for absolute URLs
-   (icon/manifest links are already relative and shouldn't need changes).
-8. The PWA manifests' `start_url` values, if any are absolute.
-9. `404.html`'s four link `href`s are root-relative
-   (`/cifellis-pizza-website/...`) — update to just `/...`.
+7. Spot-checked `order/index.html`/`staff/index.html` — all relative, no changes needed.
+8. PWA manifests' `start_url` values are relative (`./index.html`) — no changes needed.
+9. `404.html`'s four link `href`s updated to `/cifellis/...`.
+10. `.github/workflows/health-check.yml` `SITE_BASE` updated.
 
 ## 5. Site analytics
 

@@ -3,7 +3,7 @@
 Website, online ordering, staff POS, kitchen board, and delivery driver app
 for Cifelli's Pizza (700 Chews Landing Rd, Lindenwold, NJ 08021).
 
-**Live site:** https://builtbysai.github.io/cifellis-pizza-website/
+**Live site:** https://builtbysai.github.io/cifellis/
 
 ## What's in here
 
@@ -75,7 +75,7 @@ the owner, tracked in `OWNER-TODO.md`.
    one staff account). Takes about ten minutes.
 2. **Turn on GitHub Pages**: repo Settings > Pages > Source: "Deploy from a
    branch" > Branch: `main`, folder `/ (root)` > Save. The site will be
-   live at `https://builtbysai.github.io/cifellis-pizza-website/` within a
+   live at `https://builtbysai.github.io/cifellis/` within a
    minute or two.
 3. **Customers order at `/order/`**, no setup needed on their end, it's
    linked from the main site.
@@ -177,3 +177,7 @@ be revisited:
   `beforeinstallprompt` pattern
   ([web.dev: patterns for promoting PWA installation](https://web.dev/promote-install/);
   [MDN: making PWAs installable](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)).
+
+---
+
+*Built by [Hans Sai](https://builtbysai.com).*
