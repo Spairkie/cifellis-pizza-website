@@ -38,7 +38,7 @@ short, prioritized version of every open decision below:
 1. [Real card payments](#1-real-card-payments)
 2. [SMS order notifications](#2-sms-order-notifications)
 3. Receipt printing + cash drawer — search this file for "## 3." (built, waiting on hardware)
-4. [SEO](#4-seo--deferred-until-the-custom-domain-is-live) / [4b. Custom domain migration](#4b-custom-domain-migration-spairkiegithubio--cifellicom)
+4. [SEO](#4-seo--deferred-until-the-custom-domain-is-live) / [4b. Custom domain migration](#4b-custom-domain-migration-builtbysaicom--cifellicom)
 6. [POS/kitchen screens (hardware)](#6-poskitchen-screens-hardware) — including putting Kitchen Board on a TV, `OWNER-TODO.md` → "3b."
 
 ## Backlog
@@ -227,7 +227,7 @@ Graph + Twitter cards, Restaurant JSON-LD structured data, `robots.txt`,
    blocked on the domain and can start in parallel (verification is slow
    and mail-based).
 
-## 4b. Custom domain migration (spairkie.github.io → cifelli.com)
+## 4b. Custom domain migration (builtbysai.com → cifelli.com)
 
 **Status:** not started — owner has the domain but hasn't asked for the
 migration yet.
@@ -244,7 +244,7 @@ migration yet.
    docs.github.com → "Managing a custom domain" for current values.
 
 **Code changes, once DNS is confirmed working** (all currently hardcoded
-to `https://spairkie.github.io/cifellis-pizza-website/`):
+to `https://builtbysai.github.io/cifellis-pizza-website/`):
 4. `index.html`: canonical link, `og:url`, `og:image`, `twitter:image`,
    and the Restaurant JSON-LD block's `image`/`url`/`menu` fields.
 5. `robots.txt`'s `Sitemap:` line.

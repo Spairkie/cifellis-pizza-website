@@ -34,7 +34,7 @@ jobs:
     env:
       SUPABASE_URL: https://yzehosyrsygvbddskpqs.supabase.co
       SUPABASE_ANON_KEY: sb_publishable_Bqdzh16tXCHmSj3zJUSWbw_hY_y9hcJ
-      SITE_BASE: https://spairkie.github.io/cifellis-pizza-website
+      SITE_BASE: https://builtbysai.github.io/cifellis-pizza-website
     steps:
       - name: Check each target and report results
         shell: bash
