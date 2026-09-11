@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a100c"/><stop offset="1" stop-color="#060906"/>
+    </linearGradient>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="1.5" y="0" fill="#00ff88" opacity="0.045"/>
+    </pattern>
+    <linearGradient id="termg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c140e"/><stop offset="1" stop-color="#080d09"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="4" y="4" width="1192" height="512" rx="18" fill="url(#bg)" stroke="#1d3a26" stroke-width="2"/>
+  <rect x="4" y="4" width="1192" height="512" rx="18" fill="url(#scan)"/>
+
+  <!-- circuit traces -->
+  <g stroke="#00ff88" stroke-width="1.5" opacity="0.16" fill="none">
+    <path d="M60 470 H180 V430 H260"/>
+    <path d="M1140 470 H1020 V440 H960"/>
+    <circle cx="260" cy="430" r="5" fill="#00ff88" opacity="0.5"/>
+    <circle cx="960" cy="440" r="5" fill="#00ff88" opacity="0.5"/>
+    <path d="M60 60 H140 V100"/>
+    <circle cx="140" cy="100" r="4" fill="#00ff88" opacity="0.5"/>
+  </g>
+
+  <!-- pizza slice wireframe (terminal-green line art, pizza-red accents) -->
+  <g transform="translate(150,260)">
+    <g stroke="#00ff88" stroke-width="3" fill="none" opacity="0.95">
+      <path d="M-90,-120 L0,110 L90,-120 Z"/>
+      <path d="M-90,-120 Q0,-150 90,-120" stroke="#c0392b" stroke-width="8"/>
+      <path d="M-90,-120 Q0,-150 90,-120"/>
+    </g>
+    <g stroke="#00ff88" stroke-width="1.5" opacity="0.35" fill="none">
+      <path d="M-70,-95 L0,80 L70,-95 Z"/>
+      <path d="M-50,-70 L0,50 L50,-70 Z"/>
+    </g>
+    <!-- pepperoni: red rings -->
+    <g stroke="#c0392b" stroke-width="3" fill="none" opacity="0.9">
+      <circle cx="-28" cy="-55" r="11"/><circle cx="30" cy="-70" r="11"/>
+      <circle cx="5" cy="-15" r="11"/><circle cx="-8" cy="40" r="10"/>
+    </g>
+    <!-- steam -->
+    <g stroke="#e8dcc3" stroke-width="2.5" fill="none" opacity="0.5">
+      <path d="M-40,-175 q6,-14 0,-28 q-6,-14 0,-28"/>
+      <path d="M10,-175 q6,-14 0,-28 q-6,-14 0,-28"/>
+    </g>
+  </g>
+
+  <!-- title block -->
+  <g>
+    <text x="330" y="130" fill="#00ff88" font-size="22" letter-spacing="6">BUILTBYSAI // PIZZA OPS</text>
+    <text x="330" y="196" fill="#f2ead8" font-size="64" font-weight="bold" font-family="Georgia, 'Times New Roman', serif" letter-spacing="2">Cifelli&#8217;s</text>
+    <text x="332" y="230" fill="#9db8a4" font-size="16.5">marketing site + ordering kiosk PWA</text>
+    <text x="332" y="256" fill="#6b8a72" font-size="16.5">staff hub · one <tspan fill="#00ff88">orders</tspan> table · realtime</text>
+  </g>
+
+  <!-- module chips -->
+  <g font-size="15">
+    <g><rect x="332" y="292" width="96" height="34" rx="17" fill="#101b12" stroke="#1d3a26"/><text x="380" y="314" fill="#00ff88" text-anchor="middle">KIOSK</text></g>
+    <g><rect x="438" y="292" width="72" height="34" rx="17" fill="#101b12" stroke="#1d3a26"/><text x="474" y="314" fill="#00ff88" text-anchor="middle">POS</text></g>
+    <g><rect x="520" y="292" width="112" height="34" rx="17" fill="#101b12" stroke="#1d3a26"/><text x="576" y="314" fill="#00ff88" text-anchor="middle">KITCHEN</text></g>
+    <g><rect x="642" y="292" width="96" height="34" rx="17" fill="#101b12" stroke="#1d3a26"/><text x="690" y="314" fill="#00ff88" text-anchor="middle">DRIVER</text></g>
+  </g>
+  <text x="332" y="362" fill="#556b5a" font-size="15">live: builtbysai.github.io/cifellis/</text>
+
+  <!-- terminal window: realtime order feed -->
+  <g>
+    <rect x="800" y="60" width="340" height="400" rx="12" fill="url(#termg)" stroke="#1d3a26" stroke-width="2"/>
+    <rect x="800" y="60" width="340" height="40" rx="12" fill="#0e1510"/>
+    <rect x="800" y="80" width="340" height="20" fill="#0e1510"/>
+    <circle cx="826" cy="80" r="6" fill="#c0392b"/><circle cx="848" cy="80" r="6" fill="#d9a441"/><circle cx="870" cy="80" r="6" fill="#00ff88"/>
+    <text x="896" y="86" fill="#6b8a72" font-size="14">realtime — orders</text>
+    <g font-size="14.5">
+      <text x="818" y="132" fill="#556b5a">19:02:11 <tspan fill="#00ff88">INSERT</tspan><tspan fill="#e8dcc3"> orders #1042</tspan></text>
+      <text x="818" y="158" fill="#556b5a">         <tspan fill="#e8dcc3">2x Large Pepperoni</tspan></text>
+      <text x="818" y="184" fill="#556b5a">         <tspan fill="#e8dcc3">1x Stromboli + 2L</tspan></text>
+      <text x="818" y="224" fill="#556b5a">19:02:12 <tspan fill="#d9a441">→</tspan><tspan fill="#e8dcc3"> kitchen board</tspan></text>
+      <text x="818" y="250" fill="#556b5a">19:02:12 <tspan fill="#d9a441">→</tspan><tspan fill="#e8dcc3"> kiosk receipt</tspan></text>
+      <text x="818" y="290" fill="#556b5a">19:14:03 <tspan fill="#00ff88">UPDATE</tspan><tspan fill="#e8dcc3"> #1042 → </tspan><tspan fill="#00ff88">ready</tspan></text>
+      <text x="818" y="316" fill="#556b5a">         <tspan fill="#d9a441">→</tspan><tspan fill="#e8dcc3"> driver app ping</tspan></text>
+      <text x="818" y="356" fill="#556b5a">19:14:04 <tspan fill="#00ff88">UPDATE</tspan><tspan fill="#e8dcc3"> #1042 → </tspan><tspan fill="#00ff88">out</tspan></text>
+      <text x="818" y="396" fill="#00ff88">▊ <tspan fill="#556b5a">listening… 4 screens, 1 queue</tspan></text>
+    </g>
+  </g>
+
+  <text x="600" y="498" fill="#3d5243" font-size="13" text-anchor="middle">Lindenwold, NJ &#183; 700 Chews Landing Rd &#183; hand-stretched, made to order</text>
+</svg>

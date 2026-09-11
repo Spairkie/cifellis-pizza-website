@@ -5,6 +5,10 @@ for Cifelli's Pizza (700 Chews Landing Rd, Lindenwold, NJ 08021).
 
 **Live site:** https://builtbysai.github.io/cifellis/
 
+<p align="center"><img src="assets/hero.svg" width="800" alt="Cifelli's Pizza: marketing site, ordering kiosk, and staff hub on one realtime order queue"></p>
+
+<p align="center"><img src="assets/marketing-preview.png" width="800" alt="Screenshot of the live Cifelli's Pizza marketing site hero"></p>
+
 ## What's in here
 
 - **`index.html`**: the marketing site (menu, specials, reviews, hours,
