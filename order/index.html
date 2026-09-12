@@ -2,11 +2,14 @@
 <html lang="en">
 <head>
 <script>
-  // Set before first paint so a returning visitor with high-contrast on
-  // (set on the homepage, or here) never sees a flash of normal contrast
-  // first -- same mechanism and same stored key as index.html's toggle,
-  // so the choice carries over between the two.
-  try{ if (localStorage.getItem('cifellisHighContrast') === '1') document.documentElement.setAttribute('data-contrast','high'); }catch(e){}
+  // Set before first paint so a returning visitor never sees a flash of
+  // the other theme first -- same mechanism and same stored key as
+  // index.html's toggle, so the choice carries over between the two.
+  try{
+    var storedTheme = localStorage.getItem('cifellisTheme');
+    var theme = storedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    if (theme === 'light') document.documentElement.setAttribute('data-theme','light');
+  }catch(e){}
 </script>
 <meta charset="utf-8">
 <title>Order Online | Cifelli's Pizza</title>
@@ -39,21 +42,38 @@
     --line-on-ink: rgba(244,234,214,.16);
     --line-on-paper: rgba(28,23,18,.18);
     --ok:#4c8c5a; --warn:#dc9f34; --bad:#c22a2f;
+
+    /* Theme-relative tokens: the app shell (header, panes, cards, inputs)
+       reads through these instead of --ink/--paper directly, so light
+       theme below can flip the whole app. Fixed-contrast components
+       (sauce buttons, gold badges, the paper-colored order ticket) read
+       the raw --ink/--paper/--gold/--sauce colors directly and are
+       unaffected -- they're deliberately always light-on-dark or
+       dark-on-light, not part of the overall app theme. */
+    --surface: var(--ink);
+    --surface-2: var(--ink-soft);
+    --surface-rgb: 28,23,18;
+    --text: var(--paper);
+    --text-dim: var(--paper-dim);
+    --text-rgb: 244,234,214;
+    --line: var(--line-on-ink);
   }
-  /* High-contrast mode -- same mechanism as index.html's toggle (see
-     that file for the fuller explanation): boosts dim text and hairline
-     borders back up near full contrast via three custom properties,
-     rather than touching every rule that reads through them. */
-  :root[data-contrast="high"]{
-    --paper-dim:#f9f2e2;
-    --line-on-ink: rgba(244,234,214,.55);
-    --line-on-paper: rgba(28,23,18,.55);
+  /* Light theme: same idea as index.html's toggle -- flips the app
+     shell's dark surfaces to a light one with dark text. */
+  :root[data-theme="light"]{
+    --surface:#f6efe0;
+    --surface-2:#ece0c8;
+    --surface-rgb: 246,239,224;
+    --text:#1c1712;
+    --text-dim: rgba(28,23,18,.62);
+    --text-rgb: 28,23,18;
+    --line: var(--line-on-paper);
+    --gold:#a3690f;
   }
-  :root[data-contrast="high"] :focus-visible{ outline:3px solid var(--gold); outline-offset:3px; }
   *,*::before,*::after{box-sizing:border-box;}
   html,body{height:100%;}
   body{
-    margin:0; background:var(--ink); color:var(--paper);
+    margin:0; background:var(--surface); color:var(--text);
     font-family:"Work Sans", ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing:antialiased;
   }
@@ -63,7 +83,8 @@
   .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
   [hidden]{ display:none !important; }
   ::-webkit-scrollbar{ width:8px; height:8px; }
-  ::-webkit-scrollbar-thumb{ background:var(--line-on-ink); border-radius:4px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+  :focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
 
   /* ---------- role picker ---------- */
   #screen-role{
@@ -72,22 +93,22 @@
   }
   #screen-role .badge{ width:64px; height:64px; }
   #screen-role h1{ font-size:clamp(32px,6vw,48px); }
-  #screen-role .sub{ color:var(--paper-dim); font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.1em; text-transform:uppercase; }
+  #screen-role .sub{ color:var(--text-dim); font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.1em; text-transform:uppercase; }
   .role-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; max-width:900px; width:100%; }
   .role-card{
-    background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
-    padding:26px 20px; color:var(--paper); text-align:left; transition:border-color .15s ease, transform .15s ease;
+    background:var(--surface-2); border:1.5px solid var(--line); border-radius:8px;
+    padding:26px 20px; color:var(--text); text-align:left; transition:border-color .15s ease, transform .15s ease;
   }
   .role-card:hover{ border-color:var(--gold); transform:translateY(-2px); }
   .role-card svg{ width:30px; height:30px; color:var(--gold); margin-bottom:14px; }
   .role-card .t{ font-family:"Rye",serif; font-size:22px; }
-  .role-card .d{ font-size:12.5px; color:var(--paper-dim); margin-top:6px; line-height:1.4; }
+  .role-card .d{ font-size:12.5px; color:var(--text-dim); margin-top:6px; line-height:1.4; }
 
   /* ---------- app shell ---------- */
   #app-shell{ min-height:100vh; display:flex; flex-direction:column; }
   #app-header{
     display:flex; align-items:center; justify-content:space-between; gap:12px;
-    padding:12px 18px; background:var(--ink-soft); border-bottom:1px solid var(--line-on-ink);
+    padding:12px 18px; background:var(--surface-2); border-bottom:1px solid var(--line);
     position:sticky; top:0; z-index:40;
   }
   #app-header .brand{ display:flex; align-items:center; gap:10px; background:none; border:none; padding:0; font:inherit; color:inherit; text-align:left; cursor:pointer; border-radius:8px; }
@@ -100,9 +121,9 @@
   .btn{ display:inline-flex; align-items:center; gap:8px; border:none; border-radius:999px; padding:10px 18px; font-weight:700; font-size:13.5px; }
   .btn-sauce{ background:var(--sauce); color:var(--paper); }
   .btn-sauce:hover{ background:var(--sauce-deep); }
-  .btn-outline{ background:transparent; color:var(--paper); border:1.5px solid var(--line-on-ink); }
-  .btn-outline:hover{ border-color:var(--paper-dim); }
-  .btn-ghost{ background:transparent; color:var(--paper-dim); border:none; font-size:12.5px; text-decoration:underline; padding:6px 4px; }
+  .btn-outline{ background:transparent; color:var(--text); border:1.5px solid var(--line); }
+  .btn-outline:hover{ border-color:var(--text-dim); }
+  .btn-ghost{ background:transparent; color:var(--text-dim); border:none; font-size:12.5px; text-decoration:underline; padding:6px 4px; }
   .btn:disabled{ opacity:.4; cursor:not-allowed; }
 
   main{ flex:1; min-height:0; }
@@ -111,7 +132,7 @@
   /* generic pieces reused across views */
   .pill{
     font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600; padding:8px 14px;
-    border-radius:999px; border:1.5px solid var(--line-on-ink); background:transparent; color:var(--paper-dim); white-space:nowrap;
+    border-radius:999px; border:1.5px solid var(--line); background:transparent; color:var(--text-dim); white-space:nowrap;
   }
   .pill[aria-pressed="true"]{ background:var(--sauce); border-color:var(--sauce); color:var(--paper); }
   .status-chip{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:999px; }
@@ -119,7 +140,7 @@
   .status-preparing{ background:rgba(220,159,52,.28); color:var(--gold); }
   .status-ready{ background:rgba(76,140,90,.25); color:#7fc98f; }
   .status-out_for_delivery{ background:rgba(76,108,140,.25); color:#8fb8d9; }
-  .status-completed{ background:rgba(244,234,214,.12); color:var(--paper-dim); }
+  .status-completed{ background:rgba(var(--text-rgb),.12); color:var(--text-dim); }
   .status-cancelled{ background:rgba(194,42,47,.2); color:#e59a9c; }
 
   .toast{
@@ -131,8 +152,8 @@
 
   /* ================= CUSTOMER / POS shared ordering layout ================= */
   .order-layout{ display:grid; grid-template-columns:1fr 360px; height:calc(100vh - 57px); }
-  .order-menu-pane{ overflow-y:auto; padding:18px 20px 40px; background:var(--ink); }
-  .order-cart-pane{ background:var(--ink-soft); border-left:1px solid var(--line-on-ink); display:flex; flex-direction:column; height:100%; }
+  .order-menu-pane{ overflow-y:auto; padding:18px 20px 40px; background:var(--surface); }
+  .order-cart-pane{ background:var(--surface-2); border-left:1px solid var(--line); display:flex; flex-direction:column; height:100%; }
   @media (max-width:860px){
     .order-layout{ grid-template-columns:1fr; height:auto; }
     #view-customer .order-cart-pane{
@@ -143,7 +164,7 @@
     }
     #view-customer .order-cart-pane.is-open{ transform:translateY(0); }
     #view-customer .cart-drag-handle{
-      display:block; width:40px; height:4px; border-radius:999px; background:var(--line-on-ink);
+      display:block; width:40px; height:4px; border-radius:999px; background:var(--line);
       margin:10px auto 0;
     }
     #view-customer .cart-close-btn{ display:inline-flex; align-items:center; justify-content:center; }
@@ -155,8 +176,8 @@
 
   .cart-btn{
     display:none; position:relative; align-items:center; justify-content:center;
-    width:38px; height:38px; border-radius:999px; background:var(--ink); border:1px solid var(--line-on-ink);
-    color:var(--paper); cursor:pointer; flex:none;
+    width:38px; height:38px; border-radius:999px; background:var(--surface); border:1px solid var(--line);
+    color:var(--text); cursor:pointer; flex:none;
   }
   .cart-btn svg{ width:19px; height:19px; }
   .cart-btn-badge{
@@ -165,14 +186,34 @@
     display:flex; align-items:center; justify-content:center; font-family:"Work Sans",sans-serif;
   }
   @media (max-width:860px){ .cart-btn{ display:inline-flex; } }
-  .contrast-toggle{
+  .theme-toggle{
     display:flex; align-items:center; justify-content:center; flex:none;
     width:36px; height:36px; border-radius:50%; background:none;
-    border:1px solid var(--line-on-ink); color:var(--paper-dim); cursor:pointer;
+    border:1px solid var(--line); color:var(--text-dim); cursor:pointer;
   }
-  .contrast-toggle svg{ width:18px; height:18px; }
-  .contrast-toggle:hover{ border-color:var(--gold); color:var(--gold); }
-  .contrast-toggle[aria-pressed="true"]{ background:var(--gold); border-color:var(--gold); color:var(--ink); }
+  .theme-toggle svg{ width:18px; height:18px; }
+  .theme-toggle:hover{ border-color:var(--gold); color:var(--gold); }
+  .theme-toggle[aria-pressed="true"]{ background:var(--gold); border-color:var(--gold); color:var(--ink); }
+
+  /* Back-to-top / install FAB -- see the comment above updateToTop() for
+     why installing lives here instead of in the header. */
+  #toTop{
+    position:fixed; right:18px; bottom:18px; z-index:40;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    width:48px; height:48px; padding:0; border-radius:50%; border:none;
+    background:var(--sauce); color:var(--paper); cursor:pointer;
+    box-shadow:0 12px 28px -12px rgba(0,0,0,.6);
+    opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  #toTop.show{ opacity:1; pointer-events:auto; }
+  #toTop svg{ width:21px; height:21px; flex:none; }
+  #toTop.mode-install{
+    width:auto; padding:0 20px 0 16px; border-radius:999px;
+    font-family:"IBM Plex Mono",monospace; font-size:12.5px; font-weight:700; white-space:nowrap;
+  }
+  @supports (bottom: env(safe-area-inset-bottom)){
+    #toTop{ bottom:calc(18px + env(safe-area-inset-bottom)); }
+  }
 
   /* ---- account modal ---- */
   .modal-backdrop{
@@ -180,62 +221,62 @@
     display:flex; align-items:center; justify-content:center; padding:20px;
   }
   .modal-card{
-    background:var(--ink); border:1px solid var(--line-on-ink); border-radius:14px;
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
     max-width:400px; width:100%; padding:26px; box-shadow:0 24px 60px rgba(0,0,0,.5);
-    color:var(--paper); max-height:88vh; overflow-y:auto;
+    color:var(--text); max-height:88vh; overflow-y:auto;
   }
   .modal-card h3{ font-size:20px; margin:0 0 4px; }
-  .modal-card p{ font-size:13px; color:var(--paper-dim); margin:0 0 16px; }
+  .modal-card p{ font-size:13px; color:var(--text-dim); margin:0 0 16px; }
   .modal-card .field-group input{
-    width:100%; background:var(--ink-soft); border:1.5px solid var(--line-on-ink); border-radius:8px;
-    color:var(--paper); padding:10px 12px; font-size:14px; font-family:inherit;
+    width:100%; background:var(--surface-2); border:1.5px solid var(--line); border-radius:8px;
+    color:var(--text); padding:10px 12px; font-size:14px; font-family:inherit;
   }
   .modal-tabs{ display:flex; gap:6px; margin-bottom:16px; }
   .modal-tabs button{
-    flex:1; padding:9px; border-radius:8px; border:1.5px solid var(--line-on-ink);
-    background:transparent; color:var(--paper-dim); font-weight:600; font-size:13px; cursor:pointer;
+    flex:1; padding:9px; border-radius:8px; border:1.5px solid var(--line);
+    background:transparent; color:var(--text-dim); font-weight:600; font-size:13px; cursor:pointer;
   }
   .modal-tabs button[aria-pressed="true"]{ background:var(--sauce); color:var(--paper); border-color:var(--sauce); }
-  .modal-close{ float:right; background:none; border:none; color:var(--paper-dim); font-size:22px; cursor:pointer; line-height:1; }
+  .modal-close{ float:right; background:none; border:none; color:var(--text-dim); font-size:22px; cursor:pointer; line-height:1; }
 
   .menu-hero{ display:flex; align-items:center; gap:14px; margin-bottom:16px; }
   .menu-hero-photos{ display:flex; gap:6px; flex:none; }
-  .menu-hero-photos img{ width:56px; height:56px; border-radius:10px; object-fit:cover; flex:none; border:1px solid var(--line-on-ink); }
-  .menu-hero .t{ font-weight:700; font-size:14px; color:var(--paper); }
-  .menu-hero .d{ font-size:12px; color:var(--paper-dim); margin-top:2px; }
+  .menu-hero-photos img{ width:56px; height:56px; border-radius:10px; object-fit:cover; flex:none; border:1px solid var(--line); }
+  .menu-hero .t{ font-weight:700; font-size:14px; color:var(--text); }
+  .menu-hero .d{ font-size:12px; color:var(--text-dim); margin-top:2px; }
   @media (max-width:420px){ .menu-hero-photos img:nth-child(3){ display:none; } }
 
-  .cat-bar{ display:flex; gap:8px; overflow-x:auto; padding-bottom:12px; margin-bottom:14px; position:sticky; top:0; background:var(--ink); z-index:5; }
+  .cat-bar{ display:flex; gap:8px; overflow-x:auto; padding-bottom:12px; margin-bottom:14px; position:sticky; top:0; background:var(--surface); z-index:5; }
 
   .today-banner{
     display:flex; align-items:center; gap:10px; background:linear-gradient(90deg, rgba(220,159,52,.16), transparent);
     border:1px solid rgba(220,159,52,.4); border-radius:8px; padding:12px 16px; margin-bottom:16px; cursor:pointer;
   }
   .today-banner .t{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.12em; color:var(--gold); }
-  .today-banner .n{ font-family:"Rye",serif; font-size:17px; color:var(--paper); }
+  .today-banner .n{ font-family:"Rye",serif; font-size:17px; color:var(--text); }
   .today-banner .p{ margin-left:auto; font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); }
 
   .menu-section{ margin-bottom:26px; }
   .menu-section-banner{
     width:100%; height:120px; object-fit:cover; border-radius:10px;
-    margin-bottom:10px; border:1px solid var(--line-on-ink); display:block;
-    background:var(--ink-soft);
+    margin-bottom:10px; border:1px solid var(--line); display:block;
+    background:var(--surface-2);
   }
-  .menu-section h3{ font-size:19px; color:var(--paper); border-bottom:2px solid var(--line-on-ink); padding-bottom:8px; margin-bottom:10px; display:flex; align-items:baseline; gap:10px; }
+  .menu-section h3{ font-size:19px; color:var(--text); border-bottom:2px solid var(--line); padding-bottom:8px; margin-bottom:10px; display:flex; align-items:baseline; gap:10px; }
   .menu-section .note{ font-family:"Work Sans"; font-size:11.5px; font-style:italic; color:var(--gold); font-weight:500; }
   .item-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; }
   .item-card{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
-    background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; text-align:left; color:var(--paper);
+    background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:12px 14px; text-align:left; color:var(--text);
   }
   .item-card:hover{ border-color:var(--gold); }
   .item-card .n{ font-weight:600; font-size:13.5px; }
-  .item-card .s{ font-size:11px; color:var(--paper-dim); display:block; margin-top:2px; }
+  .item-card .s{ font-size:11px; color:var(--text-dim); display:block; margin-top:2px; }
   .item-card .p{ font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); white-space:nowrap; }
   .item-card .plus{ width:26px; height:26px; border-radius:50%; background:var(--sauce); color:var(--paper); display:flex; align-items:center; justify-content:center; font-size:16px; flex:none; }
   .item-card--soldout{ opacity:.55; cursor:not-allowed; }
-  .item-card--soldout:hover{ border-color:var(--line-on-ink); }
-  .soldout-badge{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--paper-dim); border:1px solid var(--line-on-ink); border-radius:999px; padding:4px 10px; white-space:nowrap; }
+  .item-card--soldout:hover{ border-color:var(--line); }
+  .soldout-badge{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-dim); border:1px solid var(--line); border-radius:999px; padding:4px 10px; white-space:nowrap; }
   .signature-badge{
     display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.08em;
     text-transform:uppercase; color:var(--ink); background:var(--gold); border-radius:999px;
@@ -245,50 +286,50 @@
   .item-card--signature:hover{ border-color:var(--gold); }
 
   /* pizza builder */
-  .builder{ background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .builder{ background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:18px; }
   .size-row{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 14px; }
-  .size-opt{ flex:1; min-width:130px; background:var(--ink); border:1.5px solid var(--line-on-ink); border-radius:8px; padding:10px 12px; text-align:left; color:var(--paper); }
+  .size-opt{ flex:1; min-width:130px; background:var(--surface); border:1.5px solid var(--line); border-radius:8px; padding:10px 12px; text-align:left; color:var(--text); }
   .size-opt[aria-pressed="true"]{ border-color:var(--sauce); background:rgba(194,42,47,.12); }
   .size-opt .n{ font-weight:700; font-size:13px; }
   .size-opt .p{ font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--gold); margin-top:2px; }
   .topping-grid{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 14px; }
-  .topping-chip{ font-size:12.5px; padding:7px 13px; border-radius:999px; border:1.5px solid var(--line-on-ink); background:transparent; color:var(--paper-dim); }
+  .topping-chip{ font-size:12.5px; padding:7px 13px; border-radius:999px; border:1.5px solid var(--line); background:transparent; color:var(--text-dim); }
   .topping-chip[aria-pressed="true"]{ background:var(--gold); border-color:var(--gold); color:var(--ink); font-weight:700; }
   .builder-total{ display:flex; align-items:center; justify-content:space-between; }
 
   /* cart */
-  .cart-head{ padding:16px 18px; border-bottom:1px solid var(--line-on-ink); }
+  .cart-head{ padding:16px 18px; border-bottom:1px solid var(--line); }
   .cart-head h3{ font-size:18px; }
   .cart-head--customer{ display:flex; align-items:center; gap:12px; }
   .cart-head--customer h3{ flex:1; }
-  .cart-hero-thumb{ width:40px; height:40px; border-radius:8px; object-fit:cover; flex:none; border:1px solid var(--line-on-ink); }
+  .cart-hero-thumb{ width:40px; height:40px; border-radius:8px; object-fit:cover; flex:none; border:1px solid var(--line); }
   .cart-close-btn{
-    display:none; background:none; border:none; color:var(--paper-dim);
+    display:none; background:none; border:none; color:var(--text-dim);
     font-size:24px; line-height:1; cursor:pointer; padding:4px 6px; flex:none;
   }
-  .cart-close-btn:hover{ color:var(--paper); }
+  .cart-close-btn:hover{ color:var(--text); }
   .cart-drag-handle{ display:none; }
   .cart-items{ flex:1; overflow-y:auto; padding:10px 18px; }
-  .cart-line{ display:flex; gap:8px; align-items:flex-start; padding:10px 0; border-bottom:1px dashed var(--line-on-ink); }
+  .cart-line{ display:flex; gap:8px; align-items:flex-start; padding:10px 0; border-bottom:1px dashed var(--line); }
   .cart-line .n{ font-weight:600; font-size:13px; flex:1; }
-  .cart-line .meta{ font-size:11px; color:var(--paper-dim); margin-top:2px; }
+  .cart-line .meta{ font-size:11px; color:var(--text-dim); margin-top:2px; }
   .cart-line .qty{ display:flex; align-items:center; gap:6px; }
-  .qty-btn{ width:22px; height:22px; border-radius:50%; border:1px solid var(--line-on-ink); background:transparent; color:var(--paper); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; }
+  .qty-btn{ width:22px; height:22px; border-radius:50%; border:1px solid var(--line); background:transparent; color:var(--text); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; }
   .cart-line .p{ font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:13px; white-space:nowrap; }
-  .cart-empty{ text-align:center; color:var(--paper-dim); font-size:13px; padding:30px 10px; }
-  .cart-foot{ padding:14px 18px 18px; border-top:1px solid var(--line-on-ink); }
+  .cart-empty{ text-align:center; color:var(--text-dim); font-size:13px; padding:30px 10px; }
+  .cart-foot{ padding:14px 18px 18px; border-top:1px solid var(--line); }
   .row-between{ display:flex; justify-content:space-between; align-items:center; font-size:13.5px; margin:4px 0; }
   .row-between.total{ font-size:18px; font-weight:700; font-family:"IBM Plex Mono",monospace; margin-top:8px; }
 
   .field-group{ margin-top:10px; }
-  .field-group label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper-dim); margin-bottom:5px; font-family:"IBM Plex Mono",monospace; }
+  .field-group label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); margin-bottom:5px; font-family:"IBM Plex Mono",monospace; }
   .field-group input, .field-group textarea{
-    width:100%; background:var(--ink); border:1.5px solid var(--line-on-ink); border-radius:6px; color:var(--paper);
+    width:100%; background:var(--surface); border:1.5px solid var(--line); border-radius:6px; color:var(--text);
     padding:9px 11px; font-size:13.5px;
   }
   .field-group input:focus, .field-group textarea:focus{ outline:none; border-color:var(--gold); }
-  .seg{ display:flex; border:1.5px solid var(--line-on-ink); border-radius:8px; overflow:hidden; }
-  .seg button{ flex:1; background:transparent; border:none; color:var(--paper-dim); padding:9px 8px; font-size:12.5px; font-weight:600; }
+  .seg{ display:flex; border:1.5px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button{ flex:1; background:transparent; border:none; color:var(--text-dim); padding:9px 8px; font-size:12.5px; font-weight:600; }
   .seg button[aria-pressed="true"]{ background:var(--sauce); color:var(--paper); }
 
   /* order confirmation */
@@ -300,8 +341,8 @@
   #view-kitchen{ padding:16px 20px; height:calc(100vh - 57px); overflow-y:auto; }
   .kanban{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; align-items:start; }
   @media (max-width:1000px){ .kanban{ grid-template-columns:1fr 1fr; } }
-  .kanban-col{ background:var(--ink-soft); border-radius:10px; padding:12px; min-height:120px; }
-  .kanban-col h4{ font-size:13px; font-family:"IBM Plex Mono",monospace; text-transform:uppercase; letter-spacing:.1em; color:var(--paper-dim); padding:4px 6px 10px; display:flex; justify-content:space-between; }
+  .kanban-col{ background:var(--surface-2); border-radius:10px; padding:12px; min-height:120px; }
+  .kanban-col h4{ font-size:13px; font-family:"IBM Plex Mono",monospace; text-transform:uppercase; letter-spacing:.1em; color:var(--text-dim); padding:4px 6px 10px; display:flex; justify-content:space-between; }
   .ticket{
     background:var(--paper); color:var(--ink); border-radius:8px; padding:12px 13px; margin-bottom:10px;
     box-shadow:0 8px 20px -10px rgba(0,0,0,.5); border-left:5px solid var(--ok);
@@ -317,17 +358,17 @@
   .ticket .who{ font-size:11.5px; color:rgba(28,23,18,.65); margin-top:4px; }
   .ticket .advance{ width:100%; margin-top:10px; background:var(--ink); color:var(--paper); border:none; border-radius:6px; padding:9px; font-weight:700; font-size:12px; }
   .ticket .advance:hover{ background:var(--sauce); }
-  .kanban-empty{ font-size:12px; color:var(--paper-dim); padding:10px 6px; }
+  .kanban-empty{ font-size:12px; color:var(--text-dim); padding:10px 6px; }
 
   /* ================= DRIVER APP ================= */
   #view-driver{ max-width:520px; margin:0 auto; padding:16px 16px 60px; }
   .driver-setup{ text-align:center; padding:60px 20px; }
   .driver-card{
-    background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:10px; padding:16px; margin-bottom:14px;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:14px;
   }
   .driver-card .top{ display:flex; justify-content:space-between; align-items:center; }
   .driver-card .addr{ font-weight:700; font-size:15px; margin-top:8px; }
-  .driver-card .sub{ font-size:12.5px; color:var(--paper-dim); margin-top:2px; }
+  .driver-card .sub{ font-size:12.5px; color:var(--text-dim); margin-top:2px; }
   .driver-card .due{ font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--gold); font-size:16px; margin-top:10px; }
   .driver-actions{ display:flex; gap:8px; margin-top:12px; }
   .driver-actions a, .driver-actions button{ flex:1; text-align:center; text-decoration:none; }
@@ -350,15 +391,14 @@
       </div>
     </button>
     <div class="right" id="header-right">
-      <button class="contrast-toggle" id="contrastToggle" type="button" aria-pressed="false" aria-label="Toggle high-contrast mode" title="High-contrast mode">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor" stroke="none"/></svg>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false" aria-label="Switch to light theme" title="Switch theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor" stroke="none"/></svg>
       </button>
       <button class="btn-ghost" id="accountBtn" type="button">Sign In</button>
       <button class="cart-btn" id="cartBtn" type="button" aria-label="View your order">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
         <span class="cart-btn-badge" id="cartBtnBadge" hidden>0</span>
       </button>
-      <button class="btn-ghost" id="installBtn" type="button" hidden>Install this app &darr;</button>
     </div>
   </div>
   <main>
@@ -367,6 +407,10 @@
     <div class="cart-backdrop" id="cartBackdrop"></div>
   </main>
 </div>
+
+<button id="toTop" type="button" aria-label="Back to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
 
 <div class="toast" id="toast"></div>
 
@@ -528,27 +572,82 @@ function stopAllSubscriptions(){
 }
 
 /* Install prompt: Chrome/Edge/Android fire beforeinstallprompt; iOS Safari
-   never does (there is no programmatic install there), so the button
-   simply never appears on iOS and customers use Share > Add to Home
-   Screen instead. */
+   never does (there is no programmatic install there), so the #toTop
+   button below simply never offers to install on iOS and customers use
+   Share > Add to Home Screen instead.
+
+   This used to be its own "Install this app" button living in the
+   header's button row alongside Sign In and the cart icon. On Android,
+   once beforeinstallprompt actually fires, that's a 5th item competing
+   for space in a row that was only ever laid out for 3-4 -- exactly the
+   kind of narrow-viewport crowding that's hard to catch testing on
+   desktop or iOS (which never unhides the button at all), but real on
+   an actual Android phone. Folding the install action into the
+   already-existing #toTop button removes that nav-bar item entirely
+   instead of just shrinking it. */
 let deferredInstallPrompt = null;
+let appIsInstalled = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
-  const btn = document.getElementById('installBtn');
-  if (btn) btn.hidden = false;
-});
-document.getElementById('installBtn').addEventListener('click', async () => {
-  if (!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt = null;
-  document.getElementById('installBtn').hidden = true;
+  updateToTop();
 });
 window.addEventListener('appinstalled', () => {
-  const btn = document.getElementById('installBtn');
-  if (btn) btn.hidden = true;
+  appIsInstalled = true;
+  deferredInstallPrompt = null;
+  updateToTop();
 });
+
+/* #toTop: back-to-top once you've scrolled, or -- while at the top of
+   the menu and the browser has an install prompt ready -- "Install this
+   app" instead. What's actually scrolling depends on viewport width:
+   above the 860px breakpoint the customer menu scrolls its own internal
+   pane (#menupane-customer, sized to the viewport by .order-layout's
+   height:calc(100vh - 57px)); at or below it that media query switches
+   .order-layout to height:auto, so the pane just grows with its content
+   and the window scrolls instead -- exactly the phone-width case this
+   button matters most for. Checking the pane's own scrollHeight vs.
+   clientHeight (rather than hardcoding a breakpoint) picks the one
+   that's actually scrolling either way. */
+function updateToTop(){
+  const toTop = document.getElementById('toTop');
+  if (!toTop) return;
+  const accountView = document.getElementById('view-account');
+  const menuPane = document.getElementById('menupane-customer');
+  const paneScrolls = menuPane && (menuPane.scrollHeight - menuPane.clientHeight > 1);
+  const usingWindowScroll = !paneScrolls || (accountView && !accountView.hidden);
+  const scrollTop = usingWindowScroll ? (window.scrollY || document.documentElement.scrollTop) : menuPane.scrollTop;
+  const canInstall = !!deferredInstallPrompt && !appIsInstalled;
+  if (scrollTop > 400){
+    toTop.classList.add('show');
+    toTop.classList.remove('mode-install');
+    toTop.setAttribute('aria-label', 'Back to top');
+    toTop.title = 'Back to top';
+    toTop.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+  } else if (canInstall){
+    toTop.classList.add('show', 'mode-install');
+    toTop.setAttribute('aria-label', 'Install this app');
+    toTop.title = 'Install this app';
+    toTop.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg><span>Install app</span>';
+  } else {
+    toTop.classList.remove('show', 'mode-install');
+  }
+}
+document.getElementById('toTop').addEventListener('click', async () => {
+  const toTop = document.getElementById('toTop');
+  if (toTop.classList.contains('mode-install')){
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    updateToTop();
+    return;
+  }
+  const menuPane = document.getElementById('menupane-customer');
+  if (menuPane) menuPane.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+window.addEventListener('scroll', updateToTop, { passive: true });
 </script>
 
 <script>
@@ -613,7 +712,7 @@ async function applyPromoCode(mode){
   const btn = document.getElementById(`promoapply-${mode}`);
   btn.disabled = true;
   statusEl.textContent = 'Checking...';
-  statusEl.style.color = 'var(--paper-dim)';
+  statusEl.style.color = 'var(--text-dim)';
   try{
     // Validate-only -- does not consume the code. It's only actually
     // redeemed atomically inside create_order(), at the moment an order
@@ -858,10 +957,10 @@ function showOrderConfirmation(ticket, order){
       <span class="mono">${money(it.unitPrice * it.qty)}</span>
     </div>`).join('');
   const deliveryHtml = (order.orderType === 'delivery')
-    ? `<div style="margin-top:14px; padding:12px; background:var(--ink-soft); border-radius:8px; font-size:13px;">
-         <div style="color:var(--paper-dim); font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; margin-bottom:4px;">Delivering to</div>
+    ? `<div style="margin-top:14px; padding:12px; background:var(--surface-2); border-radius:8px; font-size:13px;">
+         <div style="color:var(--text-dim); font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; margin-bottom:4px;">Delivering to</div>
          <div>${escapeHtml(order.address || '')}</div>
-         ${order.deliveryMiles != null ? `<div style="color:var(--paper-dim); margin-top:4px;">~${order.deliveryMiles} mi &middot; about ${order.deliveryEtaMins} min drive once it's out</div>` : ''}
+         ${order.deliveryMiles != null ? `<div style="color:var(--text-dim); margin-top:4px;">~${order.deliveryMiles} mi &middot; about ${order.deliveryEtaMins} min drive once it's out</div>` : ''}
        </div>`
     : '';
   view.innerHTML = `
@@ -869,18 +968,18 @@ function showOrderConfirmation(ticket, order){
       <div class="confirm-card">
         <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);">Order Placed</div>
         <div class="confirm-ticket">${escapeHtml(ticket)}</div>
-        <div style="font-size:15px; color:var(--paper-dim); margin-top:6px;">Total due: <span class="mono" style="color:var(--paper); font-weight:700;">${money(order.total)}</span></div>
+        <div style="font-size:15px; color:var(--text-dim); margin-top:6px;">Total due: <span class="mono" style="color:var(--text); font-weight:700;">${money(order.total)}</span></div>
         ${order.scheduledFor ? `<div style="font-size:13.5px; color:var(--gold); margin-top:4px;">Scheduled for ${escapeHtml(new Date(order.scheduledFor).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }))}</div>` : ''}
         ${deliveryHtml}
-        <div style="text-align:left; margin-top:18px; border-top:1px solid var(--line-on-ink); padding-top:14px;">
+        <div style="text-align:left; margin-top:18px; border-top:1px solid var(--line); padding-top:14px;">
           ${itemsHtml}
-          <div class="row-between" style="margin-top:10px; font-size:13px; color:var(--paper-dim);"><span>Subtotal</span><span class="mono">${money(order.subtotal)}</span></div>
+          <div class="row-between" style="margin-top:10px; font-size:13px; color:var(--text-dim);"><span>Subtotal</span><span class="mono">${money(order.subtotal)}</span></div>
           ${order.discountAmount ? `<div class="row-between" style="font-size:13px; color:var(--gold);"><span>Discount${order.promoCode ? ' (' + escapeHtml(order.promoCode) + ')' : ''}</span><span class="mono">-${money(order.discountAmount)}</span></div>` : ''}
-          <div class="row-between" style="font-size:13px; color:var(--paper-dim);"><span>Tax</span><span class="mono">${money(order.tax)}</span></div>
-          ${order.tip ? `<div class="row-between" style="font-size:13px; color:var(--paper-dim);"><span>Tip</span><span class="mono">${money(order.tip)}</span></div>` : ''}
+          <div class="row-between" style="font-size:13px; color:var(--text-dim);"><span>Tax</span><span class="mono">${money(order.tax)}</span></div>
+          ${order.tip ? `<div class="row-between" style="font-size:13px; color:var(--text-dim);"><span>Tip</span><span class="mono">${money(order.tip)}</span></div>` : ''}
           <div class="row-between total" style="margin-top:6px;"><span>Total</span><span>${money(order.total)}</span></div>
         </div>
-        <div style="font-size:13px; color:var(--paper-dim); margin-top:16px; line-height:1.5;">Thank you. Your ticket number is on the screen above. Pay in person when your order is ready or delivered.${order.orderType === 'delivery' ? ` Once it arrives, you can <a href="rate.html?ticket=${encodeURIComponent(ticket)}&phone=${encodeURIComponent(order.phone||'')}" style="color:var(--gold);">rate your driver here</a>.` : ''}</div>
+        <div style="font-size:13px; color:var(--text-dim); margin-top:16px; line-height:1.5;">Thank you. Your ticket number is on the screen above. Pay in person when your order is ready or delivered.${order.orderType === 'delivery' ? ` Once it arrives, you can <a href="rate.html?ticket=${encodeURIComponent(ticket)}&phone=${encodeURIComponent(order.phone||'')}" style="color:var(--gold);">rate your driver here</a>.` : ''}</div>
         <button class="btn btn-outline" style="margin-top:10px; width:100%; justify-content:center;" id="statusBtn" type="button">Check Order Status</button>
         <button class="btn btn-outline" style="margin-top:18px; width:100%; justify-content:center;" id="receiptBtn" type="button">View / Print Receipt</button>
         <button class="btn btn-sauce" style="margin-top:10px; width:100%; justify-content:center;" id="newOrderBtn" type="button">Start a New Order</button>
@@ -944,7 +1043,7 @@ function renderAccountTab(tab){
       <div class="field-group"><label>Email</label><input id="acc-email" type="email" placeholder="you@example.com"></div>
       <div class="field-group"><label>Password</label><input id="acc-password" type="password" placeholder="At least 6 characters"></div>
       <button class="btn btn-sauce" id="acc-submit" style="width:100%; justify-content:center; margin-top:6px;" type="button">Create Account</button>
-      <div style="font-size:11.5px; color:var(--paper-dim); margin-top:10px; line-height:1.5;">Any past orders placed with this phone number will show up in your order history automatically.</div>`;
+      <div style="font-size:11.5px; color:var(--text-dim); margin-top:10px; line-height:1.5;">Any past orders placed with this phone number will show up in your order history automatically.</div>`;
     document.getElementById('acc-submit').addEventListener('click', async () => {
       const name = document.getElementById('acc-name').value.trim();
       const phone = document.getElementById('acc-phone').value.trim();
@@ -1062,10 +1161,10 @@ async function showAccountPanel(){
   view.innerHTML = `<div style="max-width:560px; margin:0 auto; padding:24px 20px;">
     <button class="btn-ghost" id="acc-back" type="button">&larr; Back to Menu</button>
     <h2 style="font-size:26px; margin:14px 0 4px;">${escapeHtml((CustomerAccount.profile && CustomerAccount.profile.name) || 'Your Account')}</h2>
-    <div style="color:var(--paper-dim); font-size:13px; margin-bottom:20px;">${escapeHtml((CustomerAccount.profile && CustomerAccount.profile.phone) || '')}</div>
+    <div style="color:var(--text-dim); font-size:13px; margin-bottom:20px;">${escapeHtml((CustomerAccount.profile && CustomerAccount.profile.phone) || '')}</div>
 
     <h3 style="font-size:16px; margin-bottom:10px;">Preferences</h3>
-    <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:14px; margin-bottom:22px;">
+    <div style="background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:22px;">
       <div class="field-group"><label>Default Delivery Address</label><input id="pref-address" placeholder="Street, Lindenwold NJ" value="${escapeHtml(prefs.savedAddress||'')}"></div>
       <div class="field-group"><label>Allergies / Notes</label><input id="pref-notes" placeholder="e.g. no nuts, extra sauce" value="${escapeHtml(prefs.notes||'')}"></div>
       <div class="field-group" style="display:flex; align-items:center; gap:8px; margin-bottom:0;">
@@ -1128,10 +1227,10 @@ async function showAccountPanel(){
     const unsub = db.collection('orders').orderBy('createdAt','desc').onSnapshot(snap => {
       const docs = (snap.docs || []).map(d => d.data());
       ordersEl.innerHTML = docs.length ? docs.slice(0, 25).map(o => `
-        <div style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:12px 14px; margin-bottom:8px;">
+        <div style="background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:8px;">
           <div class="row-between"><span class="mono" style="font-weight:700;">${escapeHtml(o.ticket||'')}</span><span class="mono">${money(o.total||0)}</span></div>
-          <div style="font-size:12px; color:var(--paper-dim); margin-top:4px;">${new Date(o.createdAt||0).toLocaleDateString()} &middot; ${escapeHtml(o.orderType||'')} &middot; ${escapeHtml(o.status||'')}</div>
-          ${(o.items||[]).length ? `<div style="font-size:11.5px; color:var(--paper-dim); margin-top:4px; display:flex; flex-direction:column; gap:2px;">${o.items.map(it=>`<span>${it.qty}&times; ${escapeHtml(it.name)}${it.ref ? ` <a href="#" data-favorite='${JSON.stringify({label:it.name+(it.size?' ('+it.size+')':''), ref:it.ref}).replace(/'/g,'&#39;')}' style="color:var(--gold); text-decoration:underline; margin-left:4px;">save as favorite</a>` : ''}</span>`).join('')}</div>` : ''}
+          <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">${new Date(o.createdAt||0).toLocaleDateString()} &middot; ${escapeHtml(o.orderType||'')} &middot; ${escapeHtml(o.status||'')}</div>
+          ${(o.items||[]).length ? `<div style="font-size:11.5px; color:var(--text-dim); margin-top:4px; display:flex; flex-direction:column; gap:2px;">${o.items.map(it=>`<span>${it.qty}&times; ${escapeHtml(it.name)}${it.ref ? ` <a href="#" data-favorite='${JSON.stringify({label:it.name+(it.size?' ('+it.size+')':''), ref:it.ref}).replace(/'/g,'&#39;')}' style="color:var(--gold); text-decoration:underline; margin-left:4px;">save as favorite</a>` : ''}</span>`).join('')}</div>` : ''}
           <button class="btn-ghost" style="padding:4px 0; font-size:12px; margin-top:4px;" data-reorder='${JSON.stringify(o.items||[]).replace(/'/g,'&#39;')}'>Reorder these items</button>
         </div>`).join('') : '<div class="cart-empty">No past orders on file for this account yet.</div>';
       ordersEl.querySelectorAll('[data-favorite]').forEach(link => {
@@ -1218,10 +1317,10 @@ async function loadAndRenderLoyalty(db){
     const pointsSnap = await db.collection('loyalty_points').where('customerId', '==', CustomerAccount.user.id).get();
     const pointsRow = pointsSnap.docs && pointsSnap.docs[0] && pointsSnap.docs[0].data();
     const points = (pointsRow && pointsRow.points) || 0;
-    el.innerHTML = `<div class="me-card" style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:14px; margin-bottom:22px;">
+    el.innerHTML = `<div class="me-card" style="background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:22px;">
       <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--gold);">Loyalty Points</div>
       <div style="font-size:28px; font-weight:700; margin-top:4px;">${points}</div>
-      <div style="font-size:12.5px; color:var(--paper-dim); margin-top:4px;">${points >= config.rewardThresholdPoints ? `You've earned a reward: ${escapeHtml(config.rewardDescription)} -- mention it at pickup/delivery.` : `${config.rewardThresholdPoints - points} more to earn: ${escapeHtml(config.rewardDescription)}`}</div>
+      <div style="font-size:12.5px; color:var(--text-dim); margin-top:4px;">${points >= config.rewardThresholdPoints ? `You've earned a reward: ${escapeHtml(config.rewardDescription)} -- mention it at pickup/delivery.` : `${config.rewardThresholdPoints - points} more to earn: ${escapeHtml(config.rewardDescription)}`}</div>
     </div>`;
   }catch(e){ /* loyalty display is a nice-to-have -- just don't show it if this fails */ }
 }
@@ -1239,7 +1338,7 @@ async function loadAndRenderFavorites(db){
     return;
   }
   el.innerHTML = favorites.length ? favorites.map(f => `
-    <div class="row-between" style="background:var(--ink-soft); border:1px solid var(--line-on-ink); border-radius:8px; padding:10px 14px; margin-bottom:6px;">
+    <div class="row-between" style="background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin-bottom:6px;">
       <span style="font-size:13.5px;">${escapeHtml(f.label)}</span>
       <span style="display:flex; gap:10px; align-items:center;">
         <button class="btn-ghost" style="padding:2px 0; font-size:12px;" data-fav-add="${escapeHtml(f.id)}">Add to Cart</button>
@@ -1271,15 +1370,22 @@ async function loadAndRenderFavorites(db){
 
 <script>
 (async function boot(){
-  const contrastToggle = document.getElementById('contrastToggle');
-  if (contrastToggle){
-    let isHighContrast = document.documentElement.getAttribute('data-contrast') === 'high';
-    contrastToggle.setAttribute('aria-pressed', isHighContrast ? 'true' : 'false');
-    contrastToggle.addEventListener('click', () => {
-      isHighContrast = !isHighContrast;
-      document.documentElement.setAttribute('data-contrast', isHighContrast ? 'high' : 'normal');
-      contrastToggle.setAttribute('aria-pressed', isHighContrast ? 'true' : 'false');
-      try{ localStorage.setItem('cifellisHighContrast', isHighContrast ? '1' : '0'); }catch(e){}
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle){
+    const sunIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>';
+    const moonIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor" stroke="none"/></svg>';
+    let isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const paintThemeToggle = () => {
+      themeToggle.setAttribute('aria-pressed', isLight ? 'true' : 'false');
+      themeToggle.setAttribute('aria-label', isLight ? 'Switch to dark theme' : 'Switch to light theme');
+      themeToggle.innerHTML = isLight ? sunIcon : moonIcon;
+    };
+    paintThemeToggle();
+    themeToggle.addEventListener('click', () => {
+      isLight = !isLight;
+      document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+      paintThemeToggle();
+      try{ localStorage.setItem('cifellisTheme', isLight ? 'light' : 'dark'); }catch(e){}
     });
   }
 
@@ -1287,6 +1393,9 @@ async function loadAndRenderFavorites(db){
   await loadMenuConfig(db);
   await loadStoreSettings(db);
   initCustomerView();
+  const menuPane = document.getElementById('menupane-customer');
+  if (menuPane) menuPane.addEventListener('scroll', updateToTop, { passive: true });
+  updateToTop();
   await refreshAccountState();
   document.getElementById('brandHomeBtn').addEventListener('click', () => {
     const accountView = document.getElementById('view-account');

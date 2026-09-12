@@ -25,6 +25,16 @@
     --line-on-ink: rgba(244,234,214,.16);
     --line-on-paper: rgba(28,23,18,.18);
     --ok:#4c8c5a; --warn:#dc9f34; --bad:#c22a2f;
+
+    /* Aliases only -- the Staff Hub doesn't have a theme toggle, but
+       ordering-core.js (shared with order/index.html, which does) reads
+       these token names, so they need to resolve to something here too.
+       They're pinned to the same dark values Staff Hub always used. */
+    --surface: var(--ink);
+    --surface-2: var(--ink-soft);
+    --text: var(--paper);
+    --text-dim: var(--paper-dim);
+    --line: var(--line-on-ink);
   }
   *,*::before,*::after{box-sizing:border-box;}
   html,body{height:100%;}
