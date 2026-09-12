@@ -3,9 +3,15 @@
 <head>
 <script>
   // Set before first paint (not down with the other page scripts) so a
-  // returning visitor with high-contrast on never sees a flash of the
-  // normal-contrast styles first.
-  try{ if (localStorage.getItem('cifellisHighContrast') === '1') document.documentElement.setAttribute('data-contrast','high'); }catch(e){}
+  // returning visitor never sees a flash of the other theme first. Falls
+  // back to the OS/browser's light/dark preference when nothing's been
+  // chosen here yet; same stored key as order/index.html so the choice
+  // carries over between the two.
+  try{
+    var storedTheme = localStorage.getItem('cifellisTheme');
+    var theme = storedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    if (theme === 'light') document.documentElement.setAttribute('data-theme','light');
+  }catch(e){}
 </script>
 <meta charset="utf-8">
 <title>Cifelli's Pizza | Lindenwold, NJ</title>
@@ -100,6 +106,19 @@
     --shadow: 0 18px 40px -18px rgba(0,0,0,.55);
     --radius: 2px;
     --maxw: 1120px;
+
+    /* Theme-relative tokens: the "chrome" surfaces (header, hero, the
+       dark Specials/Reviews bands, footer) read through these instead
+       of --ink/--paper directly, so the light theme below can flip just
+       these without touching the site's intentional light "paper"
+       sections (About/Menu/Visit), which stay paper-colored either way. */
+    --surface: var(--ink);
+    --surface-2: var(--ink-soft);
+    --surface-rgb: 28,23,18;
+    --text: var(--paper);
+    --text-dim: var(--paper-dim);
+    --text-rgb: 244,234,214;
+    --line: var(--line-on-ink);
   }
 
   *,*::before,*::after{box-sizing:border-box;}
@@ -111,8 +130,8 @@
 
   body{
     margin:0;
-    background:var(--ink);
-    color:var(--paper);
+    background:var(--surface);
+    color:var(--text);
     font-family:"Work Sans", ui-sans-serif, system-ui, sans-serif;
     font-size:16px;
     line-height:1.5;
@@ -167,11 +186,11 @@
   }
   .perf--dark{
     background:
-      radial-gradient(circle at 10px 0, transparent 8px, var(--ink) 8.5px) top / 20px 16px repeat-x;
+      radial-gradient(circle at 10px 0, transparent 8px, var(--surface) 8.5px) top / 20px 16px repeat-x;
   }
   .perf--dark.perf--top{
     background:
-      radial-gradient(circle at 10px 16px, transparent 8px, var(--ink) 8.5px) top / 20px 16px repeat-x;
+      radial-gradient(circle at 10px 16px, transparent 8px, var(--surface) 8.5px) top / 20px 16px repeat-x;
   }
 
   .dashed{
@@ -221,9 +240,9 @@
 
   .site-header{
     position:sticky; top:0; z-index:50;
-    background:rgba(28,23,18,.92);
+    background:rgba(var(--surface-rgb),.92);
     backdrop-filter: blur(6px);
-    border-bottom:1px solid var(--line-on-ink);
+    border-bottom:1px solid var(--line);
     transition: box-shadow .25s ease;
   }
   .site-header.is-scrolled{ box-shadow: var(--shadow); }
@@ -240,7 +259,7 @@
   .brand-badge{ width:46px; height:46px; flex:none; }
   .brand-type{ display:flex; flex-direction:column; line-height:1; }
   .brand-type .name{
-    font-family:"Rye", serif; font-size:22px; color:var(--paper);
+    font-family:"Rye", serif; font-size:22px; color:var(--text);
   }
   .brand-type .tag{
     font-family:"IBM Plex Mono", monospace; font-size:9.5px; letter-spacing:.14em;
@@ -252,11 +271,11 @@
   }
   nav.main-nav a{
     text-decoration:none; font-weight:600; font-size:14.5px;
-    color:var(--paper-dim); letter-spacing:.02em;
+    color:var(--text-dim); letter-spacing:.02em;
     padding:6px 2px; border-bottom:2px solid transparent;
   }
   nav.main-nav a:hover, nav.main-nav a:focus-visible{
-    color:var(--paper); border-bottom-color:var(--sauce);
+    color:var(--text); border-bottom-color:var(--sauce);
     outline:none;
   }
 
@@ -277,47 +296,48 @@
   .call-pill:hover{ background:var(--sauce-deep); }
 
   .menu-toggle{
-    display:none; background:none; border:1px solid var(--line-on-ink);
-    color:var(--paper); width:41px;height:41px; border-radius:8px; flex:none;
+    display:none; background:none; border:1px solid var(--line);
+    color:var(--text); width:41px;height:41px; border-radius:8px; flex:none;
     align-items:center; justify-content:center; cursor:pointer;
   }
   .menu-toggle svg{width:20px;height:20px;}
 
-  .contrast-toggle{
+  .theme-toggle{
     display:flex; align-items:center; justify-content:center; flex:none;
     width:38px; height:38px; border-radius:50%; background:none;
-    border:1px solid var(--line-on-ink); color:var(--paper-dim); cursor:pointer;
+    border:1px solid var(--line); color:var(--text-dim); cursor:pointer;
   }
-  .contrast-toggle svg{ width:19px; height:19px; }
-  .contrast-toggle:hover{ border-color:var(--gold); color:var(--gold); }
-  .contrast-toggle[aria-pressed="true"]{ background:var(--gold); border-color:var(--gold); color:var(--ink); }
+  .theme-toggle svg{ width:19px; height:19px; }
+  .theme-toggle:hover{ border-color:var(--gold); color:var(--gold); }
+  .theme-toggle[aria-pressed="true"]{ background:var(--gold); border-color:var(--gold); color:var(--ink); }
 
-  /* High-contrast mode: boosts text that's deliberately dimmed for
-     visual hierarchy back up near full contrast, and strengthens the
-     hairline borders/dividers used throughout (many of which sit at
-     12-20% opacity by design). Deliberately a global custom-property
-     override rather than touching each rule individually -- nearly
-     every dim-text and border declaration on this page already reads
-     through --paper-dim/--line-on-paper/--line-on-ink, so overriding
-     the three variables here reaches all of them in one place. Default
-     dark theme (not a light/day theme) stays the base in both modes,
-     per the owner's explicit call on that. */
-  :root[data-contrast="high"]{
-    --paper-dim:#f9f2e2;
-    --line-on-ink: rgba(244,234,214,.55);
-    --line-on-paper: rgba(28,23,18,.55);
+  /* Light theme: swaps the dark "chrome" bands (header, hero, the
+     Specials/Reviews sections, footer) to a light surface with dark
+     text. The site's intentional light "paper" sections (About, Menu,
+     Visit) and fixed-contrast components (buttons, badges, review/visit
+     cards) read raw --ink/--paper directly and are unaffected -- they're
+     already light-on-dark-or-dark-on-light by design, not part of the
+     overall page theme. */
+  :root[data-theme="light"]{
+    --surface:#f6efe0;
+    --surface-2:#ece0c8;
+    --surface-rgb: 246,239,224;
+    --text:#1c1712;
+    --text-dim: rgba(28,23,18,.62);
+    --text-rgb: 28,23,18;
+    --line: var(--line-on-paper);
+    --gold:#a3690f;
   }
-  :root[data-contrast="high"] :focus-visible{ outline-width:3px; outline-offset:3px; }
 
   @media (max-width: 860px){
     nav.main-nav{
       position:absolute; top:100%; left:0; right:0;
-      background:var(--ink-soft); flex-direction:column; align-items:flex-start;
-      padding:14px 24px 20px; gap:2px; border-bottom:1px solid var(--line-on-ink);
+      background:var(--surface-2); flex-direction:column; align-items:flex-start;
+      padding:14px 24px 20px; gap:2px; border-bottom:1px solid var(--line);
       display:none;
     }
     nav.main-nav.is-open{ display:flex; }
-    nav.main-nav a{ width:100%; padding:10px 0; border-bottom:1px solid var(--line-on-ink); }
+    nav.main-nav a{ width:100%; padding:10px 0; border-bottom:1px solid var(--line); }
     .menu-toggle{ display:inline-flex; }
     .call-pill span.long{ display:none; }
     .call-pill{ width:41px; padding:0; }
@@ -345,8 +365,8 @@
   }
   .btn--sauce{ background:var(--sauce); color:var(--paper); box-shadow:0 10px 24px -10px rgba(194,42,47,.8);}
   .btn--sauce:hover{ background:var(--sauce-deep); }
-  .btn--outline{ background:transparent; color:var(--paper); border-color:var(--paper-dim); }
-  .btn--outline:hover{ border-color:var(--paper); background:rgba(244,234,214,.06); }
+  .btn--outline{ background:transparent; color:var(--text); border-color:var(--text-dim); }
+  .btn--outline:hover{ border-color:var(--text); background:rgba(var(--text-rgb),.06); }
 
   /* ---------- hero ---------- */
   .hero{
@@ -360,14 +380,14 @@
   .hero-eyebrow{ margin-bottom:14px; }
   .hero h1{
     font-size:clamp(44px, 7vw, 78px);
-    color:var(--paper);
+    color:var(--text);
   }
   .hero h1 em{
     font-style:normal; color:var(--sauce);
     text-shadow:0 2px 0 rgba(0,0,0,.3);
   }
   .hero .lede{
-    margin-top:20px; max-width:52ch; font-size:18px; color:var(--paper-dim);
+    margin-top:20px; max-width:52ch; font-size:18px; color:var(--text-dim);
   }
   .hero .cta-row{ display:flex; gap:14px; margin-top:32px; flex-wrap:wrap; }
 
@@ -431,16 +451,16 @@
   @media (max-width:800px){ .about-grid{ grid-template-columns:1fr; align-items:start; gap:36px; } }
 
   /* ---------- specials ---------- */
-  .section-ink{ background:var(--ink); color:var(--paper); }
-  .section-ink .section-head h2{ color:var(--paper); }
-  .section-ink .section-head p{ color:var(--paper-dim); }
+  .section-ink{ background:var(--surface); color:var(--text); }
+  .section-ink .section-head h2{ color:var(--text); }
+  .section-ink .section-head p{ color:var(--text-dim); }
 
   .specials-grid{
     display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr));
     gap:16px;
   }
   .special-card{
-    background:var(--ink-soft); border:1px solid var(--line-on-ink);
+    background:var(--surface-2); border:1px solid var(--line);
     padding:20px 18px; border-radius:6px; position:relative;
   }
   .special-card .day{
@@ -448,7 +468,7 @@
     text-transform:uppercase; color:var(--gold);
   }
   .special-card .name{
-    font-family:"Rye", serif; font-size:21px; margin-top:10px; color:var(--paper);
+    font-family:"Rye", serif; font-size:21px; margin-top:10px; color:var(--text);
   }
   .special-card .price{
     margin-top:14px; font-family:"IBM Plex Mono", monospace; font-weight:600;
@@ -577,14 +597,14 @@
     background-size:22px 22px;
     opacity:.9;
   }
-  footer{ background:var(--ink); padding:36px 0 30px; }
+  footer{ background:var(--surface); padding:36px 0 30px; }
   .footer-row{
     display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;
   }
   .footer-nav{ display:flex; gap:18px; flex-wrap:wrap; }
-  .footer-nav a{ font-size:13.5px; color:var(--paper-dim); text-decoration:none; }
-  .footer-nav a:hover{ color:var(--paper); }
-  .footer-fine{ font-size:12px; color:rgba(244,234,214,.45); margin-top:18px; font-family:"IBM Plex Mono",monospace; }
+  .footer-nav a{ font-size:13.5px; color:var(--text-dim); text-decoration:none; }
+  .footer-nav a:hover{ color:var(--text); }
+  .footer-fine{ font-size:12px; color:rgba(var(--text-rgb),.45); margin-top:18px; font-family:"IBM Plex Mono",monospace; }
 
   /* back to top */
   #toTop{
@@ -600,14 +620,14 @@
   @media (max-width:760px){
     .conversion-bar{
       display:block; position:fixed; left:0; right:0; bottom:0; z-index:55;
-      background:var(--ink-soft); border-top:1px solid var(--line-on-ink);
+      background:var(--surface-2); border-top:1px solid var(--line);
       box-shadow:0 -8px 24px -12px rgba(0,0,0,.55);
       padding:7px max(10px, env(safe-area-inset-left)) calc(7px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
     }
     .conversion-bar-row{ display:flex; gap:8px; max-width:480px; margin:0 auto; }
     .conversion-bar a{
       flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
-      padding:7px 4px; border-radius:12px; text-decoration:none; color:var(--paper-dim);
+      padding:7px 4px; border-radius:12px; text-decoration:none; color:var(--text-dim);
       font-size:10.5px; font-weight:700;
     }
     .conversion-bar a svg{ width:19px; height:19px; }
@@ -683,8 +703,8 @@
     </nav>
 
     <div class="header-actions">
-      <button class="contrast-toggle" id="contrastToggle" type="button" aria-pressed="false" aria-label="Toggle high-contrast mode" title="High-contrast mode">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor" stroke="none"/></svg>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false" aria-label="Switch to light theme" title="Switch theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor" stroke="none"/></svg>
       </button>
       <a class="btn btn--sauce header-order-btn" href="order/">
         <span class="long">Order Online</span><span class="short">Order</span>
@@ -1205,16 +1225,19 @@
 
     <!-- DRINKS -->
     <div class="menu-cat" data-cat="drinks">
-      <div class="menu-cat__head"><h3>Drinks</h3><span class="menu-cat__note">we carry Pepsi products</span></div>
+      <div class="menu-cat__head"><h3>Drinks</h3><span class="menu-cat__note">bottled, canned &amp; fountain</span></div>
       <ul class="menu-items">
         <li class="menu-item"><span class="name">Bottled Soda <span class="size">20 oz</span></span><span class="leader"></span><span class="price mono">2.75</span></li>
         <li class="menu-item"><span class="name">Bottled Soda <span class="size">2 Liter</span></span><span class="leader"></span><span class="price mono">4.50</span></li>
+        <li class="menu-item"><span class="name">Bottled Water</span><span class="leader"></span><span class="price mono">2.00</span></li>
       </ul>
       <div class="chip-row">
-        <span class="chip">Pepsi</span><span class="chip">Cherry Pepsi</span><span class="chip">Diet Pepsi</span>
-        <span class="chip">Mountain Dew</span><span class="chip">Brisk Iced Tea</span><span class="chip">Mug Root Beer</span>
-        <span class="chip">Sierra Mist</span><span class="chip">Crush Grape</span><span class="chip">Crush Orange</span>
-        <span class="chip">Schweppes Ginger Ale</span>
+        <span class="chip">Pepsi</span><span class="chip">Pepsi Wild Cherry</span><span class="chip">Diet Pepsi</span>
+        <span class="chip">Mountain Dew</span><span class="chip">Schweppes Ginger Ale</span><span class="chip">Starry</span>
+        <span class="chip">Brisk Lemon Iced Tea</span><span class="chip">Crush Grape</span><span class="chip">Crush Orange</span>
+        <span class="chip">Mug Root Beer</span><span class="chip">Coca-Cola</span><span class="chip">Sunkist</span>
+        <span class="chip">Minute Maid Fruit Punch</span><span class="chip">Arizona</span>
+        <span class="chip">Pure Life Water</span><span class="chip">Stewart's</span>
       </div>
     </div>
 
@@ -1385,15 +1408,24 @@
     toTop.classList.toggle('show', y > 500);
   }, { passive: true });
 
-  var contrastToggle = document.getElementById('contrastToggle');
-  if (contrastToggle){
-    var isHighContrast = document.documentElement.getAttribute('data-contrast') === 'high';
-    contrastToggle.setAttribute('aria-pressed', isHighContrast ? 'true' : 'false');
-    contrastToggle.addEventListener('click', function(){
-      isHighContrast = !isHighContrast;
-      document.documentElement.setAttribute('data-contrast', isHighContrast ? 'high' : 'normal');
-      contrastToggle.setAttribute('aria-pressed', isHighContrast ? 'true' : 'false');
-      try{ localStorage.setItem('cifellisHighContrast', isHighContrast ? '1' : '0'); }catch(e){}
+  var themeToggle = document.getElementById('themeToggle');
+  if (themeToggle){
+    var sunIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>';
+    var moonIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor" stroke="none"/></svg>';
+    var themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    function paintThemeToggle(){
+      themeToggle.setAttribute('aria-pressed', isLight ? 'true' : 'false');
+      themeToggle.setAttribute('aria-label', isLight ? 'Switch to dark theme' : 'Switch to light theme');
+      themeToggle.innerHTML = isLight ? sunIcon : moonIcon;
+      if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#f6efe0' : '#1c1712');
+    }
+    paintThemeToggle();
+    themeToggle.addEventListener('click', function(){
+      isLight = !isLight;
+      document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+      paintThemeToggle();
+      try{ localStorage.setItem('cifellisTheme', isLight ? 'light' : 'dark'); }catch(e){}
     });
   }
 

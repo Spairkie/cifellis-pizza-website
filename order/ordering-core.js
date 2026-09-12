@@ -116,13 +116,18 @@ let CATEGORIES = [
     { name:'Sausage, Egg and Cheese', price:11.00 }, { name:'Pork Roll, Egg and Cheese', price:11.00 },
   ]},
   { key:'knots', label:'Garlic Knots', items:[ { name:'Garlic Knots', size:'6 pc', price:4.75 } ]},
-  { key:'drinks', label:'Drinks', note:'We carry Pepsi products -- names/prices are a starting point, adjust in Staff Hub > Menu Editor to match what you actually stock', items:[
-    { name:'Pepsi', size:'20 oz', price:2.75 }, { name:'Diet Pepsi', size:'20 oz', price:2.75 },
-    { name:'Pepsi Zero Sugar', size:'20 oz', price:2.75 }, { name:'Mountain Dew', size:'20 oz', price:2.75 },
-    { name:'Starry', size:'20 oz', price:2.75 }, { name:'Mug Root Beer', size:'20 oz', price:2.75 },
-    { name:'Brisk Iced Tea', size:'20 oz', price:2.75 }, { name:'Aquafina Water', size:'20 oz', price:2.00 },
+  { key:'drinks', label:'Drinks', note:'Prices are a starting point, adjust in Staff Hub > Menu Editor to match what you actually stock', items:[
+    { name:'Pepsi', size:'20 oz', price:2.75 }, { name:'Pepsi Wild Cherry', size:'20 oz', price:2.75 },
+    { name:'Diet Pepsi', size:'20 oz', price:2.75 }, { name:'Mountain Dew', size:'20 oz', price:2.75 },
+    { name:'Schweppes Ginger Ale', size:'20 oz', price:2.75 }, { name:'Starry', size:'20 oz', price:2.75 },
+    { name:'Brisk Lemon Iced Tea', size:'20 oz', price:2.75 }, { name:'Crush Grape', size:'20 oz', price:2.75 },
+    { name:'Crush Orange', size:'20 oz', price:2.75 }, { name:'Mug Root Beer', size:'20 oz', price:2.75 },
+    { name:'Coca-Cola', size:'20 oz', price:2.75 }, { name:'Sunkist', size:'20 oz', price:2.75 },
+    { name:'Minute Maid Fruit Punch', size:'20 oz', price:2.75 }, { name:'Arizona', size:'23 oz can', price:2.00 },
+    { name:'Pure Life Water', size:'16.9 oz', price:2.00 }, { name:'Water', size:'1 Liter', price:2.50 },
+    { name:"Stewart's", size:'glass bottle', price:3.00 },
     { name:'Pepsi', size:'2 Liter', price:4.50 }, { name:'Diet Pepsi', size:'2 Liter', price:4.50 },
-    { name:'Mountain Dew', size:'2 Liter', price:4.50 }, { name:'Starry', size:'2 Liter', price:4.50 },
+    { name:'Mountain Dew', size:'2 Liter', price:4.50 }, { name:'Coca-Cola', size:'2 Liter', price:4.50 },
   ]},
 ];
 
@@ -325,7 +330,7 @@ function buildMenuPaneHTML(mode){
   const today = SPECIALS_BY_DAY[new Date().getDay()];
   let html = '';
   if (mode === 'customer' && ORDERS_PAUSED){
-    html += `<div class="paused-banner" style="background:var(--ink-soft); border:1px solid var(--gold); border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:14px; line-height:1.5;">
+    html += `<div class="paused-banner" style="background:var(--surface-2); border:1px solid var(--gold); border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:14px; line-height:1.5;">
       <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--gold); margin-bottom:4px;">Online Ordering Paused</div>
       <div>${escapeHtml(PAUSE_MESSAGE)}</div>
     </div>`;
@@ -357,9 +362,9 @@ function buildMenuPaneHTML(mode){
   html += `<div class="menu-section" data-section="pizza">
     <h3>Pizza</h3>
     <div class="builder" id="builder-${mode}">
-      <div style="font-size:12.5px; color:var(--paper-dim); margin-bottom:4px;">Build your own</div>
+      <div style="font-size:12.5px; color:var(--text-dim); margin-bottom:4px;">Build your own</div>
       <div class="size-row" id="sizerow-${mode}"></div>
-      <div style="font-size:12.5px; color:var(--paper-dim); margin:6px 0 2px;">Toppings</div>
+      <div style="font-size:12.5px; color:var(--text-dim); margin:6px 0 2px;">Toppings</div>
       <div class="topping-grid" id="toppingrow-${mode}"></div>
       <div class="builder-total">
         <div class="mono" id="buildertotal-${mode}" style="font-weight:700; font-size:16px; color:var(--gold);"></div>
@@ -368,7 +373,7 @@ function buildMenuPaneHTML(mode){
     </div>
     <div style="margin-top:14px; display:flex; align-items:center; gap:8px;">
       <span class="signature-badge">Signature</span>
-      <span style="font-size:13px; color:var(--paper-dim); font-weight:700;">Specialty Pies</span>
+      <span style="font-size:13px; color:var(--text-dim); font-weight:700;">Specialty Pies</span>
     </div>
     <div class="item-grid" style="margin-top:8px;" id="specialty-${mode}"></div>
   </div>`;
@@ -416,7 +421,7 @@ function buildCartPaneHTML(mode){
             <input type="date" id="scheduledate-${mode}" style="flex:1;">
             <input type="time" id="scheduletime-${mode}" style="flex:1;">
           </div>
-          <div id="scheduleinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
+          <div id="scheduleinfo-${mode}" style="font-size:11.5px; color:var(--text-dim); margin-top:6px; min-height:14px;"></div>
         </div>
         <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
           <label>Company</label><input id="hp-${mode}" name="company" tabindex="-1" autocomplete="off">
@@ -425,14 +430,14 @@ function buildCartPaneHTML(mode){
         <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
         <div class="field-group" style="display:flex; align-items:center; gap:8px;">
           <input type="checkbox" id="smsoptin-${mode}" style="width:auto;">
-          <label for="smsoptin-${mode}" style="margin:0; text-transform:none; font-size:13px; letter-spacing:normal; color:var(--paper-dim); font-family:inherit;">Text me when my order's ready (standard rates may apply)</label>
+          <label for="smsoptin-${mode}" style="margin:0; text-transform:none; font-size:13px; letter-spacing:normal; color:var(--text-dim); font-family:inherit;">Text me when my order's ready (standard rates may apply)</label>
         </div>
         <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label>
           <div style="display:flex; gap:8px;">
             <input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address" style="flex:1;">
             <button type="button" class="btn btn-outline" id="addrcheck-${mode}" style="padding:0 14px; white-space:nowrap;">Check Address</button>
           </div>
-          <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
+          <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--text-dim); margin-top:6px; min-height:14px;"></div>
         </div>
         <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Allergies, extra sauce, etc."></div>
         <div class="field-group" id="promogroup-${mode}"><label>Promo Code (optional)</label>
@@ -447,7 +452,7 @@ function buildCartPaneHTML(mode){
             <button type="button" data-v="cash" aria-pressed="true">Cash</button>
             <button type="button" data-v="card">Card</button>
           </div>
-          <div style="font-size:11px; color:var(--paper-dim); margin-top:6px;">Paid in person at pickup or delivery. Card processing isn't connected here.</div>
+          <div style="font-size:11px; color:var(--text-dim); margin-top:6px;">Paid in person at pickup or delivery. Card processing isn't connected here.</div>
         </div>
         <div class="field-group" id="tipgroup-${mode}"><label id="tiplabel-${mode}">Add a Tip</label>
           <div class="seg" id="tipseg-${mode}">
@@ -465,7 +470,7 @@ function buildCartPaneHTML(mode){
         <div class="row-between" id="tiprow-${mode}" hidden><span>Tip</span><span class="mono" id="tipamount-${mode}"></span></div>
         <div class="row-between total"><span>Total</span><span id="total-${mode}"></span></div>
         <button class="btn btn-sauce" id="submit-${mode}" type="button" style="width:100%; justify-content:center; margin-top:14px; padding:14px;">Place Order</button>
-        <div style="text-align:center; margin-top:10px; font-size:11.5px; color:var(--paper-dim);">Paid in person at pickup or delivery. See our <a href="../policies.html" target="_blank" style="color:inherit; text-decoration:underline;">ordering &amp; privacy policies</a>.</div>
+        <div style="text-align:center; margin-top:10px; font-size:11.5px; color:var(--text-dim);">Paid in person at pickup or delivery. See our <a href="../policies.html" target="_blank" style="color:inherit; text-decoration:underline;">ordering &amp; privacy policies</a>.</div>
       </div>`;
   }
   return `
@@ -485,7 +490,7 @@ function buildCartPaneHTML(mode){
       <div class="field-group"><label>Name</label><input id="custname-${mode}" placeholder="Customer name"></div>
       <div class="field-group"><label>Phone</label><input id="custphone-${mode}" placeholder="(856) 555-0100"></div>
       <div class="field-group" id="addrgroup-${mode}" hidden><label>Delivery Address</label><input id="custaddr-${mode}" placeholder="Street, Lindenwold NJ" autocomplete="street-address">
-          <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--paper-dim); margin-top:6px; min-height:14px;"></div>
+          <div id="addrinfo-${mode}" style="font-size:11.5px; color:var(--text-dim); margin-top:6px; min-height:14px;"></div>
         </div>
       <div class="field-group"><label>Notes (optional)</label><input id="custnotes-${mode}" placeholder="Order notes"></div>
       <div class="field-group"><label>Tender</label>
@@ -766,7 +771,7 @@ function renderOrderLayout(mode){
       if (!scheduleDateEl.value || !scheduleTimeEl.value){
         orderCtx.scheduledFor = null;
         scheduleInfo.textContent = 'Pick a date and time.';
-        scheduleInfo.style.color = 'var(--paper-dim)';
+        scheduleInfo.style.color = 'var(--text-dim)';
         return;
       }
       const ts = new Date(`${scheduleDateEl.value}T${scheduleTimeEl.value}:00`).getTime();
@@ -785,7 +790,7 @@ function renderOrderLayout(mode){
       }
       orderCtx.scheduledFor = ts;
       scheduleInfo.textContent = 'The shop will confirm this fits business hours when you submit.';
-      scheduleInfo.style.color = 'var(--paper-dim)';
+      scheduleInfo.style.color = 'var(--text-dim)';
     };
     wireSeg(`whenseg-${mode}`, '_scheduleChoice', (v) => {
       scheduleGroup.hidden = (v !== 'schedule');
